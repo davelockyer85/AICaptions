@@ -13,28 +13,27 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-// 1. Serve static frontend files from 'public' directory
 app.use(express.static(path.join(__dirname, "public")));
 
-// Explicit root route handler to guarantee index.html loads on Render
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// 2. Initialize Deepgram SDK
 const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
 if (!DEEPGRAM_KEY) {
   console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
 }
 const deepgram = createClient(DEEPGRAM_KEY);
 
-// 3. Client Tracking Registries
 const clients = {
   overlays: new Set(),
   attendees: new Set()
 };
 
-// 4. Free Real-time Translation Helper (MyMemory API)
+// Global active target language for stage overlay (default: English)
+let targetOverlayLang = "en";
+
+// Free Real-time Translation Helper (MyMemory API)
 async function translateText(text, targetLang) {
   if (!targetLang || targetLang === "en") return text;
   try {
@@ -49,11 +48,10 @@ async function translateText(text, targetLang) {
   }
 }
 
-// 5. WebSocket Connection Router
 wss.on("connection", (ws, req) => {
   const url = req.url;
 
-  // ROUTE A: Stage Microphones / Audio Ingest (with Chunk Buffering)
+  // ROUTE A: Stage Microphones / Audio Ingest
   if (url === "/ws/ingest") {
     console.log("[Ingest] Presenter audio connected.");
 
@@ -69,10 +67,9 @@ wss.on("connection", (ws, req) => {
     });
 
     dgLive.on(LiveTranscriptionEvents.Open, () => {
-      console.log("[Deepgram] Live STT socket connected. Flushing buffered audio...");
+      console.log("[Deepgram] Connected. Flushing buffered audio...");
       isDgReady = true;
 
-      // Flush queued chunks (including initial WebM header chunk)
       while (audioQueue.length > 0) {
         dgLive.send(audioQueue.shift());
       }
@@ -82,25 +79,32 @@ wss.on("connection", (ws, req) => {
       console.error("[Deepgram Error]", err);
     });
 
-    dgLive.on(LiveTranscriptionEvents.Close, () => {
-      console.log("[Deepgram] Connection closed.");
-    });
-
-    // Handle transcription events from Deepgram
     dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
       const transcript = data.channel.alternatives[0]?.transcript;
       const isFinal = data.is_final;
 
       if (transcript && transcript.trim().length > 0) {
-        // Broadcast raw text immediately to OBS / stage overlays
-        const overlayPayload = JSON.stringify({ text: transcript, isFinal });
+        let overlayText = transcript;
+
+        // Translate finalized phrases if target language is not English
+        if (targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, targetOverlayLang);
+        }
+
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: targetOverlayLang
+        });
+
         clients.overlays.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(overlayPayload);
           }
         });
 
-        // Broadcast translated text to mobile attendees on final sentences
+        // Broadcast to mobile attendees with their selected language
         if (isFinal) {
           clients.attendees.forEach(async (attendee) => {
             if (attendee.readyState === WebSocket.OPEN) {
@@ -114,12 +118,23 @@ wss.on("connection", (ws, req) => {
       }
     });
 
-    // Queue chunks until Deepgram is ready, then stream directly
-    ws.on("message", (chunk) => {
-      if (isDgReady && dgLive.getReadyState() === 1) { // 1 = OPEN
-        dgLive.send(chunk);
+    // Handle incoming audio chunks OR JSON control messages (e.g. language change)
+    ws.on("message", (message, isBinary) => {
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            targetOverlayLang = controlData.lang;
+            console.log(`[Presenter] Target overlay language switched to: ${targetOverlayLang}`);
+          }
+        } catch (e) {}
+        return;
+      }
+
+      if (isDgReady && dgLive.getReadyState() === 1) {
+        dgLive.send(message);
       } else {
-        audioQueue.push(chunk);
+        audioQueue.push(message);
       }
     });
 
@@ -144,7 +159,6 @@ wss.on("connection", (ws, req) => {
 
     clients.attendees.add(ws);
 
-    // Dynamic language switching from mobile client
     ws.on("message", (msg) => {
       try {
         const data = JSON.parse(msg);
