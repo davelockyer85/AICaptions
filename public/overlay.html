@@ -1,116 +1,46 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Stage Captions - Transparent Overlay</title>
+  <meta charset="UTF-8">
+  <title>OBS / Stage Caption Overlay</title>
   <style>
-    /* Absolute transparency for OBS, vMix, and broadcast switchers */
-    html, body {
-      background-color: rgba(0, 0, 0, 0) !important;
-      background: transparent !important;
+    body {
       margin: 0;
       padding: 0;
-      width: 100vw;
-      height: 100vh;
+      background: transparent; /* Transparent background for keying */
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end; /* Places captions in lower-third position */
-      align-items: center;
+      font-family: system-ui, -apple-system, sans-serif;
     }
-
-    #caption-container {
-      width: 90%;
-      max-width: 1400px;
-      margin-bottom: 60px;
-      text-align: center;
-    }
-
-    #captionBox {
-      display: inline-block;
+    #caption-box {
+      position: absolute;
+      bottom: 40px;
+      left: 5%;
+      right: 5%;
+      background: rgba(0, 0, 0, 0.85);
       color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: 3.2rem;
-      font-weight: 700;
-      line-height: 1.3;
-      letter-spacing: 0.02em;
-      
-      /* Crisp text outline & drop shadow for high contrast over light and dark video */
-      text-shadow: 
-        2px  2px 0px #000,
-       -2px -2px 0px #000,
-        2px -2px 0px #000,
-       -2px  2px 0px #000,
-        0px  4px 12px rgba(0, 0, 0, 0.9);
-
-      /* Subtle semi-transparent backing pill */
-      background: rgba(15, 23, 42, 0.65);
-      padding: 0.8rem 2rem;
-      border-radius: 16px;
-      backdrop-filter: blur(4px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      
-      transition: all 0.15s ease-out;
-    }
-
-    /* Optional fade styling for interim results */
-    .interim {
-      opacity: 0.85;
-      font-style: italic;
+      padding: 20px 30px;
+      border-radius: 12px;
+      font-size: 32px;
+      line-height: 1.4;
+      font-weight: 600;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      min-height: 80px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     }
   </style>
 </head>
 <body>
-
-  <div id="caption-container">
-    <div id="captionBox">Waiting for live audio...</div>
-  </div>
+  <div id="caption-box">Waiting for audio live stream...</div>
 
   <script>
-    const captionBox = document.getElementById("captionBox");
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/overlay`;
-    let socket;
+    const box = document.getElementById("caption-box");
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/overlay`);
 
-    function connect() {
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        captionBox.innerText = "";
-        captionBox.style.display = "none"; // Hide box until audio starts
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.text && data.text.trim().length > 0) {
-            captionBox.style.display = "inline-block";
-            captionBox.innerText = data.text;
-            
-            if (data.isFinal) {
-              captionBox.classList.remove("interim");
-            } else {
-              captionBox.classList.add("interim");
-            }
-          }
-        } catch (err) {
-          console.error("Error parsing overlay payload:", err);
-        }
-      };
-
-      socket.onclose = () => {
-        captionBox.style.display = "inline-block";
-        captionBox.classList.remove("interim");
-        captionBox.innerText = "[Overlay Reconnecting...]";
-        setTimeout(connect, 2000); // Auto-reconnect if socket drops
-      };
-
-      socket.onerror = (err) => {
-        console.error("WebSocket Error:", err);
-      };
-    }
-
-    connect();
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      box.innerText = data.text;
+    };
   </script>
 </body>
 </html>
