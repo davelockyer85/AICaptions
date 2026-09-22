@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OBS / Stage Caption Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent; /* Transparent background for keying */
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    #caption-box {
+      position: absolute;
+      bottom: 40px;
+      left: 5%;
+      right: 5%;
+      background: rgba(0, 0, 0, 0.85);
+      color: #ffffff;
+      padding: 20px 30px;
+      border-radius: 12px;
+      font-size: 32px;
+      line-height: 1.4;
+      font-weight: 600;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      min-height: 80px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="caption-box">Waiting for audio live stream...</div>
+
+  <script>
+    const box = document.getElementById("caption-box");
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/overlay`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      box.innerText = data.text;
+    };
+  </script>
+</body>
+</html>

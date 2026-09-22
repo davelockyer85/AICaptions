@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Event Captions</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+    select { background: #1e293b; color: #fff; border: 1px solid #475569; padding: 8px 12px; border-radius: 6px; font-size: 16px; }
+    #feed { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; height: 80vh; overflow-y: auto; }
+    .card { background: #1e293b; padding: 16px; border-radius: 8px; border-left: 4px solid #3b82f6; font-size: 18px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>Live Captions</h2>
+    <select id="langSelect">
+      <option value="en">English</option>
+      <option value="es">Spanish (Español)</option>
+      <option value="fr">French (Français)</option>
+      <option value="de">German (Deutsch)</option>
+      <option value="zh">Chinese (中文)</option>
+    </select>
+  </div>
+
+  <div id="feed">
+    <div class="card">Connected. Live translations will appear here...</div>
+  </div>
+
+  <script>
+    const feed = document.getElementById("feed");
+    const langSelect = document.getElementById("langSelect");
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    let ws = new WebSocket(`${protocol}//${location.host}/ws/attendee?lang=en`);
+
+    langSelect.onchange = () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "set_language", lang: langSelect.value }));
+      }
+    };
+
+    ws.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerText = data.text;
+      feed.appendChild(card);
+      feed.scrollTop = feed.scrollHeight;
+    };
+  </script>
+</body>
+</html>

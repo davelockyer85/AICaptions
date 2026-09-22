@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Presenter Audio Ingest</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #fff; padding: 2rem; text-align: center; }
+    button { padding: 1rem 2rem; font-size: 1.2rem; background: #0070f3; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    #status { margin-top: 1rem; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Stage Audio Transmitter</h1>
+  <button id="startBtn">Start Streaming Audio</button>
+  <p id="status">Status: Disconnected</p>
+
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const status = document.getElementById("status");
+    let ws, mediaRecorder;
+
+    startBtn.onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
+
+      ws.onopen = () => {
+        status.innerText = "Status: Live & Streaming Stage Audio";
+        status.style.color = "#00ff88";
+        
+        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(e.data);
+          }
+        };
+        mediaRecorder.start(250); // Send 250ms chunks
+      };
+
+      ws.onclose = () => {
+        status.innerText = "Status: Disconnected";
+        status.style.color = "#ff4444";
+      };
+    };
+  </script>
+</body>
+</html>
