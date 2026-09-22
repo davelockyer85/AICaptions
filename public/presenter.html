@@ -1,156 +1,293 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Stage Presenter Control Panel</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Presenter Control Panel - Live Captions</title>
   <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #0f172a;
       color: #f8fafc;
-      padding: 2rem;
-      max-width: 800px;
-      margin: 0 auto;
-      text-align: center;
-    }
-    h1 { margin-bottom: 0.5rem; }
-    p.sub { color: #94a3b8; margin-bottom: 2rem; }
-    .btn-start {
-      padding: 1rem 2.5rem;
-      font-size: 1.25rem;
-      font-weight: 600;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-    }
-    .btn-start:hover { background: #1d4ed8; }
-    #status { margin-top: 1.5rem; font-weight: 500; color: #64748b; }
-    
-    .lang-section {
-      margin-top: 2.5rem;
-      background: #1e293b;
-      padding: 1.5rem;
-      border-radius: 16px;
-      border: 1px solid #334155;
-    }
-    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .lang-tabs {
+      min-height: 100vh;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
       justify-content: center;
-      margin-top: 1rem;
+      align-items: center;
+      padding: 20px;
     }
-    .tab {
-      padding: 0.6rem 1.2rem;
-      background: #0f172a;
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+
+    .header {
+      margin-bottom: 24px;
+    }
+
+    .title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .room-badge {
+      display: inline-block;
+      background-color: #3b82f6;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      margin-top: 4px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
       color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      background-color: #0f172a;
       border: 1px solid #334155;
       border-radius: 8px;
+      color: #f8fafc;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus {
+      border-color: #3b82f6;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    button {
+      flex: 1;
+      padding: 14px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
       cursor: pointer;
-      font-weight: 500;
       transition: all 0.2s;
     }
-    .tab:hover { background: #334155; color: #fff; }
-    .tab.active {
-      background: #10b981;
+
+    #startBtn {
+      background-color: #22c55e;
       color: #ffffff;
-      border-color: #10b981;
-      font-weight: 600;
+    }
+
+    #startBtn:hover {
+      background-color: #16a34a;
+    }
+
+    #stopBtn {
+      background-color: #ef4444;
+      color: #ffffff;
+    }
+
+    #stopBtn:hover {
+      background-color: #dc2626;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .status-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background-color: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #64748b;
+    }
+
+    .status-dot.active {
+      background-color: #22c55e;
+      box-shadow: 0 0 10px #22c55e;
+    }
+
+    .status-text {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #cbd5e1;
     }
   </style>
 </head>
 <body>
-  <h1>Stage Presenter Panel</h1>
-  <p class="sub">Live Speech-to-Text & Real-time Overlay Translator</p>
 
-  <button id="startBtn">Start Streaming Audio</button>
-  <p id="status">Status: Disconnected</p>
+  <div class="card">
+    <div class="header">
+      <div class="title">Stage Presenter Panel</div>
+      <div class="room-badge" id="roomDisplay">Room: Loading...</div>
+    </div>
 
-  <div class="lang-section">
-    <h3>Stage Overlay Target Language</h3>
-    <div class="lang-tabs">
-      <button class="tab active" onclick="setLanguage('en', this)">🇺🇸 English</button>
-      <button class="tab" onclick="setLanguage('es', this)">🇪🇸 Spanish</button>
-      <button class="tab" onclick="setLanguage('fr', this)">🇫🇷 French</button>
-      <button class="tab" onclick="setLanguage('de', this)">🇩🇪 German</button>
-      <button class="tab" onclick="setLanguage('zh', this)">🇨🇳 Chinese</button>
-      <button class="tab" onclick="setLanguage('ja', this)">🇯🇵 Japanese</button>
-      <button class="tab" onclick="setLanguage('it', this)">🇮🇹 Italian</button>
-      <button class="tab" onclick="setLanguage('pt', this)">🇵🇹 Portuguese</button>
+    <div class="form-group">
+      <label for="languageSelect">Stage Overlay Translation Target</label>
+      <select id="languageSelect">
+        <option value="en">English (Original)</option>
+        <option value="es">Spanish (Español)</option>
+        <option value="fr">French (Français)</option>
+        <option value="de">German (Deutsch)</option>
+        <option value="it">Italian (Italiano)</option>
+        <option value="pt">Portuguese (Português)</option>
+        <option value="ja">Japanese (日本語)</option>
+        <option value="zh">Chinese (中文)</option>
+      </select>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">Start Broadcasting</button>
+      <button id="stopBtn" disabled>Stop</button>
+    </div>
+
+    <div class="status-container">
+      <div class="status-dot" id="statusDot"></div>
+      <div class="status-text" id="statusText">Offline</div>
     </div>
   </div>
 
   <script>
+    // Extract Room ID from query string (?room=event123), default to 'default'
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get("room") || "default";
+    document.getElementById("roomDisplay").innerText = `Room: ${roomId}`;
+
     const startBtn = document.getElementById("startBtn");
-    const status = document.getElementById("status");
-    let ws, mediaRecorder;
-    let selectedLang = "en";
+    const stopBtn = document.getElementById("stopBtn");
+    const languageSelect = document.getElementById("languageSelect");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
 
-    function setLanguage(langCode, btnElement) {
-      selectedLang = langCode;
-      
-      // Update UI tab selection styles
-      document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
-      btnElement.classList.add("active");
+    let ws = null;
+    let mediaRecorder = null;
+    let audioStream = null;
 
-      // Send language switch event over WebSocket if connected
+    // Send target language update over WebSocket
+    languageSelect.onchange = () => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
-        console.log(`[Presenter] Switched overlay target language to: ${selectedLang}`);
+        ws.send(JSON.stringify({
+          type: "set_language",
+          lang: languageSelect.value
+        }));
       }
-    }
+    };
 
     startBtn.onclick = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
+        audioStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true
+          } 
+        });
+
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/ws/ingest?room=${encodeURIComponent(roomId)}`;
+        
+        ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          status.innerText = "Status: Live & Streaming Stage Audio";
-          status.style.color = "#10b981";
-          
-          // Send initial language preference
-          ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+          statusDot.classList.add("active");
+          statusText.innerText = `Live Broadcasting (${roomId})`;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
 
-          let options = {};
-          if (MediaRecorder.isTypeSupported("audio/webm")) {
-            options = { mimeType: "audio/webm" };
-          } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-            options = { mimeType: "audio/mp4" };
+          // Send current language choice immediately
+          ws.send(JSON.stringify({
+            type: "set_language",
+            lang: languageSelect.value
+          }));
+
+          // Setup MediaRecorder for 250ms slice output
+          let mimeType = "audio/webm;codecs=opus";
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = "audio/webm";
           }
 
-          mediaRecorder = new MediaRecorder(stream, options);
-          
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
+          mediaRecorder = new MediaRecorder(audioStream, { mimeType });
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(event.data);
             }
           };
-          
-          mediaRecorder.start(250);
-        };
 
-        ws.onclose = () => {
-          status.innerText = "Status: Disconnected";
-          status.style.color = "#ef4444";
+          mediaRecorder.start(250);
         };
 
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
+          statusText.innerText = "Connection Error";
+        };
+
+        ws.onclose = () => {
+          stopBroadcasting();
         };
 
       } catch (err) {
-        console.error("Mic Error:", err);
-        status.innerText = "Status: Microphone Access Denied";
-        status.style.color = "#ef4444";
+        console.error("Microphone access failed:", err);
+        alert("Unable to access microphone. Please check browser permissions.");
       }
     };
+
+    function stopBroadcasting() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws) {
+        ws.close();
+      }
+
+      statusDot.classList.remove("active");
+      statusText.innerText = "Offline";
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    stopBtn.onclick = stopBroadcasting;
   </script>
 </body>
 </html>
