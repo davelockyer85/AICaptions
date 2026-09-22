@@ -1,45 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Presenter Audio Ingest</title>
+  <meta charset="UTF-8">
+  <title>Stage Presenter Control Panel</title>
   <style>
-    body { font-family: sans-serif; background: #111; color: #fff; padding: 2rem; text-align: center; }
-    button { padding: 1rem 2rem; font-size: 1.2rem; background: #0070f3; color: white; border: none; border-radius: 8px; cursor: pointer; }
-    #status { margin-top: 1rem; color: #888; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 2rem;
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    h1 { margin-bottom: 0.5rem; }
+    p.sub { color: #94a3b8; margin-bottom: 2rem; }
+    .btn-start {
+      padding: 1rem 2.5rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    .btn-start:hover { background: #1d4ed8; }
+    #status { margin-top: 1.5rem; font-weight: 500; color: #64748b; }
+    
+    .lang-section {
+      margin-top: 2.5rem;
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 16px;
+      border: 1px solid #334155;
+    }
+    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .lang-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+    .tab {
+      padding: 0.6rem 1.2rem;
+      background: #0f172a;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: #334155; color: #fff; }
+    .tab.active {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #10b981;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
-  <h1>Stage Audio Transmitter</h1>
+  <h1>Stage Presenter Panel</h1>
+  <p class="sub">Live Speech-to-Text & Real-time Overlay Translator</p>
+
   <button id="startBtn">Start Streaming Audio</button>
   <p id="status">Status: Disconnected</p>
+
+  <div class="lang-section">
+    <h3>Stage Overlay Target Language</h3>
+    <div class="lang-tabs">
+      <button class="tab active" onclick="setLanguage('en', this)">🇺🇸 English</button>
+      <button class="tab" onclick="setLanguage('es', this)">🇪🇸 Spanish</button>
+      <button class="tab" onclick="setLanguage('fr', this)">🇫🇷 French</button>
+      <button class="tab" onclick="setLanguage('de', this)">🇩🇪 German</button>
+      <button class="tab" onclick="setLanguage('zh', this)">🇨🇳 Chinese</button>
+      <button class="tab" onclick="setLanguage('ja', this)">🇯🇵 Japanese</button>
+      <button class="tab" onclick="setLanguage('it', this)">🇮🇹 Italian</button>
+      <button class="tab" onclick="setLanguage('pt', this)">🇵🇹 Portuguese</button>
+    </div>
+  </div>
 
   <script>
     const startBtn = document.getElementById("startBtn");
     const status = document.getElementById("status");
     let ws, mediaRecorder;
+    let selectedLang = "en";
+
+    function setLanguage(langCode, btnElement) {
+      selectedLang = langCode;
+      
+      // Update UI tab selection styles
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+      btnElement.classList.add("active");
+
+      // Send language switch event over WebSocket if connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+        console.log(`[Presenter] Switched overlay target language to: ${selectedLang}`);
+      }
+    }
 
     startBtn.onclick = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
 
-      ws.onopen = () => {
-        status.innerText = "Status: Live & Streaming Stage Audio";
-        status.style.color = "#00ff88";
-        
-        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(e.data);
+        ws.onopen = () => {
+          status.innerText = "Status: Live & Streaming Stage Audio";
+          status.style.color = "#10b981";
+          
+          // Send initial language preference
+          ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+
+          let options = {};
+          if (MediaRecorder.isTypeSupported("audio/webm")) {
+            options = { mimeType: "audio/webm" };
+          } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+            options = { mimeType: "audio/mp4" };
           }
-        };
-        mediaRecorder.start(250); // Send 250ms chunks
-      };
 
-      ws.onclose = () => {
-        status.innerText = "Status: Disconnected";
-        status.style.color = "#ff4444";
-      };
+          mediaRecorder = new MediaRecorder(stream, options);
+          
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
+            }
+          };
+          
+          mediaRecorder.start(250);
+        };
+
+        ws.onclose = () => {
+          status.innerText = "Status: Disconnected";
+          status.style.color = "#ef4444";
+        };
+
+        ws.onerror = (err) => {
+          console.error("WebSocket Error:", err);
+        };
+
+      } catch (err) {
+        console.error("Mic Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+      }
     };
   </script>
 </body>
