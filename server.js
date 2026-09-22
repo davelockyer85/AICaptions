@@ -53,9 +53,12 @@ async function translateText(text, targetLang) {
 wss.on("connection", (ws, req) => {
   const url = req.url;
 
-  // ROUTE A: Stage Microphones / Audio Ingest
+  // ROUTE A: Stage Microphones / Audio Ingest (with Chunk Buffering)
   if (url === "/ws/ingest") {
     console.log("[Ingest] Presenter audio connected.");
+
+    const audioQueue = [];
+    let isDgReady = false;
 
     const dgLive = deepgram.listen.live({
       model: "nova-3",
@@ -66,7 +69,13 @@ wss.on("connection", (ws, req) => {
     });
 
     dgLive.on(LiveTranscriptionEvents.Open, () => {
-      console.log("[Deepgram] Live STT socket connected.");
+      console.log("[Deepgram] Live STT socket connected. Flushing buffered audio...");
+      isDgReady = true;
+
+      // Flush queued chunks (including initial WebM header chunk)
+      while (audioQueue.length > 0) {
+        dgLive.send(audioQueue.shift());
+      }
     });
 
     dgLive.on(LiveTranscriptionEvents.Error, (err) => {
@@ -105,10 +114,12 @@ wss.on("connection", (ws, req) => {
       }
     });
 
-    // Forward binary audio chunks from presenter microphone to Deepgram
+    // Queue chunks until Deepgram is ready, then stream directly
     ws.on("message", (chunk) => {
-      if (dgLive.getReadyState() === 1) { // 1 = OPEN
+      if (isDgReady && dgLive.getReadyState() === 1) { // 1 = OPEN
         dgLive.send(chunk);
+      } else {
+        audioQueue.push(chunk);
       }
     });
 
