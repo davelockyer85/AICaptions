@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing Plans - AICaptions SaaS</title>
+
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      padding-bottom: 60px;
+    }
+
+    /* Header Navigation */
+    header {
+      background-color: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #3b82f6;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+
+    .btn-secondary {
+      background-color: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-secondary:hover { background-color: #475569; }
+
+    /* Hero Banner */
+    .hero {
+      text-align: center;
+      padding: 60px 20px 40px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      color: #94a3b8;
+      font-size: 1.1rem;
+      line-height: 1.6;
+    }
+
+    /* Pricing Grid */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      max-width: 900px;
+      margin: 20px auto 0;
+      padding: 0 20px;
+    }
+
+    .price-card {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+
+    .price-card.featured {
+      border-color: #3b82f6;
+      background: linear-gradient(180deg, #1e293b 0%, #1e1b4b 100%);
+    }
+
+    .popular-badge {
+      position: absolute;
+      top: -12px;
+      right: 24px;
+      background-color: #3b82f6;
+      color: #ffffff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 12px;
+    }
+
+    .plan-name { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; }
+    .plan-desc { color: #94a3b8; font-size: 0.875rem; margin-bottom: 24px; min-height: 40px; }
+
+    .price {
+      font-size: 2.75rem;
+      font-weight: 800;
+      margin-bottom: 24px;
+    }
+
+    .price span {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #94a3b8;
+    }
+
+    .feature-list {
+      list-style: none;
+      margin-bottom: 32px;
+      flex-grow: 1;
+    }
+
+    .feature-list li {
+      margin-bottom: 12px;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .feature-list li::before {
+      content: "✓";
+      color: #22c55e;
+      font-weight: 700;
+    }
+
+    .btn-checkout {
+      width: 100%;
+      padding: 14px;
+      background-color: #3b82f6;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-checkout:hover { background-color: #2563eb; }
+    .btn-checkout:disabled { background-color: #475569; cursor: not-allowed; }
+
+    #errorMsg {
+      text-align: center;
+      color: #ef4444;
+      margin-top: 20px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="/dashboard.html" class="logo">🎙️ AICaptions</a>
+    <a href="/dashboard.html" class="btn-secondary">Back to Dashboard</a>
+  </header>
+
+  <div class="hero">
+    <h1>Simple, Transparent Pricing</h1>
+    <p>Unlock real-time AI stage captions, OBS lower-third overlays, and multi-tenant live translations for your events.</p>
+  </div>
+
+  <div id="errorMsg"></div>
+
+  <div class="pricing-grid">
+
+    <!-- Starter Plan -->
+    <div class="price-card">
+      <div class="plan-name">Starter Event</div>
+      <div class="plan-desc">Perfect for small venues, churches, or independent presenters.</div>
+      <div class="price">$29 <span>/ month</span></div>
+
+      <ul class="feature-list">
+        <li>1 Concurrent Event Room</li>
+        <li>Low Latency Real-Time STT</li>
+        <li>OBS Transparent Lower-Third Overlay</li>
+        <li>Mobile Audience Web View</li>
+        <li>Standard Deepgram AI Speech Model</li>
+      </ul>
+
+      <button class="btn-checkout" onclick="handleCheckout('price_STARTER_PRICE_ID')">Subscribe to Starter</button>
+    </div>
+
+    <!-- Pro Event Plan (Featured) -->
+    <div class="price-card featured">
+      <div class="popular-badge">Most Popular</div>
+      <div class="plan-name">Pro Event SaaS</div>
+      <div class="plan-desc">For high-stakes production, conferences, and multi-stage events.</div>
+      <div class="price">$79 <span>/ month</span></div>
+
+      <ul class="feature-list">
+        <li>Unlimited Event Rooms (`?room=...`)</li>
+        <li>Deepgram Nova-3 High Accuracy AI</li>
+        <li>Live Multilingual Translation Tabs</li>
+        <li>Custom OBS CSS Styling</li>
+        <li>Priority WebSocket Audio Ingestion</li>
+      </ul>
+
+      <button class="btn-checkout" onclick="handleCheckout('price_PRO_PRICE_ID')">Subscribe to Pro</button>
+    </div>
+
+  </div>
+
+  <script>
+    // 1. Initialize Supabase
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUser = null;
+
+    // 2. Load User Session
+    async function initSession() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+      }
+    }
+
+    // 3. Trigger Stripe Checkout
+    async function handleCheckout(priceId) {
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.innerText = '';
+
+      if (!currentUser) {
+        alert("Please log in first before choosing a subscription plan.");
+        window.location.href = '/auth.html';
+        return;
+      }
+
+      const buttons = document.querySelectorAll('.btn-checkout');
+      buttons.forEach(btn => { btn.disabled = true; btn.innerText = "Redirecting to Stripe..."; });
+
+      try {
+        const response = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceId: priceId,
+            userId: currentUser.id,
+            userEmail: currentUser.email
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.url) {
+          // Redirect user to Stripe hosted checkout page
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.error || "Failed to initiate Stripe Checkout.");
+        }
+      } catch (err) {
+        console.error("Checkout error:", err);
+        errorMsg.innerText = err.message;
+        buttons.forEach(btn => { btn.disabled = false; btn.innerText = "Subscribe"; });
+      }
+    }
+
+    initSession();
+  </script>
+</body>
+</html>
