@@ -5,18 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Authentication - Stage Captions</title>
   
-  <!-- Supabase JS SDK via CDN -->
+  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #0f172a;
       color: #f8fafc;
       min-height: 100vh;
@@ -25,7 +20,6 @@
       align-items: center;
       padding: 20px;
     }
-
     .auth-card {
       background: #1e293b;
       border: 1px solid #334155;
@@ -35,8 +29,6 @@
       max-width: 420px;
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
     }
-
-    /* Tab navigation at top */
     .auth-tabs {
       display: flex;
       background-color: #0f172a;
@@ -45,7 +37,6 @@
       margin-bottom: 24px;
       border: 1px solid #334155;
     }
-
     .tab-btn {
       flex: 1;
       padding: 10px;
@@ -58,40 +49,15 @@
       border-radius: 6px;
       transition: all 0.2s;
     }
-
     .tab-btn.active {
       background-color: #3b82f6;
       color: #ffffff;
     }
-
-    .auth-header {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-
-    .auth-header h1 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .auth-header p {
-      color: #94a3b8;
-      font-size: 0.9rem;
-    }
-
-    .form-group {
-      margin-bottom: 18px;
-    }
-
-    label {
-      display: block;
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: #cbd5e1;
-      margin-bottom: 6px;
-    }
-
+    .auth-header { text-align: center; margin-bottom: 24px; }
+    .auth-header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
+    .auth-header p { color: #94a3b8; font-size: 0.9rem; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px; }
     input {
       width: 100%;
       padding: 12px 16px;
@@ -101,13 +67,8 @@
       color: #f8fafc;
       font-size: 1rem;
       outline: none;
-      transition: border-color 0.2s;
     }
-
-    input:focus {
-      border-color: #3b82f6;
-    }
-
+    input:focus { border-color: #3b82f6; }
     button[type="submit"] {
       width: 100%;
       padding: 14px;
@@ -118,46 +79,25 @@
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: background-color 0.2s;
       margin-top: 10px;
     }
-
-    button[type="submit"]:hover {
-      background-color: #2563eb;
-    }
-
-    button[type="submit"]:disabled {
-      background-color: #475569;
-      cursor: not-allowed;
-    }
-
+    button[type="submit"]:hover { background-color: #2563eb; }
+    button[type="submit"]:disabled { background-color: #475569; cursor: not-allowed; }
     #messageBox {
       display: none;
       margin-bottom: 20px;
       padding: 12px;
       border-radius: 8px;
       font-size: 0.875rem;
-      line-height: 1.4;
       text-align: center;
     }
-
-    .msg-error {
-      background-color: rgba(239, 68, 68, 0.15);
-      color: #fca5a5;
-      border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-
-    .msg-success {
-      background-color: rgba(34, 197, 94, 0.15);
-      color: #86efac;
-      border: 1px solid rgba(34, 197, 94, 0.3);
-    }
+    .msg-error { background-color: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .msg-success { background-color: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
   </style>
 </head>
 <body>
 
   <div class="auth-card">
-    <!-- Distinct Tabs -->
     <div class="auth-tabs">
       <button type="button" class="tab-btn active" id="loginTab">Sign In</button>
       <button type="button" class="tab-btn" id="signupTab">Sign Up</button>
@@ -186,19 +126,12 @@
   </div>
 
   <script>
-    // ⚠️ STEP 1: REPLACE THESE WITH YOUR REAL SUPABASE CREDENTIALS
-    NEXT_PUBLIC_SUPABASE_URL=https://euopdmwtowuxdzczwbul.supabase.co
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB
-    let supabase = null;
-    try {
-      if (!SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      }
-    } catch (e) {
-      console.error("Supabase Initialization Error:", e);
-    }
+    // Configured Supabase Credentials
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
 
-    // State & UI Elements
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
     let isLoginMode = true;
     
     const loginTab = document.getElementById('loginTab');
@@ -211,7 +144,6 @@
     const formSubtitle = document.getElementById('formSubtitle');
     const messageBox = document.getElementById('messageBox');
 
-    // Tab Switchers
     loginTab.addEventListener('click', () => setMode(true));
     signupTab.addEventListener('click', () => setMode(false));
 
@@ -244,16 +176,9 @@
       messageBox.className = type === 'error' ? 'msg-error' : 'msg-success';
     }
 
-    // Form Submission
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      // Check credentials configuration
-      if (!supabase) {
-        showMessage('Error: Please replace SUPABASE_URL and SUPABASE_ANON_KEY in auth.html with your actual Supabase keys.', 'error');
-        return;
-      }
-
       const email = emailInput.value.trim();
       const password = passwordInput.value;
       
@@ -263,28 +188,22 @@
 
       try {
         if (isLoginMode) {
-          // Process Sign In
           const { data, error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
 
           showMessage('Login successful! Redirecting...', 'success');
           setTimeout(() => window.location.href = '/dashboard.html', 1000);
-
         } else {
-          // Process Sign Up
           const { data, error } = await supabase.auth.signUp({ email, password });
           if (error) throw error;
 
           if (data.session) {
-            // Immediate sign up without email verification
             showMessage('Account created successfully! Redirecting...', 'success');
             setTimeout(() => window.location.href = '/dashboard.html', 1000);
           } else {
-            // Email confirmation enabled in Supabase
-            showMessage('Account created! Please check your email inbox to confirm your account.', 'success');
+            showMessage('Account created! Please check your email inbox to confirm your registration.', 'success');
           }
         }
-
       } catch (err) {
         showMessage(err.message || 'Authentication failed', 'error');
       } finally {
@@ -293,13 +212,10 @@
       }
     });
 
-    // Auto-redirect if session exists
     async function checkSession() {
-      if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          window.location.href = '/dashboard.html';
-        }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        window.location.href = '/dashboard.html';
       }
     }
     checkSession();
