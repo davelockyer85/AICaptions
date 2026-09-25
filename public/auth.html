@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login & Sign Up - Stage Captions SaaS</title>
+  <title>Authentication - Stage Captions</title>
   
   <!-- Supabase JS SDK via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,30 +30,58 @@
       background: #1e293b;
       border: 1px solid #334155;
       border-radius: 16px;
-      padding: 40px 32px;
+      padding: 32px;
       width: 100%;
       max-width: 420px;
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
     }
 
+    /* Tab navigation at top */
+    .auth-tabs {
+      display: flex;
+      background-color: #0f172a;
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 24px;
+      border: 1px solid #334155;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background-color: #3b82f6;
+      color: #ffffff;
+    }
+
     .auth-header {
       text-align: center;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
     }
 
     .auth-header h1 {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .auth-header p {
       color: #94a3b8;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
     }
 
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
 
     label {
@@ -61,7 +89,7 @@
       font-size: 0.875rem;
       font-weight: 600;
       color: #cbd5e1;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     input {
@@ -103,48 +131,38 @@
       cursor: not-allowed;
     }
 
-    .toggle-mode {
-      text-align: center;
-      margin-top: 24px;
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .toggle-mode span {
-      color: #3b82f6;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .toggle-mode span:hover {
-      text-decoration: underline;
-    }
-
     #messageBox {
       display: none;
       margin-bottom: 20px;
       padding: 12px;
       border-radius: 8px;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
+      line-height: 1.4;
       text-align: center;
     }
 
     .msg-error {
-      background-color: rgba(239, 68, 68, 0.1);
-      color: #ef4444;
-      border: 1px solid rgba(239, 68, 68, 0.2);
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
     .msg-success {
-      background-color: rgba(34, 197, 94, 0.1);
-      color: #22c55e;
-      border: 1px solid rgba(34, 197, 94, 0.2);
+      background-color: rgba(34, 197, 94, 0.15);
+      color: #86efac;
+      border: 1px solid rgba(34, 197, 94, 0.3);
     }
   </style>
 </head>
 <body>
 
   <div class="auth-card">
+    <!-- Distinct Tabs -->
+    <div class="auth-tabs">
+      <button type="button" class="tab-btn active" id="loginTab">Sign In</button>
+      <button type="button" class="tab-btn" id="signupTab">Sign Up</button>
+    </div>
+
     <div class="auth-header">
       <h1 id="formTitle">Welcome Back</h1>
       <p id="formSubtitle">Sign in to manage your stage captions</p>
@@ -160,51 +178,62 @@
 
       <div class="form-group">
         <label for="password">Password</label>
-        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password" minlength="6">
       </div>
 
       <button type="submit" id="submitBtn">Sign In</button>
     </form>
-
-    <div class="toggle-mode">
-      <span id="modeText">Don't have an account? <span>Sign Up</span></span>
-    </div>
   </div>
 
   <script>
-    // 1. Initialize Supabase
+    // ⚠️ STEP 1: REPLACE THESE WITH YOUR REAL SUPABASE CREDENTIALS
     const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
     const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // 2. State & Elements
+    let supabase = null;
+    try {
+      if (!SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.error("Supabase Initialization Error:", e);
+    }
+
+    // State & UI Elements
     let isLoginMode = true;
     
+    const loginTab = document.getElementById('loginTab');
+    const signupTab = document.getElementById('signupTab');
     const authForm = document.getElementById('authForm');
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const submitBtn = document.getElementById('submitBtn');
     const formTitle = document.getElementById('formTitle');
     const formSubtitle = document.getElementById('formSubtitle');
-    const modeText = document.getElementById('modeText');
     const messageBox = document.getElementById('messageBox');
 
-    // Toggle between Sign In and Sign Up
-    modeText.addEventListener('click', () => {
-      isLoginMode = !isLoginMode;
+    // Tab Switchers
+    loginTab.addEventListener('click', () => setMode(true));
+    signupTab.addEventListener('click', () => setMode(false));
+
+    function setMode(login) {
+      isLoginMode = login;
+      showMessage('', '');
+
       if (isLoginMode) {
+        loginTab.classList.add('active');
+        signupTab.classList.remove('active');
         formTitle.innerText = "Welcome Back";
         formSubtitle.innerText = "Sign in to manage your stage captions";
         submitBtn.innerText = "Sign In";
-        modeText.innerHTML = `Don't have an account? <span>Sign Up</span>`;
       } else {
+        signupTab.classList.add('active');
+        loginTab.classList.remove('active');
         formTitle.innerText = "Create Account";
         formSubtitle.innerText = "Start generating live captions today";
         submitBtn.innerText = "Create Account";
-        modeText.innerHTML = `Already have an account? <span>Sign In</span>`;
       }
-      showMessage('', '');
-    });
+    }
 
     function showMessage(text, type) {
       if (!text) {
@@ -216,11 +245,17 @@
       messageBox.className = type === 'error' ? 'msg-error' : 'msg-success';
     }
 
-    // 3. Auth Handler
+    // Form Submission
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const email = emailInput.value;
+      // Check credentials configuration
+      if (!supabase) {
+        showMessage('Error: Please replace SUPABASE_URL and SUPABASE_ANON_KEY in auth.html with your actual Supabase keys.', 'error');
+        return;
+      }
+
+      const email = emailInput.value.trim();
       const password = passwordInput.value;
       
       submitBtn.disabled = true;
@@ -228,38 +263,44 @@
       showMessage('', '');
 
       try {
-        let error = null;
-
         if (isLoginMode) {
-          const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-          error = signInError;
-        } else {
-          const { error: signUpError } = await supabase.auth.signUp({ email, password });
-          error = signUpError;
-        }
+          // Process Sign In
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
 
-        if (error) throw error;
-
-        if (isLoginMode) {
           showMessage('Login successful! Redirecting...', 'success');
           setTimeout(() => window.location.href = '/dashboard.html', 1000);
+
         } else {
-          showMessage('Account created! Check your email to confirm, or log in.', 'success');
+          // Process Sign Up
+          const { data, error } = await supabase.auth.signUp({ email, password });
+          if (error) throw error;
+
+          if (data.session) {
+            // Immediate sign up without email verification
+            showMessage('Account created successfully! Redirecting...', 'success');
+            setTimeout(() => window.location.href = '/dashboard.html', 1000);
+          } else {
+            // Email confirmation enabled in Supabase
+            showMessage('Account created! Please check your email inbox to confirm your account.', 'success');
+          }
         }
 
       } catch (err) {
-        showMessage(err.message, 'error');
+        showMessage(err.message || 'Authentication failed', 'error');
       } finally {
         submitBtn.disabled = false;
         submitBtn.innerText = isLoginMode ? "Sign In" : "Create Account";
       }
     });
 
-    // 4. Session Auto-Redirect
+    // Auto-redirect if session exists
     async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        window.location.href = '/dashboard.html';
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          window.location.href = '/dashboard.html';
+        }
       }
     }
     checkSession();
