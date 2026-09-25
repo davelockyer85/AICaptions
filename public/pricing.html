@@ -169,6 +169,7 @@
       color: #ef4444;
       margin-top: 20px;
       font-size: 0.9rem;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -195,17 +196,17 @@
       <div class="price">$159 <span>/ month</span></div>
 
       <ul class="feature-list">
-        <li>2 Concurrent Event Room</li>
+        <li>2 Concurrent Event Rooms</li>
         <li>Low Latency Real-Time STT</li>
         <li>OBS Transparent Lower-Third Overlay</li>
         <li>Mobile Audience Web View</li>
         <li>Standard Deepgram AI Speech Model</li>
       </ul>
 
-      <button class="btn-checkout" onclick="handleCheckout('prod_VKD1IuRsgL5bon')">Subscribe to Starter</button>
+      <button class="btn-checkout" onclick="handleCheckout('price_STARTER_PRICE_ID')">Subscribe</button>
     </div>
 
-    <!-- Pro Event Plan (Featured) -->
+    <!-- Pro Event SaaS Plan (Featured) -->
     <div class="price-card featured">
       <div class="popular-badge">Most Popular</div>
       <div class="plan-name">Pro Event SaaS</div>
@@ -220,20 +221,20 @@
         <li>Priority WebSocket Audio Ingestion</li>
       </ul>
 
-      <button class="btn-checkout" onclick="handleCheckout('prod_VKD2icE0d5fJu4')">Subscribe to Pro</button>
+      <button class="btn-checkout" onclick="handleCheckout('price_PRO_PRICE_ID')">Subscribe</button>
     </div>
 
   </div>
 
   <script>
-    // 1. Initialize Supabase
+    // Supabase Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let currentUser = null;
 
-    // 2. Load User Session
+    // Retrieve active session
     async function initSession() {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
@@ -241,7 +242,7 @@
       }
     }
 
-    // 3. Trigger Stripe Checkout
+    // Checkout Handler with enhanced content-type detection
     async function handleCheckout(priceId) {
       const errorMsg = document.getElementById('errorMsg');
       errorMsg.innerText = '';
@@ -266,13 +267,18 @@
           })
         });
 
+        // Safely check if response is JSON to avoid "Unexpected token <" HTML parse errors
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error(`Server returned status ${response.status}. Ensure server.js changes are pushed to Render.`);
+        }
+
         const data = await response.json();
 
         if (data.url) {
-          // Redirect user to Stripe hosted checkout page
           window.location.href = data.url;
         } else {
-          throw new Error(data.error || "Failed to initiate Stripe Checkout.");
+          throw new Error(data.error || "Failed to initiate Stripe Checkout session.");
         }
       } catch (err) {
         console.error("Checkout error:", err);
