@@ -3,222 +3,317 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authentication - Stage Captions</title>
+  <title>Authentication - AICaptions</title>
   
-  <!-- Supabase JS SDK CDN -->
+  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --error-red: #ef4444;
+      --success-green: #22c55e;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Header Navigation */
+    header {
+      background-color: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Clickable Logo linking back to landing page */
+    .brand {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #ffffff;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: -0.5px;
+      transition: opacity 0.2s;
+    }
+
+    .brand:hover {
+      opacity: 0.9;
+    }
+
+    .brand span { color: var(--primary); }
+
+    /* Main Auth Container */
+    .auth-wrapper {
+      flex: 1;
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      padding: 40px 20px;
     }
+
     .auth-card {
-      background: #1e293b;
-      border: 1px solid #334155;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
       border-radius: 16px;
-      padding: 32px;
       width: 100%;
       max-width: 420px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      padding: 40px 32px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
     }
-    .auth-tabs {
-      display: flex;
-      background-color: #0f172a;
-      border-radius: 8px;
-      padding: 4px;
-      margin-bottom: 24px;
-      border: 1px solid #334155;
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
     }
-    .tab-btn {
-      flex: 1;
-      padding: 10px;
-      background: none;
-      border: none;
-      color: #94a3b8;
-      font-size: 0.95rem;
+
+    .auth-header h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .auth-header p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Form Styles */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.875rem;
       font-weight: 600;
-      cursor: pointer;
-      border-radius: 6px;
-      transition: all 0.2s;
+      color: var(--text-main);
+      margin-bottom: 8px;
     }
-    .tab-btn.active {
-      background-color: #3b82f6;
-      color: #ffffff;
-    }
-    .auth-header { text-align: center; margin-bottom: 24px; }
-    .auth-header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
-    .auth-header p { color: #94a3b8; font-size: 0.9rem; }
-    .form-group { margin-bottom: 18px; }
-    label { display: block; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; margin-bottom: 6px; }
-    input {
+
+    .form-group input {
       width: 100%;
       padding: 12px 16px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
       border-radius: 8px;
-      color: #f8fafc;
-      font-size: 1rem;
+      color: var(--text-main);
+      font-size: 0.95rem;
       outline: none;
+      transition: border-color 0.2s;
     }
-    input:focus { border-color: #3b82f6; }
-    button[type="submit"] {
+
+    .form-group input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn-submit {
       width: 100%;
       padding: 14px;
-      background-color: #3b82f6;
+      background-color: var(--primary);
       color: #ffffff;
-      font-size: 1rem;
-      font-weight: 600;
       border: none;
       border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
       cursor: pointer;
+      transition: background-color 0.2s;
       margin-top: 10px;
     }
-    button[type="submit"]:hover { background-color: #2563eb; }
-    button[type="submit"]:disabled { background-color: #475569; cursor: not-allowed; }
-    #messageBox {
-      display: none;
-      margin-bottom: 20px;
-      padding: 12px;
+
+    .btn-submit:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-submit:disabled {
+      background-color: var(--border-color);
+      cursor: not-allowed;
+    }
+
+    /* Toggle Links */
+    .auth-toggle {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .auth-toggle a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .auth-toggle a:hover {
+      text-decoration: underline;
+    }
+
+    /* Feedback Alerts */
+    .alert {
+      padding: 12px 16px;
       border-radius: 8px;
       font-size: 0.875rem;
-      text-align: center;
+      margin-bottom: 20px;
+      display: none;
     }
-    .msg-error { background-color: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
-    .msg-success { background-color: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+
+    .alert.error {
+      background-color: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error-red);
+      color: var(--error-red);
+    }
+
+    .alert.success {
+      background-color: rgba(34, 197, 94, 0.1);
+      border: 1px solid var(--success-green);
+      color: var(--success-green);
+    }
+
+    @media (max-width: 600px) {
+      header { padding: 16px 20px; }
+    }
   </style>
 </head>
 <body>
 
-  <div class="auth-card">
-    <div class="auth-tabs">
-      <button type="button" class="tab-btn active" id="loginTab">Sign In</button>
-      <button type="button" class="tab-btn" id="signupTab">Sign Up</button>
-    </div>
+  <!-- Header with Brand Logo linking back to landing page -->
+  <header>
+    <a href="/" class="brand">
+      🎙️ AICaptions<span>.SaaS</span>
+    </a>
+  </header>
 
-    <div class="auth-header">
-      <h1 id="formTitle">Welcome Back</h1>
-      <p id="formSubtitle">Sign in to manage your stage captions</p>
-    </div>
-
-    <div id="messageBox"></div>
-
-    <form id="authForm">
-      <div class="form-group">
-        <label for="email">Email Address</label>
-        <input type="email" id="email" required placeholder="you@company.com" autocomplete="email">
+  <!-- Main Auth Form Container -->
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <h1 id="authTitle">Welcome Back</h1>
+        <p id="authSubtitle">Enter your details to sign in to your account</p>
       </div>
 
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password" minlength="6">
-      </div>
+      <div id="alertBox" class="alert"></div>
 
-      <button type="submit" id="submitBtn">Sign In</button>
-    </form>
+      <form id="authForm">
+        <div class="form-group">
+          <label for="email">Email address</label>
+          <input type="email" id="email" placeholder="name@company.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="••••••••" required minlength="6">
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn-submit">Sign In</button>
+      </form>
+
+      <div class="auth-toggle">
+        <span id="toggleText">Don't have an account?</span>
+        <a id="toggleBtn" onclick="toggleAuthMode()">Sign up</a>
+      </div>
+    </div>
   </div>
 
   <script>
+    // Supabase Client Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-
-    // Renamed variable to avoid collisions
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let isLoginMode = true;
-    
-    const loginTab = document.getElementById('loginTab');
-    const signupTab = document.getElementById('signupTab');
-    const authForm = document.getElementById('authForm');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const submitBtn = document.getElementById('submitBtn');
-    const formTitle = document.getElementById('formTitle');
-    const formSubtitle = document.getElementById('formSubtitle');
-    const messageBox = document.getElementById('messageBox');
+    let isSignUp = false;
 
-    loginTab.addEventListener('click', () => setMode(true));
-    signupTab.addEventListener('click', () => setMode(false));
+    // Toggle between Login and Sign Up modes
+    function toggleAuthMode() {
+      isSignUp = !isSignUp;
+      const title = document.getElementById('authTitle');
+      const subtitle = document.getElementById('authSubtitle');
+      const submitBtn = document.getElementById('submitBtn');
+      const toggleText = document.getElementById('toggleText');
+      const toggleBtn = document.getElementById('toggleBtn');
+      const alertBox = document.getElementById('alertBox');
 
-    function setMode(login) {
-      isLoginMode = login;
-      showMessage('', '');
+      alertBox.style.display = 'none';
 
-      if (isLoginMode) {
-        loginTab.classList.add('active');
-        signupTab.classList.remove('active');
-        formTitle.innerText = "Welcome Back";
-        formSubtitle.innerText = "Sign in to manage your stage captions";
-        submitBtn.innerText = "Sign In";
+      if (isSignUp) {
+        title.innerText = 'Create an Account';
+        subtitle.innerText = 'Start transcribing stage live streams in seconds';
+        submitBtn.innerText = 'Sign Up';
+        toggleText.innerText = 'Already have an account?';
+        toggleBtn.innerText = 'Sign in';
       } else {
-        signupTab.classList.add('active');
-        loginTab.classList.remove('active');
-        formTitle.innerText = "Create Account";
-        formSubtitle.innerText = "Start generating live captions today";
-        submitBtn.innerText = "Create Account";
+        title.innerText = 'Welcome Back';
+        subtitle.innerText = 'Enter your details to sign in to your account';
+        submitBtn.innerText = 'Sign In';
+        toggleText.innerText = "Don't have an account?";
+        toggleBtn.innerText = 'Sign up';
       }
     }
 
-    function showMessage(text, type) {
-      if (!text) {
-        messageBox.style.display = 'none';
-        return;
-      }
-      messageBox.style.display = 'block';
-      messageBox.innerText = text;
-      messageBox.className = type === 'error' ? 'msg-error' : 'msg-success';
-    }
-
-    authForm.addEventListener('submit', async (e) => {
+    // Handle Form Submission
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-      
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const submitBtn = document.getElementById('submitBtn');
+      const alertBox = document.getElementById('alertBox');
+
       submitBtn.disabled = true;
-      submitBtn.innerText = "Processing...";
-      showMessage('', '');
+      alertBox.style.display = 'none';
 
       try {
-        if (isLoginMode) {
-          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-
-          showMessage('Login successful! Redirecting...', 'success');
-          setTimeout(() => window.location.href = '/dashboard.html', 1000);
-        } else {
+        if (isSignUp) {
           const { data, error } = await supabaseClient.auth.signUp({ email, password });
           if (error) throw error;
 
-          if (data.session) {
-            showMessage('Account created successfully! Redirecting...', 'success');
-            setTimeout(() => window.location.href = '/dashboard.html', 1000);
-          } else {
-            showMessage('Account created! Please check your email inbox to confirm your registration.', 'success');
-          }
+          alertBox.className = 'alert success';
+          alertBox.innerText = 'Account created! Please check your email for confirmation or log in.';
+          alertBox.style.display = 'block';
+        } else {
+          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+
+          // Redirect on successful sign in
+          window.location.href = '/dashboard.html';
         }
       } catch (err) {
-        showMessage(err.message || 'Authentication failed', 'error');
+        alertBox.className = 'alert error';
+        alertBox.innerText = err.message;
+        alertBox.style.display = 'block';
       } finally {
         submitBtn.disabled = false;
-        submitBtn.innerText = isLoginMode ? "Sign In" : "Create Account";
       }
     });
 
-    async function checkSession() {
+    // Auto-redirect if user is already logged in
+    async function checkExistingSession() {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
         window.location.href = '/dashboard.html';
       }
     }
-    checkSession();
+
+    checkExistingSession();
   </script>
 </body>
 </html>
