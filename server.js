@@ -1,178 +1,229 @@
+import "dotenv/config";
 import express from "express";
-import { createServer } from "http";
+import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
+import Stripe from "stripe";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createDeepgramClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 
-dotenv.config();
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const server = createServer(app);
+const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.static(path.join(__dirname, "public")));
+// Initialize Stripe, Supabase, and Deepgram Clients
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+const supabase = createSupabaseClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
-if (!DEEPGRAM_KEY) {
-  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
-}
-const deepgram = createClient(DEEPGRAM_KEY);
+const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY);
 
-const clients = {
-  overlays: new Set(),
-  attendees: new Set()
-};
+// State Management: Rooms & Deepgram Connections
+const rooms = new Map(); // roomId -> Set<WebSocket>
+const deepgramConnections = new Map(); // roomId -> Deepgram Live Connection
 
-// Global active target language for stage overlay (default: English)
-let targetOverlayLang = "en";
+// ============================================================================
+// 1. STRIPE WEBHOOK ENDPOINT (Must come BEFORE express.json() middleware)
+// ============================================================================
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
 
-// Free Real-time Translation Helper (MyMemory API)
-async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
-  try {
-    const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
-    );
-    const data = await res.json();
-    return data.responseData?.translatedText || text;
-  } catch (err) {
-    console.error("[Translation Error]", err.message);
-    return text;
-  }
-}
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error(`❌ Webhook Signature Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
 
-wss.on("connection", (ws, req) => {
-  const url = req.url;
+    try {
+      // Event: Successful Checkout Session
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const userId = session.client_reference_id;
+        const stripeCustomerId = session.customer;
 
-  // ROUTE A: Stage Microphones / Audio Ingest
-  if (url === "/ws/ingest") {
-    console.log("[Ingest] Presenter audio connected.");
+        console.log(`✅ Payment completed for Supabase User ID: ${userId}`);
 
-    const audioQueue = [];
-    let isDgReady = false;
-
-    const dgLive = deepgram.listen.live({
-      model: "nova-3",
-      language: "en-US",
-      smart_format: true,
-      interim_results: true,
-      endpointing: 300
-    });
-
-    dgLive.on(LiveTranscriptionEvents.Open, () => {
-      console.log("[Deepgram] Connected. Flushing buffered audio...");
-      isDgReady = true;
-
-      while (audioQueue.length > 0) {
-        dgLive.send(audioQueue.shift());
-      }
-    });
-
-    dgLive.on(LiveTranscriptionEvents.Error, (err) => {
-      console.error("[Deepgram Error]", err);
-    });
-
-    dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
-      const transcript = data.channel.alternatives[0]?.transcript;
-      const isFinal = data.is_final;
-
-      if (transcript && transcript.trim().length > 0) {
-        let overlayText = transcript;
-
-        // Translate finalized phrases if target language is not English
-        if (targetOverlayLang !== "en" && isFinal) {
-          overlayText = await translateText(transcript, targetOverlayLang);
-        }
-
-        const overlayPayload = JSON.stringify({
-          text: overlayText,
-          original: transcript,
-          isFinal,
-          lang: targetOverlayLang
-        });
-
-        clients.overlays.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(overlayPayload);
-          }
-        });
-
-        // Broadcast to mobile attendees with their selected language
-        if (isFinal) {
-          clients.attendees.forEach(async (attendee) => {
-            if (attendee.readyState === WebSocket.OPEN) {
-              const translated = await translateText(transcript, attendee.language || "en");
-              attendee.send(
-                JSON.stringify({ text: translated, original: transcript })
-              );
-            }
+        if (userId) {
+          await supabase.from("users").upsert({
+            id: userId,
+            subscription_status: "active",
+            stripe_customer_id: stripeCustomerId,
+            updated_at: new Date().toISOString(),
           });
         }
       }
-    });
 
-    // Handle incoming audio chunks OR JSON control messages (e.g. language change)
-    ws.on("message", (message, isBinary) => {
-      if (!isBinary) {
-        try {
-          const controlData = JSON.parse(message.toString());
-          if (controlData.type === "set_language") {
-            targetOverlayLang = controlData.lang;
-            console.log(`[Presenter] Target overlay language switched to: ${targetOverlayLang}`);
-          }
-        } catch (e) {}
-        return;
+      // Event: Subscription Canceled or Deleted
+      if (event.type === "customer.subscription.deleted") {
+        const subscription = event.data.object;
+        const stripeCustomerId = subscription.customer;
+
+        console.log(`⚠️ Subscription canceled for customer: ${stripeCustomerId}`);
+
+        await supabase
+          .from("users")
+          .update({
+            subscription_status: "inactive",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_customer_id", stripeCustomerId);
       }
 
-      if (isDgReady && dgLive.getReadyState() === 1) {
-        dgLive.send(message);
-      } else {
-        audioQueue.push(message);
-      }
-    });
-
-    ws.on("close", () => {
-      console.log("[Ingest] Presenter disconnected.");
-      dgLive.finish();
-    });
+      res.json({ received: true });
+    } catch (dbErr) {
+      console.error("❌ Database sync error in webhook:", dbErr);
+      res.status(500).json({ error: "Webhook DB sync failed" });
+    }
   }
+);
 
-  // ROUTE B: Stage Video Overlay (OBS / vMix)
-  else if (url === "/ws/overlay") {
-    console.log("[Overlay] OBS / Stage display connected.");
-    clients.overlays.add(ws);
-    ws.on("close", () => clients.overlays.delete(ws));
-  }
+// ============================================================================
+// 2. MIDDLEWARE & STATIC FILES
+// ============================================================================
+app.use(express.json());
+app.use(express.static("public"));
 
-  // ROUTE C: Mobile Audience (QR Code Viewers)
-  else if (url.startsWith("/ws/attendee")) {
-    console.log("[Attendee] Mobile viewer connected.");
-    const params = new URLSearchParams(url.split("?")[1]);
-    ws.language = params.get("lang") || "en";
+// ============================================================================
+// 3. STRIPE CHECKOUT ENDPOINT
+// ============================================================================
+app.post("/api/create-checkout-session", async (req, res) => {
+  try {
+    const { priceId, userId, userEmail } = req.body;
 
-    clients.attendees.add(ws);
+    if (!priceId || !userId) {
+      return res.status(400).json({ error: "Missing required parameters: priceId or userId" });
+    }
 
-    ws.on("message", (msg) => {
-      try {
-        const data = JSON.parse(msg);
-        if (data.type === "set_language") {
-          ws.language = data.lang;
-        }
-      } catch (e) {}
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      customer_email: userEmail,
+      client_reference_id: userId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${req.headers.origin}/dashboard.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.origin}/pricing.html`,
     });
 
-    ws.on("close", () => clients.attendees.delete(ws));
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error("❌ Stripe Checkout Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
+// ============================================================================
+// 4. DEEPGRAM LIVE CAPTIONING & WEBSOCKET ENGINE
+// ============================================================================
+function getOrCreateDeepgramConnection(roomId) {
+  if (deepgramConnections.has(roomId)) {
+    return deepgramConnections.get(roomId);
+  }
+
+  console.log(`🎙️ Initializing Deepgram Nova-3 for room: ${roomId}`);
+
+  const dgSocket = deepgram.listen.live({
+    model: "nova-3",
+    language: "en",
+    smart_format: true,
+    interim_results: true,
+  });
+
+  dgSocket.on(LiveTranscriptionEvents.Open, () => {
+    console.log(`⚡ Deepgram connected for room: ${roomId}`);
+  });
+
+  dgSocket.on(LiveTranscriptionEvents.Transcript, (data) => {
+    const transcript = data.channel?.alternatives?.[0]?.transcript;
+    if (transcript) {
+      const isFinal = data.is_final;
+      const payload = JSON.stringify({
+        type: "caption",
+        text: transcript,
+        isFinal: isFinal,
+      });
+
+      // Broadcast transcript to all connected overlays and audience members in the room
+      const roomClients = rooms.get(roomId);
+      if (roomClients) {
+        roomClients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+          }
+        });
+      }
+    }
+  });
+
+  dgSocket.on(LiveTranscriptionEvents.Error, (err) => {
+    console.error(`❌ Deepgram Error [Room ${roomId}]:`, err);
+  });
+
+  dgSocket.on(LiveTranscriptionEvents.Close, () => {
+    console.log(`🔌 Deepgram connection closed for room: ${roomId}`);
+    deepgramConnections.delete(roomId);
+  });
+
+  deepgramConnections.set(roomId, dgSocket);
+  return dgSocket;
+}
+
+wss.on("connection", (ws, req) => {
+  const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ""));
+  const roomId = urlParams.get("room") || "default-stage";
+  const role = urlParams.get("role") || "audience";
+
+  console.log(`🔌 Client connected to room: [${roomId}] as (${role})`);
+
+  // Register client in room
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, new Set());
+  }
+  rooms.get(roomId).add(ws);
+
+  let dgSocket = null;
+  if (role === "presenter") {
+    dgSocket = getOrCreateDeepgramConnection(roomId);
+  }
+
+  // Handle incoming audio data from Presenter
+  ws.on("message", (data) => {
+    if (role === "presenter" && dgSocket && dgSocket.getReadyState() === 1) {
+      dgSocket.send(data);
+    }
+  });
+
+  // Cleanup on disconnect
+  ws.on("close", () => {
+    console.log(`❌ Client disconnected from room: [${roomId}]`);
+    const roomClients = rooms.get(roomId);
+    if (roomClients) {
+      roomClients.delete(ws);
+      if (roomClients.size === 0) {
+        rooms.delete(roomId);
+        if (dgSocket) {
+          dgSocket.finish();
+          deepgramConnections.delete(roomId);
+        }
+      }
+    }
+  });
+});
+
+// ============================================================================
+// 5. START SERVER
+// ============================================================================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🚀 AICaptions Server running on port ${PORT}`);
 });
