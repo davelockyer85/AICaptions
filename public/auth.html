@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Authentication - Stage Captions</title>
   
-  <!-- Supabase JS SDK -->
+  <!-- Supabase JS SDK CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
@@ -126,11 +126,11 @@
   </div>
 
   <script>
-    // Configured Supabase Credentials
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Renamed variable to avoid collisions
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let isLoginMode = true;
     
@@ -188,13 +188,13 @@
 
       try {
         if (isLoginMode) {
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
           if (error) throw error;
 
           showMessage('Login successful! Redirecting...', 'success');
           setTimeout(() => window.location.href = '/dashboard.html', 1000);
         } else {
-          const { data, error } = await supabase.auth.signUp({ email, password });
+          const { data, error } = await supabaseClient.auth.signUp({ email, password });
           if (error) throw error;
 
           if (data.session) {
@@ -213,7 +213,7 @@
     });
 
     async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) {
         window.location.href = '/dashboard.html';
       }
