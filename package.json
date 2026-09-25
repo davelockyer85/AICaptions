@@ -1,15 +1,24 @@
-{
-  "name": "ai-live-captions-platform",
+"name": "stage-captions-saas",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Real-time stage captions SaaS backend",
   "main": "server.js",
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@deepgram/sdk": "^3.9.0",
+    "@deepgram/sdk": "^3.10.0",
+    "@supabase/supabase-js": "^2.45.0",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "ws": "^8.17.0"
+    "express": "^4.21.0",
+    "stripe": "^16.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
