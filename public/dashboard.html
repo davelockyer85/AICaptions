@@ -423,7 +423,11 @@
           previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
 
           // 4. Record & Send Audio Chunks to Deepgram via Server
-          activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ? 'audio/webm;codecs=opus'
+  : 'audio/webm';
+
+activeMediaRecorder = new MediaRecorder(stream, { mimeType });
           activeMediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0 && activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
         activeWebSocket.send(e.data);
