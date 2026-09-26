@@ -1,4 +1,4 @@
-import express from "express";
+Since you have AICaptions/server.js open in the GitHub editor, the fastest way to apply the fix is to select all text (Cmd + A or Ctrl + A), delete it, and paste the updated code below.   What Changes in server.jsQuota Safeguard (Lines 75–95): Safely handles null or missing values for max_streaming_seconds by defaulting to 7200 seconds so NaN evaluation never causes an instant disconnect.Audio Buffer Queue (Lines 110–135): Prevents the stream from dropping after ~0.5 seconds by queuing incoming microphone chunks until Deepgram's connection fully opens.Deepgram Error Catching (Lines 140–155): Listens for LiveTranscriptionEvents.Error so any Deepgram key or configuration issue logs cleanly instead of crashing the WebSocket with code 1005.   Complete Code for server.jsJavaScriptimport express from "express";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
@@ -24,26 +24,6 @@ const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY || "");
 const rooms = new Map(); // roomId -> Set<WebSocket>
 const deepgramConnections = new Map(); // roomId -> Deepgram Live Connection
 const userActivePresenterRooms = new Map(); // userId -> Set<roomId>
-
-// Stripe Price ID to Tier Map
-const PRICE_TIER_MAP = {
-  "price_1UJtjIjV4dyhvuKyHFiWUnuI": "one_time", // $49 Event Pass
-  "price_1UJYbIJV4dyhvuKy8pXdPHbU": "starter",  // $129 Starter Plan
-  "price_1UJtlKJV4dyhvuKy67mqD8tW": "pro"       // $259 Pro Plan
-};
-
-// Quotas & Limits
-const SECONDS_LIMITS = {
-  one_time: 2 * 3600,  // 2 Hours
-  starter: 30 * 3600,  // 30 Hours
-  pro: 150 * 3600      // 150 Hours
-};
-
-const ROOM_LIMITS = {
-  one_time: 1,
-  starter: 2,
-  pro: 10
-};
 
 // WebSocket Handler
 wss.on("connection", async (ws, req) => {
@@ -112,7 +92,11 @@ wss.on("connection", async (ws, req) => {
         return ws.close(4002, "Subscription inactive");
       }
 
-      if ((dbUser.streaming_seconds_used || 0) >= (dbUser.max_streaming_seconds || 7200)) {
+      // Safe Quota Check (Defaults to 7200 seconds / 2 hrs if null)
+      const maxAllowedSeconds = Number(dbUser.max_streaming_seconds || dbUser.max_streaming_settings) || 7200;
+      const usedSeconds = Number(dbUser.streaming_seconds_used) || 0;
+
+      if (usedSeconds >= maxAllowedSeconds) {
         ws.send(JSON.stringify({ type: "error", message: "Streaming quota exceeded" }));
         return ws.close(4003, "Quota exceeded");
       }
@@ -133,7 +117,7 @@ wss.on("connection", async (ws, req) => {
         console.log(`Deepgram connected for room: ${roomId}`);
         isDeepgramReady = true;
 
-        // Flush any audio chunks received while waiting for Deepgram open
+        // Flush any audio chunks received while waiting for Deepgram to open
         while (audioBufferQueue.length > 0) {
           const chunk = audioBufferQueue.shift();
           dgConnection.send(chunk);
@@ -202,23 +186,3 @@ wss.on("connection", async (ws, req) => {
           activeDg.finish();
           deepgramConnections.delete(roomId);
         }
-
-        const userRooms = userActivePresenterRooms.get(userId);
-        if (userRooms) {
-          userRooms.delete(roomId);
-          if (userRooms.size === 0) userActivePresenterRooms.delete(userId);
-        }
-      });
-
-    } catch (err) {
-      console.error("Server WebSocket presenter error:", err);
-      ws.send(JSON.stringify({ type: "error", message: "Internal server error starting stream" }));
-      ws.close(1011, "Server error");
-    }
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
