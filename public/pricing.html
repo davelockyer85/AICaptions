@@ -4,10 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing - AICaptions</title>
-
-  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -22,7 +19,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg-dark);
       color: var(--text-main);
       min-height: 100vh;
@@ -30,15 +27,11 @@
       flex-direction: column;
     }
 
-    /* Header Navigation */
     header {
       background-color: rgba(30, 41, 59, 0.85);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border-color);
       padding: 16px 48px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
     }
 
     .brand {
@@ -46,15 +39,11 @@
       font-weight: 800;
       color: #ffffff;
       text-decoration: none;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      letter-spacing: -0.5px;
     }
 
     .pricing-container {
-      max-width: 1000px;
-      margin: 60px auto;
+      max-width: 1100px;
+      margin: 50px auto;
       padding: 0 20px;
       text-align: center;
       flex: 1;
@@ -69,21 +58,20 @@
     .pricing-header p {
       color: var(--text-muted);
       font-size: 1.1rem;
-      margin-bottom: 48px;
+      margin-bottom: 40px;
     }
 
     .pricing-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 24px;
-      align-items: stretch;
     }
 
     .price-card {
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
       border-radius: 16px;
-      padding: 36px 28px;
+      padding: 32px 24px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -92,13 +80,13 @@
 
     .price-card.featured {
       border-color: var(--primary);
-      box-shadow: 0 0 25px rgba(59, 130, 246, 0.2);
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.25);
     }
 
     .badge {
       position: absolute;
       top: -12px;
-      right: 24px;
+      right: 20px;
       background-color: var(--primary);
       color: #fff;
       font-size: 0.75rem;
@@ -108,48 +96,17 @@
       text-transform: uppercase;
     }
 
-    .plan-name {
-      font-size: 1.25rem;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
+    .plan-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+    .price { font-size: 2.5rem; font-weight: 800; margin-bottom: 16px; }
+    .price span { font-size: 0.95rem; color: var(--text-muted); font-weight: 400; }
 
-    .price {
-      font-size: 2.5rem;
-      font-weight: 800;
-      margin-bottom: 20px;
-    }
-
-    .price span {
-      font-size: 1rem;
-      color: var(--text-muted);
-      font-weight: 400;
-    }
-
-    .features-list {
-      list-style: none;
-      text-align: left;
-      margin-bottom: 32px;
-    }
-
-    .features-list li {
-      margin-bottom: 12px;
-      color: var(--text-muted);
-      font-size: 0.95rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .features-list li::before {
-      content: "✓";
-      color: var(--primary);
-      font-weight: bold;
-    }
+    .features-list { list-style: none; text-align: left; margin-bottom: 28px; }
+    .features-list li { margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem; }
+    .features-list li::before { content: "✓ "; color: var(--primary); font-weight: bold; }
 
     .btn-subscribe {
       width: 100%;
-      padding: 14px;
+      padding: 12px;
       background-color: var(--primary);
       color: #ffffff;
       border: none;
@@ -157,100 +114,122 @@
       font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
-      transition: background-color 0.2s;
     }
 
-    .btn-subscribe:hover {
-      background-color: var(--primary-hover);
-    }
-
-    .btn-subscribe:disabled {
-      background-color: var(--border-color);
-      cursor: not-allowed;
-    }
+    .btn-subscribe:hover { background-color: var(--primary-hover); }
   </style>
 </head>
 <body>
 
   <header>
-    <a href="/" class="brand">
-      🎙️ AICaptions
-    </a>
+    <a href="/" class="brand">🎙️ AICaptions</a>
   </header>
 
   <div class="pricing-container">
     <div class="pricing-header">
-      <h1>Simple, Transparent Pricing</h1>
-      <p>Stream real-time AI captions directly to your stage screens and live streams.</p>
+      <h1>Flexible Live Caption Plans</h1>
+      <p>High-accuracy real-time captions for events, live streams, and multi-stage venues.</p>
     </div>
 
     <div class="pricing-grid">
-      <!-- Pro Monthly Plan -->
+      <!-- 1. Event Pass -->
+      <div class="price-card">
+        <div>
+          <div class="plan-name">Event Pass</div>
+          <div class="price">$29 <span>/ 2-hr session</span></div>
+          <ul class="features-list">
+            <li>Single 2-Hour Event Session</li>
+            <li>1 Stage / Room Stream</li>
+            <li>Deepgram Nova-3 Engine</li>
+            <li>Unlimited Audience Viewers</li>
+            <li>No Recurring Subscription</li>
+          </ul>
+        </div>
+        <button class="btn-subscribe" onclick="handleCheckout('price_EVENT_PASS_ID', 'one_time')">
+          Buy Event Pass
+        </button>
+      </div>
+
+      <!-- 2. Starter Plan -->
       <div class="price-card featured">
         <div class="badge">Most Popular</div>
         <div>
-          <div class="plan-name">Pro Presenter</div>
-          <div class="price">$29 <span>/ month</span></div>
+          <div class="plan-name">Starter</div>
+          <div class="price">$49 <span>/ month</span></div>
           <ul class="features-list">
-            <li>Unlimited Stage Streaming</li>
-            <li>Deepgram Nova-3 Low-Latency Engine</li>
-            <li>Custom OBS & Web Overlay Links</li>
+            <li><strong>30 Hours</strong> Live Streaming / mo</li>
+            <li><strong>2 Stage Rooms</strong> Simultaneously</li>
+            <li>Deepgram Nova-3 Engine</li>
             <li>Unlimited Audience Viewers</li>
+            <li>Custom OBS & Web Overlays</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout('price_1Qxxxxxxxxxxxx')">
-          Subscribe Now
+        <button class="btn-subscribe" onclick="handleCheckout('price_STARTER_ID', 'subscription')">
+          Subscribe to Starter
+        </button>
+      </div>
+
+      <!-- 3. Pro Plan -->
+      <div class="price-card">
+        <div>
+          <div class="plan-name">Pro Multi-Stage</div>
+          <div class="price">$149 <span>/ month</span></div>
+          <ul class="features-list">
+            <li><strong>150 Hours</strong> Live Streaming / mo</li>
+            <li><strong>10 Stage Rooms</strong> Simultaneously</li>
+            <li>Deepgram Nova-3 Engine</li>
+            <li>Unlimited Audience Viewers</li>
+            <li>Priority Connections & Support</li>
+          </ul>
+        </div>
+        <button class="btn-subscribe" onclick="handleCheckout('price_PRO_ID', 'subscription')">
+          Subscribe to Pro
         </button>
       </div>
     </div>
   </div>
 
   <script>
-    // Supabase Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function handleCheckout(priceId) {
-      // 1. Get current authenticated user
-      const { data: { user }, error } = await supabaseClient.auth.getUser();
+    async function handleCheckout(priceId, checkoutType) {
+      const { data: { user } } = await supabaseClient.auth.getUser();
 
-      if (error || !user) {
-        alert("Please sign in or create an account before subscribing.");
+      if (!user) {
+        alert("Please sign in or create an account before continuing.");
         window.location.href = "/auth.html";
         return;
       }
 
       const button = event.target;
       button.disabled = true;
-      button.innerText = "Redirecting to Stripe...";
+      button.innerText = "Redirecting...";
 
       try {
-        // 2. Call server backend with Price ID + Supabase User details
         const response = await fetch("/api/create-checkout-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             priceId: priceId,
             userId: user.id,
-            userEmail: user.email
+            userEmail: user.email,
+            checkoutType: checkoutType
           })
         });
 
         const session = await response.json();
-
         if (session.url) {
           window.location.href = session.url;
         } else {
           alert("Checkout Error: " + (session.error || "Failed to start checkout."));
           button.disabled = false;
-          button.innerText = "Subscribe Now";
         }
       } catch (err) {
-        console.error("Checkout request failed:", err);
-        alert("Server error. Please try again.");
+        console.error(err);
+        alert("Server communication error.");
         button.disabled = false;
-        button.innerText = "Subscribe Now";
       }
     }
   </script>
