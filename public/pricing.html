@@ -145,7 +145,7 @@
             <li>No Recurring Subscription</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout('price_1UJtjiJv4dyhvuKyHFiWUnuI', 'one_time')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'one_time')">
           Buy Event Pass
         </button>
       </div>
@@ -164,7 +164,7 @@
             <li>Custom OBS & Web Overlays</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout('price_1UJtzaJv4dyhvuKyEXzNpH8x', 'subscription')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJYbIJv4dyhvuKy8pXdPHbU', 'subscription')">
           Subscribe to Starter
         </button>
       </div>
@@ -182,7 +182,7 @@
             <li>Priority Connections & Support</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout('price_1UJtlkJv4dyhvuKy67mqD8tW', 'subscription')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtlkJv4dyhvuKy67mqD8tW', 'subscription')">
           Subscribe to Pro
         </button>
       </div>
@@ -194,20 +194,28 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function handleCheckout(priceId, checkoutType) {
-      const { data: { user } } = await supabaseClient.auth.getUser();
+    async function handleCheckout(evt, priceId, checkoutType) {
+      const button = evt ? (evt.target || evt.currentTarget) : null;
+      const originalText = button ? button.innerText : 'Buy Now';
 
-      if (!user) {
-        alert("Please sign in or create an account before continuing.");
-        window.location.href = "/auth.html";
-        return;
+      if (button) {
+        button.disabled = true;
+        button.innerText = "Redirecting...";
       }
 
-      const button = event.target;
-      button.disabled = true;
-      button.innerText = "Redirecting...";
-
       try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+
+        if (!user) {
+          alert("Please sign in or create an account before continuing.");
+          window.location.href = "/auth.html";
+          if (button) {
+            button.disabled = false;
+            button.innerText = originalText;
+          }
+          return;
+        }
+
         const response = await fetch("/api/create-checkout-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -224,12 +232,18 @@
           window.location.href = session.url;
         } else {
           alert("Checkout Error: " + (session.error || "Failed to start checkout."));
-          button.disabled = false;
+          if (button) {
+            button.disabled = false;
+            button.innerText = originalText;
+          }
         }
       } catch (err) {
         console.error(err);
         alert("Server communication error.");
-        button.disabled = false;
+        if (button) {
+          button.disabled = false;
+          button.innerText = originalText;
+        }
       }
     }
   </script>
