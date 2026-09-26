@@ -417,27 +417,35 @@
           
           // Update UI Status
           document.getElementById("streamStatusBadge").classList.add("active");
-          document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
-          startBtn.style.display = "none";
-          stopBtn.style.display = "inline-block";
-          previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
+          activeWebSocket.onopen = async () => {
+    try {
+        // 1. Request microphone access and assign to 'stream'
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-          // 4. Record & Send Audio Chunks to Deepgram via Server
-          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-  ? 'audio/webm;codecs=opus'
-  : 'audio/webm';
+        // 2. Select supported MIME type
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : 'audio/webm';
 
-activeMediaRecorder = new MediaRecorder(stream, { mimeType });
-          activeMediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0 && activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
-        activeWebSocket.send(e.data);
-    }
-};
-          activeMediaRecorder.start(250); // 250ms chunks
+        // 3. Initialize MediaRecorder with the stream variable
+        activeMediaRecorder = new MediaRecorder(stream, { mimeType });
+
+        // 4. Safely send audio chunks over WebSocket
+        activeMediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
+                activeWebSocket.send(e.data);
+            }
         };
 
-        activeWebSocket.onmessage = (evt) => {
-          const data = JSON.parse(evt.data);
+        // 5. Start recording and emit audio every 250ms
+        activeMediaRecorder.start(250);
+        console.log("Streaming started successfully!");
+
+    } catch (err) {
+        console.error("Microphone access error:", err);
+        alert("Could not access microphone. Please allow microphone permissions.");
+    }
+};
           if (data.type === "caption") {
             previewBox.innerText = data.text;
           }
