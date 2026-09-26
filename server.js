@@ -1,4 +1,4 @@
-Since you have AICaptions/server.js open in the GitHub editor, the fastest way to apply the fix is to select all text (Cmd + A or Ctrl + A), delete it, and paste the updated code below.   What Changes in server.jsQuota Safeguard (Lines 75–95): Safely handles null or missing values for max_streaming_seconds by defaulting to 7200 seconds so NaN evaluation never causes an instant disconnect.Audio Buffer Queue (Lines 110–135): Prevents the stream from dropping after ~0.5 seconds by queuing incoming microphone chunks until Deepgram's connection fully opens.Deepgram Error Catching (Lines 140–155): Listens for LiveTranscriptionEvents.Error so any Deepgram key or configuration issue logs cleanly instead of crashing the WebSocket with code 1005.   Complete Code for server.jsJavaScriptimport express from "express";
+import express from "express";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
@@ -186,3 +186,23 @@ wss.on("connection", async (ws, req) => {
           activeDg.finish();
           deepgramConnections.delete(roomId);
         }
+
+        const userRooms = userActivePresenterRooms.get(userId);
+        if (userRooms) {
+          userRooms.delete(roomId);
+          if (userRooms.size === 0) userActivePresenterRooms.delete(userId);
+        }
+      });
+
+    } catch (err) {
+      console.error("Server WebSocket presenter error:", err);
+      ws.send(JSON.stringify({ type: "error", message: "Internal server error starting stream" }));
+      ws.close(1011, "Server error");
+    }
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
