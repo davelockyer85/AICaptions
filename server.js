@@ -103,13 +103,11 @@ wss.on("connection", async (ws, req) => {
 
       // 3. Setup Deepgram Live Client
       const dgConnection = deepgram.listen.live({
-        model: "nova-2",
-        language: "en-US",
-        smart_format: true,
-        interim_results: true,
-        encoding: "webm-opus"
-      });
-
+  model: "nova-2",
+  language: "en-US",
+  smart_format: true,
+  interim_results: true
+});
       let isDeepgramReady = false;
       const audioBufferQueue = [];
 
@@ -125,28 +123,37 @@ wss.on("connection", async (ws, req) => {
       });
 
       // Handle Transcripts from Deepgram -> Broadcast to Audience
-      dgConnection.on(LiveTranscriptionEvents.Transcript, (data) => {
-        const transcript = data.channel?.alternatives[0]?.transcript;
-        if (transcript) {
-          const messagePayload = JSON.stringify({
-            type: "transcript",
-            text: transcript,
-            isFinal: data.is_final
-          });
+      dgConnection.on(LiveTranscriptionEvents.Error, (err) => {
+        console.error("Deepgram Error:", err);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "error", message: "Deepgram error: " + (err.message || "Transcription failed") }));
+        }
+      });
 
-          // Send back to presenter for live preview
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(messagePayload);
-          }
+      dgConnection.on(LiveTranscriptionEvents.Close, () => {
+        console.log(`Deepgram closed for room: ${roomId}`);
+      });
 
-          // Broadcast to audience room
-          const audienceRoom = rooms.get(roomId);
-          if (audienceRoom) {
-            audienceRoom.forEach((client) => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(messagePayload);
-              }
-            });
+      deepgramConnections.set(roomId, dgConnection);
+
+      if (!userActivePresenterRooms.has(userId)) {
+        userActivePresenterRooms.set(userId, new Set());
+      }
+      userActivePresenterRooms.get(userId).add(roomId);
+
+      // 4. Listen for Audio Data from Presenter Client
+      ws.on("message", (data) => {
+        if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+          if (isDeepgramReady) {
+            try {
+              dgConnection.send(data);
+            } catch (err) {
+              console.error("Error sending chunk to Deepgram:", err);
+            }
+          } else {
+            if (audioBufferQueue.length < 100) {
+              audioBufferQueue.push(data);
+            }
           }
         }
       });
