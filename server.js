@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Initialize Stripe, Supabase, and Deepgram Clients
+// Initialize Stripe, Supabase (Service Role), and Deepgram Clients
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const supabase = createSupabaseClient(
@@ -20,7 +20,7 @@ const supabase = createSupabaseClient(
 
 const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY);
 
-// State Management: Rooms & Deepgram Connections
+// State Management: Active Rooms & Deepgram WebSocket Connections
 const rooms = new Map(); // roomId -> Set<WebSocket>
 const deepgramConnections = new Map(); // roomId -> Deepgram Live Connection
 
@@ -46,25 +46,42 @@ app.post(
     }
 
     try {
-      // Event: Successful Checkout Session
+      // 1. New Subscription Successful
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
         const userId = session.client_reference_id;
         const stripeCustomerId = session.customer;
 
-        console.log(`✅ Payment completed for Supabase User ID: ${userId}`);
+        console.log(`✅ Subscription checkout completed for User ID: ${userId}`);
 
         if (userId) {
-          await supabase.from("users").upsert({
-            id: userId,
-            subscription_status: "active",
-            stripe_customer_id: stripeCustomerId,
-            updated_at: new Date().toISOString(),
-          });
+          await supabase
+            .from("users")
+            .update({
+              subscription_status: "active",
+              stripe_customer_id: stripeCustomerId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", userId);
         }
       }
 
-      // Event: Subscription Canceled or Deleted
+      // 2. Subscription Status Updated (Renewals, Cancellations, Past Due)
+      if (event.type === "customer.subscription.updated") {
+        const subscription = event.data.object;
+        const status = subscription.status;
+        const stripeCustomerId = subscription.customer;
+
+        await supabase
+          .from("users")
+          .update({
+            subscription_status: status === "active" ? "active" : "inactive",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_customer_id", stripeCustomerId);
+      }
+
+      // 3. Subscription Deleted / Expired
       if (event.type === "customer.subscription.deleted") {
         const subscription = event.data.object;
         const stripeCustomerId = subscription.customer;
@@ -94,8 +111,32 @@ app.post(
 app.use(express.json());
 app.use(express.static("public"));
 
+// Helper Middleware for Protected HTTP Endpoints
+async function requireActiveSubscription(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: "Missing authorization header" });
+
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) return res.status(401).json({ error: "Invalid auth token" });
+
+  const { data: dbUser } = await supabase
+    .from("users")
+    .select("subscription_status")
+    .eq("id", user.id)
+    .single();
+
+  if (dbUser?.subscription_status !== "active") {
+    return res.status(403).json({ error: "Active paid subscription required" });
+  }
+
+  req.user = user;
+  next();
+}
+
 // ============================================================================
-// 3. STRIPE CHECKOUT ENDPOINT
+// 3. STRIPE CHECKOUT SESSION ENDPOINT
 // ============================================================================
 app.post("/api/create-checkout-session", async (req, res) => {
   try {
@@ -109,7 +150,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       mode: "subscription",
       payment_method_types: ["card"],
       customer_email: userEmail,
-      client_reference_id: userId,
+      client_reference_id: userId, // Pass Supabase User ID for webhook matching
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${req.headers.origin}/dashboard.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.origin}/pricing.html`,
@@ -123,7 +164,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
 });
 
 // ============================================================================
-// 4. DEEPGRAM LIVE CAPTIONING & WEBSOCKET ENGINE
+// 4. DEEPGRAM NOVA-3 STT ENGINE
 // ============================================================================
 function getOrCreateDeepgramConnection(roomId) {
   if (deepgramConnections.has(roomId)) {
@@ -153,7 +194,7 @@ function getOrCreateDeepgramConnection(roomId) {
         isFinal: isFinal,
       });
 
-      // Broadcast transcript to all connected overlays and audience members in the room
+      // Broadcast transcript to overlays and audience members in the room
       const roomClients = rooms.get(roomId);
       if (roomClients) {
         roomClients.forEach((client) => {
@@ -178,14 +219,48 @@ function getOrCreateDeepgramConnection(roomId) {
   return dgSocket;
 }
 
-wss.on("connection", (ws, req) => {
+// ============================================================================
+// 5. WEBSOCKET SERVER & PRESENTER ACCESS GATING
+// ============================================================================
+wss.on("connection", async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ""));
   const roomId = urlParams.get("room") || "default-stage";
   const role = urlParams.get("role") || "audience";
+  const token = urlParams.get("token");
+
+  // Gate audio stream creation for presenters
+  if (role === "presenter") {
+    if (!token) {
+      console.warn(`🔒 Presenter rejected [Room: ${roomId}]: Missing Token`);
+      ws.close(4001, "Authentication token required");
+      return;
+    }
+
+    // Verify user authentication with Supabase
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      console.warn(`🔒 Presenter rejected [Room: ${roomId}]: Invalid Token`);
+      ws.close(4002, "Invalid authentication token");
+      return;
+    }
+
+    // Verify active subscription status in database
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    if (dbUser?.subscription_status !== "active") {
+      console.warn(`🔒 Presenter rejected [Room: ${roomId}]: Inactive Subscription`);
+      ws.close(4003, "Active paid subscription required to stream captions");
+      return;
+    }
+  }
 
   console.log(`🔌 Client connected to room: [${roomId}] as (${role})`);
 
-  // Register client in room
+  // Track connected clients per room
   if (!rooms.has(roomId)) {
     rooms.set(roomId, new Set());
   }
@@ -196,14 +271,14 @@ wss.on("connection", (ws, req) => {
     dgSocket = getOrCreateDeepgramConnection(roomId);
   }
 
-  // Handle incoming audio data from Presenter
+  // Route incoming audio chunks to Deepgram Nova-3
   ws.on("message", (data) => {
     if (role === "presenter" && dgSocket && dgSocket.getReadyState() === 1) {
       dgSocket.send(data);
     }
   });
 
-  // Cleanup on disconnect
+  // Handle disconnection and clean up idle Deepgram connections
   ws.on("close", () => {
     console.log(`❌ Client disconnected from room: [${roomId}]`);
     const roomClients = rooms.get(roomId);
@@ -221,7 +296,7 @@ wss.on("connection", (ws, req) => {
 });
 
 // ============================================================================
-// 5. START SERVER
+// 6. START SERVER
 // ============================================================================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
