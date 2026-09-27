@@ -190,8 +190,6 @@ wss.on("connection", async (ws, req) => {
       language: "en-US",
       smart_format: true,
       interim_results: true,
-      encoding: "linear16",
-      sample_rate: 16000
     });
 
     deepgramLive.on(LiveTranscriptionEvents.Open, () => {
