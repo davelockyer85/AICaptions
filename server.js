@@ -13,10 +13,10 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // Initialize Stripe & Service Clients
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.error("❌ CRITICAL: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
@@ -30,6 +30,11 @@ const rooms = new Map(); // roomId -> { presenterWs, viewers: Set }
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// Render Health Check Route
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
 // ---------------------------------------------------------
 // STRIPE CHECKOUT ROUTE
@@ -58,7 +63,7 @@ app.post("/create-checkout-session", async (req, res) => {
           quantity: 1,
         },
       ],
-      // Dynamically switch modes
+      // Dynamically switch modes between payment and subscription
       mode: isOneTimePurchase ? "payment" : "subscription",
       client_reference_id: userId || null,
       success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
@@ -76,7 +81,7 @@ app.post("/create-checkout-session", async (req, res) => {
 // WEBSOCKET & DEEPGRAM AUDIO STREAMING
 // ---------------------------------------------------------
 wss.on('connection', async (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split('?')[1]);
+  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
   const roomId = urlParams.get('roomId') || 'main-stage';
   const role = urlParams.get('role') || 'viewer';
   const token = urlParams.get('token');
@@ -173,6 +178,6 @@ wss.on('connection', async (ws, req) => {
 // SERVER BOOT
 // ---------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(🚀 Server running on port ${PORT});
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
