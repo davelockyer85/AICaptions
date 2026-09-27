@@ -4,246 +4,196 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing - AICaptions</title>
+  <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    :root {
-      --bg-dark: #0f172a;
-      --card-bg: #1e293b;
-      --border-color: #334155;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      background-color: rgba(30, 41, 59, 0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border-color);
-      padding: 16px 48px;
-    }
-
-    .brand {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: #ffffff;
-      text-decoration: none;
-    }
-
-    .pricing-container {
-      max-width: 1100px;
-      margin: 50px auto;
-      padding: 0 20px;
-      text-align: center;
-      flex: 1;
-    }
-
-    .pricing-header h1 {
-      font-size: 2.5rem;
-      font-weight: 800;
-      margin-bottom: 12px;
-    }
-
-    .pricing-header p {
-      color: var(--text-muted);
-      font-size: 1.1rem;
-      margin-bottom: 40px;
-    }
-
-    .pricing-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 24px;
-    }
-
-    .price-card {
-      background-color: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 32px 24px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      position: relative;
-    }
-
-    .price-card.featured {
-      border-color: var(--primary);
-      box-shadow: 0 0 25px rgba(59, 130, 246, 0.25);
-    }
-
-    .badge {
-      position: absolute;
-      top: -12px;
-      right: 20px;
-      background-color: var(--primary);
-      color: #fff;
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 4px 12px;
-      border-radius: 12px;
-      text-transform: uppercase;
-    }
-
-    .plan-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
-    .price { font-size: 2.5rem; font-weight: 800; margin-bottom: 16px; }
-    .price span { font-size: 0.95rem; color: var(--text-muted); font-weight: 400; }
-
-    .features-list { list-style: none; text-align: left; margin-bottom: 28px; }
-    .features-list li { margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem; }
-    .features-list li::before { content: "✓ "; color: var(--primary); font-weight: bold; }
-
-    .btn-subscribe {
-      width: 100%;
-      padding: 12px;
-      background-color: var(--primary);
-      color: #ffffff;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .btn-subscribe:hover { background-color: var(--primary-hover); }
-  </style>
 </head>
 <body>
+  <nav class="navbar">
+    <div class="logo"><a href="/">AICaptions</a></div>
+    <div class="nav-links">
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/pricing.html" class="active">Pricing</a>
+      <a href="/auth.html" id="authLink">Sign In</a>
+    </div>
+  </nav>
 
-  <header>
-    <a href="/" class="brand">🎙️ AICaptions</a>
-  </header>
-
-  <div class="pricing-container">
+  <main class="container">
     <div class="pricing-header">
       <h1>Flexible Live Caption Plans</h1>
       <p>High-accuracy real-time captions for events, live streams, and multi-stage venues.</p>
     </div>
 
     <div class="pricing-grid">
-      <!-- 1. Event Pass -->
-      <div class="price-card">
-        <div>
-          <div class="plan-name">Event Pass</div>
-          <div class="price">$49 <span>/ 2-hr session</span></div>
-          <ul class="features-list">
-            <li>Single 2-Hour Event Session</li>
-            <li>1 Stage / Room Stream</li>
-            <li>Deepgram Nova-3 Engine</li>
-            <li>Unlimited Audience Viewers</li>
-            <li>No Recurring Subscription</li>
-          </ul>
+      <!-- 1. Free Trial Pass -->
+      <div class="pricing-card">
+        <div class="card-header">
+          <h3>Free Trial</h3>
+          <p class="price">$0 <span>/ one-time</span></p>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'one_time')">
+        <ul class="features-list">
+          <li>⚡ 5 Hours Live Captioning</li>
+          <li>🎙️ 1 Stage / Room</li>
+          <li>📺 OBS Transparent Overlay</li>
+          <li>⏱️ No Credit Card Required</li>
+        </ul>
+        <button id="claimFreeBtn" onclick="claimFreeTrial()" class="btn-primary">
+          Claim 5 Hours Free
+        </button>
+      </div>
+
+      <!-- 2. Single Event Pass -->
+      <div class="pricing-card">
+        <div class="card-header">
+          <h3>Event Pass</h3>
+          <p class="price">$49 <span>/ 2-hr session</span></p>
+        </div>
+        <ul class="features-list">
+          <li> Single 2-Hour Event Session</li>
+          <li> 1 Stage / Room Stream</li>
+          <li> Deepgram Nova-3 Engine</li>
+          <li> Unlimited Audience Viewers</li>
+          <li> No Recurring Subscription</li>
+        </ul>
+        <button onclick="subscribe('price_1Q_EVENT_PASS')" class="btn-primary">
           Buy Event Pass
         </button>
       </div>
 
-      <!-- 2. Starter Plan -->
-      <div class="price-card featured">
-        <div class="badge">Most Popular</div>
-        <div>
-          <div class="plan-name">Starter</div>
-          <div class="price">$129 <span>/ month</span></div>
-          <ul class="features-list">
-            <li><strong>30 Hours</strong> Live Streaming / mo</li>
-            <li><strong>2 Stage Rooms</strong> Simultaneously</li>
-            <li>Deepgram Nova-3 Engine</li>
-            <li>Unlimited Audience Viewers</li>
-            <li>Custom OBS & Web Overlays</li>
-          </ul>
+      <!-- 3. Starter Plan -->
+      <div class="pricing-card popular">
+        <div class="badge">MOST POPULAR</div>
+        <div class="card-header">
+          <h3>Starter</h3>
+          <p class="price">$129 <span>/ month</span></p>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'subscription')">
+        <ul class="features-list">
+          <li> 30 Hours Live Streaming / mo</li>
+          <li> 2 Stage Rooms Simultaneously</li>
+          <li> Deepgram Nova-3 Engine</li>
+          <li> Unlimited Audience Viewers</li>
+          <li> Custom OBS & Web Overlays</li>
+        </ul>
+        <button onclick="subscribe('price_1Q_STARTER')" class="btn-primary">
           Subscribe to Starter
         </button>
       </div>
 
-      <!-- 3. Pro Plan -->
-      <div class="price-card">
-        <div>
-          <div class="plan-name">Pro Multi-Stage</div>
-          <div class="price">$259 <span>/ month</span></div>
-          <ul class="features-list">
-            <li><strong>150 Hours</strong> Live Streaming / mo</li>
-            <li><strong>10 Stage Rooms</strong> Simultaneously</li>
-            <li>Deepgram Nova-3 Engine</li>
-            <li>Unlimited Audience Viewers</li>
-            <li>Priority Connections & Support</li>
-          </ul>
+      <!-- 4. Pro Multi-Stage -->
+      <div class="pricing-card">
+        <div class="card-header">
+          <h3>Pro Multi-Stage</h3>
+          <p class="price">$259 <span>/ month</span></p>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'subscription')">
+        <ul class="features-list">
+          <li> 150 Hours Live Streaming / mo</li>
+          <li> 10 Stage Rooms Simultaneously</li>
+          <li> Deepgram Nova-3 Engine</li>
+          <li> Unlimited Audience Viewers</li>
+          <li> Priority Connections & Support</li>
+        </ul>
+        <button onclick="subscribe('price_1Q_PRO')" class="btn-primary">
           Subscribe to Pro
         </button>
       </div>
     </div>
-  </div>
+  </main>
 
   <script>
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Initialize Supabase Client
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    async function handleCheckout(evt, priceId, checkoutType) {
-      const button = evt ? (evt.target || evt.currentTarget) : null;
-      const originalText = button ? button.innerText : 'Buy Now';
+    // 1. Claim One-Time 5-Hour Free Trial
+    async function claimFreeTrial() {
+      const claimBtn = document.getElementById("claimFreeBtn");
+      claimBtn.disabled = true;
+      claimBtn.innerText = "Processing...";
 
-      if (button) {
-        button.disabled = true;
-        button.innerText = "Redirecting...";
+      const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
+
+      if (authErr || !user) {
+        alert("Please log in or create an account to claim your free pass.");
+        window.location.href = "/auth.html";
+        return;
       }
 
+      const { data: dbUser, error: fetchErr } = await supabaseClient
+        .from("users")
+        .select("has_claimed_free, plan_tier")
+        .eq("id", user.id)
+        .single();
+
+      if (fetchErr) {
+        alert("Error checking eligibility: " + fetchErr.message);
+        claimBtn.disabled = false;
+        claimBtn.innerText = "Claim 5 Hours Free";
+        return;
+      }
+
+      if (dbUser && dbUser.has_claimed_free) {
+        alert("You have already claimed your 5-hour free trial pass.");
+        window.location.href = "/dashboard.html";
+        return;
+      }
+
+      const { error: updateErr } = await supabaseClient
+        .from("users")
+        .update({
+          plan_tier: "free",
+          subscription_status: "active",
+          max_streaming_seconds: 18000, // 5 Hours = 18,000 Seconds
+          allowed_rooms: 1,
+          has_claimed_free: true
+        })
+        .eq("id", user.id);
+
+      if (updateErr) {
+        alert("Failed to activate free pass: " + updateErr.message);
+        claimBtn.disabled = false;
+        claimBtn.innerText = "Claim 5 Hours Free";
+        return;
+      }
+
+      alert("🎉 5 Hours of Free Live Captioning activated!");
+      window.location.href = "/dashboard.html";
+    }
+
+    // 2. Paid Plan Checkout (Stripe Integration)
+    async function subscribe(priceId) {
+      // Step A: Verify user is logged in
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+
+      if (authError || !user || !user.id) {
+        alert("Please sign in or create an account before subscribing.");
+        window.location.href = "/auth.html";
+        return;
+      }
+
+      // Step B: Send valid user.id to create-checkout-session
       try {
-        const { data: { user } } = await supabaseClient.auth.getUser();
-
-        if (!user) {
-          alert("Please sign in or create an account before continuing.");
-          window.location.href = "/auth.html";
-          if (button) {
-            button.disabled = false;
-            button.innerText = originalText;
-          }
-          return;
-        }
-
-        const response = await fetch("/api/create-checkout-session", {
+        const response = await fetch("/create-checkout-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             priceId: priceId,
             userId: user.id,
-            userEmail: user.email,
-            checkoutType: checkoutType
+            customerEmail: user.email
           })
         });
 
-        const session = await response.json();
-        if (session.url) {
-          window.location.href = session.url;
-        } else {
-          alert("Checkout Error: " + (session.error || "Failed to start checkout."));
-          if (button) {
-            button.disabled = false;
-            button.innerText = originalText;
-          }
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          alert("Checkout Error: " + (data.error || "Unable to start checkout."));
+          return;
+        }
+
+        if (data.url) {
+          window.location.href = data.url;
         }
       } catch (err) {
-        console.error(err);
-        alert("Server communication error.");
-        if (button) {
-          button.disabled = false;
-          button.innerText = originalText;
-        }
+        alert("Network error starting checkout: " + err.message);
       }
     }
   </script>
