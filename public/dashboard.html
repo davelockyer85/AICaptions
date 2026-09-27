@@ -396,12 +396,13 @@
 
       try {
         // 1. Fetch Fresh Auth Session Token
-        const { data: { session }, error: sessionErr } = await supabaseClient.auth.getSession();
-        if (sessionErr || !session) {
-          alert("Session expired. Please sign in again.");
-          window.location.href = "/auth.html";
-          return;
-        }
+        const { data: { session } } = await supabase.auth.getSession();
+if (!session) {
+  alert("Please log in first.");
+  return;
+}
+const token = session.access_token;
+const ws = new WebSocket(`wss://${window.location.host}?role=presenter&roomId=${roomId}&token=${token}`);
 
         // 2. Request Microphone Access
         activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
