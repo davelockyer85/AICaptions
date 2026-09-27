@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Stage Captions - Transparent Overlay</title>
   <style>
-    /* Full transparency for broadcast switchers (OBS Studio, vMix, Wirecast) */
     html, body {
       background-color: rgba(0, 0, 0, 0) !important;
       background: transparent !important;
@@ -15,7 +14,7 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end; /* Places captions in lower-third position */
+      justify-content: flex-end;
       align-items: center;
     }
 
@@ -35,7 +34,6 @@
       line-height: 1.3;
       letter-spacing: 0.02em;
       
-      /* Crisp text drop shadow for high contrast over light and dark video */
       text-shadow: 
         2px  2px 0px #000,
        -2px -2px 0px #000,
@@ -43,7 +41,6 @@
        -2px  2px 0px #000,
         0px  4px 12px rgba(0, 0, 0, 0.9);
 
-      /* Semi-transparent backing pill */
       background: rgba(15, 23, 42, 0.65);
       padding: 0.8rem 2rem;
       border-radius: 16px;
@@ -53,7 +50,6 @@
       transition: all 0.15s ease-out;
     }
 
-    /* Style for real-time interim results */
     .interim {
       opacity: 0.85;
       font-style: italic;
@@ -67,13 +63,12 @@
   </div>
 
   <script>
-    // Extract Room ID from query string (?room=event123), default to 'default'
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get("room") || "default";
+    const roomId = urlParams.get("room") || urlParams.get("roomId") || "main-stage";
 
     const captionBox = document.getElementById("captionBox");
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
+    const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
     let socket = null;
 
     function connect() {
@@ -87,7 +82,7 @@
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.text && data.text.trim().length > 0) {
+          if (data.type === "caption" && data.text && data.text.trim().length > 0) {
             captionBox.style.display = "inline-block";
             captionBox.innerText = data.text;
             
@@ -105,8 +100,8 @@
       socket.onclose = () => {
         captionBox.style.display = "inline-block";
         captionBox.classList.remove("interim");
-        captionBox.innerText = "[Overlay Reconnecting...]";
-        setTimeout(connect, 2000); // Auto-reconnect if connection drops
+        captionBox.innerText = "[Reconnecting stage captions...]";
+        setTimeout(connect, 2000);
       };
 
       socket.onerror = (err) => {
