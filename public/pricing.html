@@ -42,7 +42,7 @@
     }
 
     .pricing-container {
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 50px auto;
       padding: 0 20px;
       text-align: center;
@@ -63,7 +63,7 @@
 
     .pricing-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 24px;
     }
 
@@ -114,11 +114,9 @@
       font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
-      transition: background-color 0.2s ease;
     }
 
     .btn-subscribe:hover { background-color: var(--primary-hover); }
-    .btn-subscribe:disabled { opacity: 0.6; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -134,23 +132,6 @@
     </div>
 
     <div class="pricing-grid">
-      <!-- 0. Free Trial Pass -->
-      <div class="price-card">
-        <div>
-          <div class="plan-name">Free Trial</div>
-          <div class="price">$0 <span>/ one-time</span></div>
-          <ul class="features-list">
-            <li><strong>5 Hours</strong> Live Captioning</li>
-            <li><strong>1 Stage / Room</strong> Stream</li>
-            <li>OBS Transparent Overlay</li>
-            <li>No Credit Card Required</li>
-          </ul>
-        </div>
-        <button id="claimFreeBtn" class="btn-subscribe" onclick="claimFreeTrial(event)">
-          Claim 5 Hours Free
-        </button>
-      </div>
-
       <!-- 1. Event Pass -->
       <div class="price-card">
         <div>
@@ -183,7 +164,7 @@
             <li>Custom OBS & Web Overlays</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'subscription')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtzaJv4dyhvuKyEXzNpH8x', 'subscription')">
           Subscribe to Starter
         </button>
       </div>
@@ -201,7 +182,7 @@
             <li>Priority Connections & Support</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'subscription')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtlkJv4dyhvuKy67mqD8tW', 'subscription')">
           Subscribe to Pro
         </button>
       </div>
@@ -213,85 +194,6 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // 1. One-Time Free Trial Activation
-    async function claimFreeTrial(evt) {
-      const button = evt ? (evt.target || evt.currentTarget) : document.getElementById("claimFreeBtn");
-      const originalText = button ? button.innerText : "Claim 5 Hours Free";
-
-      if (button) {
-        button.disabled = true;
-        button.innerText = "Processing...";
-      }
-
-      try {
-        const { data: { user } } = await supabaseClient.auth.getUser();
-
-        if (!user) {
-          alert("Please sign in or create an account before claiming your trial.");
-          window.location.href = "/auth.html";
-          if (button) {
-            button.disabled = false;
-            button.innerText = originalText;
-          }
-          return;
-        }
-
-        // Check if user has already claimed the free pass
-        const { data: dbUser, error: fetchErr } = await supabaseClient
-          .from("users")
-          .select("has_claimed_free")
-          .eq("id", user.id)
-          .single();
-
-        if (fetchErr && fetchErr.code !== 'PGRST116') {
-          alert("Error checking eligibility: " + fetchErr.message);
-          if (button) {
-            button.disabled = false;
-            button.innerText = originalText;
-          }
-          return;
-        }
-
-        if (dbUser && dbUser.has_claimed_free) {
-          alert("You have already claimed your 5-hour free pass.");
-          window.location.href = "/dashboard.html";
-          return;
-        }
-
-        // Grant 5 hours (18,000 seconds)
-        const { error: updateErr } = await supabaseClient
-          .from("users")
-          .update({
-            plan_tier: "free",
-            subscription_status: "active",
-            max_streaming_seconds: 18000,
-            allowed_rooms: 1,
-            has_claimed_free: true
-          })
-          .eq("id", user.id);
-
-        if (updateErr) {
-          alert("Failed to activate free pass: " + updateErr.message);
-          if (button) {
-            button.disabled = false;
-            button.innerText = originalText;
-          }
-          return;
-        }
-
-        alert("🎉 5 Hours of Free Live Captioning activated!");
-        window.location.href = "/dashboard.html";
-      } catch (err) {
-        console.error(err);
-        alert("An unexpected error occurred.");
-        if (button) {
-          button.disabled = false;
-          button.innerText = originalText;
-        }
-      }
-    }
-
-    // 2. Paid Plan Checkout Session Initiator
     async function handleCheckout(evt, priceId, checkoutType) {
       const button = evt ? (evt.target || evt.currentTarget) : null;
       const originalText = button ? button.innerText : 'Buy Now';
@@ -314,14 +216,13 @@
           return;
         }
 
-        const response = await fetch("/create-checkout-session", {
+        const response = await fetch("/api/create-checkout-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             priceId: priceId,
             userId: user.id,
             userEmail: user.email,
-            customerEmail: user.email,
             checkoutType: checkoutType
           })
         });
