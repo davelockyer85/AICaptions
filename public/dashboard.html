@@ -4,485 +4,224 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - AICaptions</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    :root {
-      --bg-dark: #0f172a;
-      --card-bg: #1e293b;
-      --border-color: #334155;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --danger: #ef4444;
-      --danger-hover: #dc2626;
-      --success: #10b981;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      background-color: rgba(30, 41, 59, 0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border-color);
-      padding: 16px 48px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .brand {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: #ffffff;
-      text-decoration: none;
-    }
-
-    .user-nav {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .user-email {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-
-    .btn-secondary {
-      background-color: transparent;
-      border: 1px solid var(--border-color);
-      color: var(--text-main);
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .btn-secondary:hover {
-      background-color: var(--border-color);
-    }
-
-    .dashboard-container {
-      max-width: 1100px;
-      margin: 40px auto;
-      padding: 0 20px;
-      flex: 1;
-      width: 100%;
-    }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
-      margin-bottom: 32px;
-    }
-
-    .metric-card {
-      background-color: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 24px;
-    }
-
-    .metric-title {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      margin-bottom: 8px;
-    }
-
-    .metric-value {
-      font-size: 1.8rem;
-      font-weight: 800;
-    }
-
-    .metric-subtitle {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    .console-card {
-      background-color: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 32px;
-      margin-bottom: 32px;
-    }
-
-    .section-title {
-      font-size: 1.3rem;
-      font-weight: 700;
-      margin-bottom: 20px;
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    label {
-      display: block;
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: var(--text-muted);
-    }
-
-    input[type="text"] {
-      width: 100%;
-      max-width: 400px;
-      padding: 12px;
-      background-color: var(--bg-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      color: var(--text-main);
-      font-size: 1rem;
-    }
-
-    .action-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-top: 24px;
-    }
-
-    .btn-action {
-      padding: 12px 28px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .btn-start {
-      background-color: var(--primary);
-      color: #ffffff;
-    }
-
-    .btn-start:hover {
-      background-color: var(--primary-hover);
-    }
-
-    .btn-stop {
-      background-color: var(--danger);
-      color: #ffffff;
-    }
-
-    .btn-stop:hover {
-      background-color: var(--danger-hover);
-    }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      background-color: rgba(148, 163, 184, 0.1);
-      color: var(--text-muted);
-    }
-
-    .status-badge.active {
-      background-color: rgba(16, 185, 129, 0.15);
-      color: var(--success);
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: currentColor;
-    }
-
-    .preview-box {
-      margin-top: 24px;
-      background-color: var(--bg-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 20px;
-      min-height: 120px;
-      font-size: 1.1rem;
-      line-height: 1.6;
-      color: #e2e8f0;
-    }
-
-    .overlay-link-box {
-      margin-top: 20px;
-      padding: 16px;
-      background-color: rgba(15, 23, 42, 0.6);
-      border: 1px dashed var(--border-color);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .overlay-url {
-      font-family: monospace;
-      font-size: 0.9rem;
-      color: var(--primary);
-      word-break: break-all;
-    }
+    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
   </style>
 </head>
-<body>
+<body class="min-h-screen p-6 md:p-10">
 
-  <header>
-    <a href="/" class="brand">🎙️ AICaptions</a>
-    <div class="user-nav">
-      <span id="userEmailDisplay" class="user-email">Loading...</span>
-      <a href="/pricing.html" class="btn-secondary">Upgrade / Billing</a>
-      <button onclick="handleSignOut()" class="btn-secondary">Sign Out</button>
+  <!-- Navigation Header -->
+  <header class="max-w-6xl mx-auto flex justify-between items-center mb-8 pb-4 border-b border-slate-800">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🎙️</span>
+      <h1 class="text-2xl font-bold tracking-tight text-white">AICaptions</h1>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="user-email" class="text-slate-400 text-sm">Loading user...</span>
+      <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Plans & Pricing</a>
+      <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
     </div>
   </header>
 
-  <div class="dashboard-container">
+  <main class="max-w-6xl mx-auto space-y-8">
     
-    <!-- Metrics Section -->
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-title">Current Plan</div>
-        <div id="planTierDisplay" class="metric-value">--</div>
-        <div id="planStatusDisplay" class="metric-subtitle">Checking status...</div>
+    <!-- Primary Presenter Launch Banner -->
+    <div class="card p-6 bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>🎙️</span> Presenter Studio Control
+        </h2>
+        <p class="text-sm text-slate-300 mt-1">
+          Start streaming live audio, control transcription languages, and broadcast captions to all overlays and mobile devices.
+        </p>
       </div>
-
-      <div class="metric-card">
-        <div class="metric-title">Streaming Usage</div>
-        <div id="usageTimeDisplay" class="metric-value">0 / 0 hrs</div>
-        <div id="usagePercentDisplay" class="metric-subtitle">0% of monthly quota used</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-title">Allowed Rooms</div>
-        <div id="allowedRoomsDisplay" class="metric-value">0 Stages</div>
-        <div class="metric-subtitle">Simultaneous live streams</div>
-      </div>
+      <a id="presenter-primary-btn" href="#" target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition flex items-center gap-2 whitespace-nowrap shadow-lg shadow-blue-600/20">
+        ▶ Launch Presenter View
+      </a>
     </div>
 
-      <!-- OBS Overlay Generator -->
-      <div class="overlay-link-box">
+    <!-- Tier & Usage Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="card p-6 flex flex-col justify-between">
         <div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">OBS / WEB TRANSPARENT OVERLAY URL</div>
-          <div id="overlayUrlDisplay" class="overlay-url">http://...</div>
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plan Tier</span>
+          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">FREE</h2>
         </div>
-        <button onclick="copyOverlayUrl()" class="btn-secondary">Copy Link</button>
+        <div class="mt-4 pt-4 border-t border-slate-700/60 flex justify-between items-center">
+          <span class="text-xs text-slate-400">Subscription Status</span>
+          <span id="plan-status" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
+        </div>
+      </div>
+
+      <div class="card p-6 flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Quota</span>
+            <span id="usage-percent" class="text-xs font-bold text-blue-400">0%</span>
+          </div>
+          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 5.0 hrs</h2>
+        </div>
+        <div class="mt-4">
+          <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
+            <div id="usage-bar" class="bg-blue-500 h-full w-0 transition-all duration-500"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-6 flex flex-col justify-between">
+        <div>
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stage Configuration</span>
+          <h2 class="text-3xl font-extrabold text-white mt-2">Main Stage</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-4">Room ID: <code class="bg-slate-900 px-2 py-1 rounded text-blue-300">main-stage</code></p>
       </div>
     </div>
 
-  </div>
+    <!-- Stage Links section: Presenter, OBS Overlay, Mobile View -->
+    <section class="space-y-4">
+      <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <span>🔗</span> Stage Stream Links
+      </h3>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        <!-- 1. Presenter View -->
+        <div class="card p-6 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-2 text-blue-400 font-bold mb-1">
+              <span>🎙️</span> Presenter Studio
+            </div>
+            <p class="text-xs text-slate-400">Broadcast studio interface for audio capture and live microphone management.</p>
+          </div>
+          <div class="space-y-2">
+            <a id="presenter-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-center text-white font-bold text-xs rounded-lg transition">
+              Open Studio Tab ↗
+            </a>
+          </div>
+        </div>
+
+        <!-- 2. OBS Overlay View -->
+        <div class="card p-6 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-2 text-emerald-400 font-bold mb-1">
+              <span>🖥️</span> OBS Transparent Overlay
+            </div>
+            <p class="text-xs text-slate-400">Transparent overlay link designed for OBS Studio Browser Source & vMix.</p>
+          </div>
+          <div class="space-y-2">
+            <a id="overlay-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-center text-white font-bold text-xs rounded-lg transition border border-slate-700">
+              Open Overlay Preview ↗
+            </a>
+            <button id="copy-overlay-btn" class="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs rounded-lg transition border border-emerald-500/30">
+              Copy OBS Browser Link
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Mobile View -->
+        <div class="card p-6 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-2 text-purple-400 font-bold mb-1">
+              <span>📱</span> Mobile Audience View
+            </div>
+            <p class="text-xs text-slate-400">Clean, responsive web view for event attendees reading live captions on mobile devices.</p>
+          </div>
+          <div class="space-y-2">
+            <a id="mobile-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-center text-white font-bold text-xs rounded-lg transition border border-slate-700">
+              Open Mobile View ↗
+            </a>
+            <button id="copy-mobile-btn" class="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-semibold text-xs rounded-lg transition border border-purple-500/30">
+              Copy Mobile Audience Link
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
 
   <script>
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_URL = "https://euopdmwtowuxdzczwbul.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1b3BkbXd0b3d1eGR6Y3p3YnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyNDAwMDB9.s8U3eU_...v2";
 
-    let activeWebSocket = null;
-    let activeMediaRecorder = null;
-    let activeAudioStream = null;
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Load User Auth & Subscription Data
-    async function loadUserData() {
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    let overlayUrl = "";
+    let mobileUrl = "";
 
-      if (authError || !user) {
-        window.location.href = "/auth.html";
-        return;
-      }
-
-      document.getElementById("userEmailDisplay").innerText = user.email;
-
-      // Fetch user profile metrics from Supabase DB
-      const { data: dbUser, error: dbError } = await supabaseClient
-        .from("users")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (dbError || !dbUser) {
-        console.error("Failed to load user DB record:", dbError);
-        document.getElementById("planTierDisplay").innerText = "Free Tier";
-        document.getElementById("planStatusDisplay").innerText = "No active subscription";
-        return;
-      }
-
-      // Render Plan & Usage
-      const planNameMap = {
-        one_time: "Event Pass",
-        starter: "Starter Plan",
-        pro: "Pro Multi-Stage",
-        free: "Free Tier"
-      };
-
-      document.getElementById("planTierDisplay").innerText = planNameMap[dbUser.plan_tier] || "Free Tier";
-      document.getElementById("planStatusDisplay").innerText = `Status: ${dbUser.subscription_status.toUpperCase()}`;
-
-      const hoursUsed = (dbUser.streaming_seconds_used / 3600).toFixed(1);
-      const maxHours = (dbUser.max_streaming_seconds / 3600).toFixed(0);
-      const percentUsed = dbUser.max_streaming_seconds > 0 
-        ? Math.round((dbUser.streaming_seconds_used / dbUser.max_streaming_seconds) * 100) 
-        : 0;
-
-      document.getElementById("usageTimeDisplay").innerText = `${hoursUsed} / ${maxHours} hrs`;
-      document.getElementById("usagePercentDisplay").innerText = `${percentUsed}% of streaming quota used`;
-      document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 0} Stage(s)`;
-
-      updateOverlayUrl();
-    }
-
-    // Dynamic OBS Overlay URL Helper
-    function updateOverlayUrl() {
-      const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
-      const overlayUrl = `${window.location.origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
-      document.getElementById("overlayUrlDisplay").innerText = overlayUrl;
-    }
-
-    function copyOverlayUrl() {
-      const urlText = document.getElementById("overlayUrlDisplay").innerText;
-      navigator.clipboard.writeText(urlText);
-      alert("OBS Overlay URL copied to clipboard!");
-    }
-
-    // Start Live Presenter Stream
-    async function startPresenterStream() {
-      const startBtn = document.getElementById("startBtn");
-      const stopBtn = document.getElementById("stopBtn");
-      const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
-      const previewBox = document.getElementById("captionPreview");
-
-      startBtn.disabled = true;
-      startBtn.innerText = "Connecting...";
-
+    async function initDashboard() {
       try {
-        // 1. Fetch Fresh Auth Session Token
-        const { data: { session }, error: sessionErr } = await supabaseClient.auth.getSession();
-        if (sessionErr || !session) {
-          alert("Session expired. Please sign in again.");
-          window.location.href = "/auth.html";
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          window.location.replace("/auth.html");
           return;
         }
 
-        // 2. Request Microphone Access
-        activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        document.getElementById("user-email").innerText = session.user.email;
 
-        // 3. Open WebSocket Connection
-        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&token=${session.access_token}`;
+        const origin = window.location.origin;
+        const presenterUrl = `${origin}/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
+        overlayUrl = `${origin}/overlay.html?roomId=main-stage`;
+        mobileUrl = `${origin}/mobile.html?roomId=main-stage`;
 
-        activeWebSocket = new WebSocket(wsUrl);
+        // Bind Presenter View Links
+        document.getElementById("presenter-primary-btn").href = presenterUrl;
+        document.getElementById("presenter-link-btn").href = presenterUrl;
 
-        activeWebSocket.onopen = () => {
-          console.log("✅ Presenter WebSocket connected!");
-          
-          // Update UI Status
-          document.getElementById("streamStatusBadge").classList.add("active");
-          document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
-          startBtn.style.display = "none";
-          stopBtn.style.display = "inline-block";
-          previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
+        // Bind OBS Overlay Links
+        document.getElementById("overlay-link-btn").href = overlayUrl;
 
-          // 4. Record & Send Audio Chunks to Deepgram via Server
-          activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
-          activeMediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
-              activeWebSocket.send(e.data);
-            }
-          };
-          activeMediaRecorder.start(250); // 250ms chunks
-        };
+        // Bind Mobile View Links
+        document.getElementById("mobile-link-btn").href = mobileUrl;
 
-        activeWebSocket.onmessage = (evt) => {
-          const data = JSON.parse(evt.data);
-          if (data.type === "caption") {
-            previewBox.innerText = data.text;
-          }
-        };
+        // Fetch User Profile Data from Supabase
+        const { data: profile } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", session.user.id)
+          .maybeSingle();
 
-        activeWebSocket.onerror = (err) => {
-          console.error("❌ WebSocket Error:", err);
-          alert("Connection error. Check console logs.");
-        };
+        if (profile) {
+          document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
+          document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
 
-        activeWebSocket.onclose = (evt) => {
-          console.warn(`⚠️ Connection Closed. Code: ${evt.code}, Reason: ${evt.reason}`);
-          
-          if (evt.code === 4003) alert("Stream rejected: Active subscription required.");
-          if (evt.code === 4004) alert("Stream rejected: Maximum concurrent stages limit reached.");
-          if (evt.code === 4005) alert("Stream rejected: Event Pass has expired.");
-          if (evt.code === 4006) alert("Stream rejected: Monthly streaming quota exhausted.");
+          const usedSec = profile.streaming_seconds_used || 0;
+          const maxSec = profile.max_streaming_seconds || 18000;
+          const usedHrs = (usedSec / 3600).toFixed(1);
+          const maxHrs = (maxSec / 3600).toFixed(1);
 
-          stopPresenterStream();
-        };
-
+          document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
+          const pct = Math.min(100, Math.round((usedSec / maxSec) * 100)) || 0;
+          document.getElementById("usage-bar").style.width = `${pct}%`;
+          document.getElementById("usage-percent").innerText = `${pct}%`;
+        }
       } catch (err) {
-        console.error("Failed to start stream:", err);
-        alert("Microphone or network error: " + err.message);
-        stopPresenterStream();
+        console.error("Dashboard initialization error:", err);
       }
     }
 
-    // Stop Presenter Stream
-    function stopPresenterStream() {
-      if (activeMediaRecorder && activeMediaRecorder.state !== "inactive") {
-        activeMediaRecorder.stop();
-      }
-
-      if (activeAudioStream) {
-        activeAudioStream.getTracks().forEach(track => track.stop());
-      }
-
-      if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
-        activeWebSocket.close();
-      }
-
-      activeMediaRecorder = null;
-      activeAudioStream = null;
-      activeWebSocket = null;
-
-      // Reset UI Elements
-      document.getElementById("streamStatusBadge").classList.remove("active");
-      document.getElementById("streamStatusText").innerText = "Offline";
-      
-      const startBtn = document.getElementById("startBtn");
-      const stopBtn = document.getElementById("stopBtn");
-
-      startBtn.style.display = "inline-block";
-      startBtn.disabled = false;
-      startBtn.innerText = "Start Live Streaming";
-      stopBtn.style.display = "none";
-
-      // Refresh DB metrics to show updated time used
-      loadUserData();
-    }
-
-    async function handleSignOut() {
-      await supabaseClient.auth.signOut();
-      window.location.href = "/auth.html";
-    }
-
-    // Event Listeners
-    document.addEventListener("DOMContentLoaded", () => {
-      loadUserData();
-
-      document.getElementById("startBtn").addEventListener("click", startPresenterStream);
-      document.getElementById("stopBtn").addEventListener("click", stopPresenterStream);
-      document.getElementById("roomIdInput").addEventListener("input", updateOverlayUrl);
+    // Copy Handlers
+    document.getElementById("copy-overlay-btn").addEventListener("click", () => {
+      navigator.clipboard.writeText(overlayUrl);
+      alert("OBS Browser Source Link copied to clipboard!");
     });
+
+    document.getElementById("copy-mobile-btn").addEventListener("click", () => {
+      navigator.clipboard.writeText(mobileUrl);
+      alert("Mobile Audience Link copied to clipboard!");
+    });
+
+    document.getElementById("signout-btn").addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      window.location.replace("/auth.html");
+    });
+
+    initDashboard();
   </script>
 </body>
 </html>
