@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 // --- ENVIRONMENT VARIABLE VALIDATION ---
 const requiredEnv = [
   'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
   'DEEPGRAM_API_KEY'
@@ -35,12 +36,12 @@ const supabase = createSupabaseClient(
 );
 const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY || '');
 
-// Global State Tracking
-const rooms = new Map(); // roomId -> Set<WebSocket> (Audience clients)
+// Global In-Memory Tracking Maps
+const rooms = new Map(); // roomId -> Set<WebSocket> (Audience & OBS Overlay clients)
 const deepgramConnections = new Map(); // roomId -> Deepgram Live Connection
 const userActivePresenterRooms = new Map(); // userId -> Set<roomId>
 
-// --- 1. STRIPE WEBHOOK (MUST BE DEFINED BEFORE express.json()) ---
+// --- 1. STRIPE WEBHOOK (MUST BE PLACED BEFORE express.json()) ---
 app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -55,36 +56,46 @@ app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), async
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful checkout payments / new subscriptions
+  // Handle successful checkout payments / subscriptions
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const userId = session.client_reference_id || session.metadata?.userId;
     const priceId = session.metadata?.priceId;
 
     if (userId) {
-      // Map Stripe Price IDs to streaming capacity limits (in seconds)
-      let maxSeconds = 7200; // Default Event Pass (2 Hours)
+      let maxSeconds = 7200; // Default Event Pass: 2 Hours
+      let oneTimeExpiresAt = null;
 
+      // Price Tier Mapping
       if (priceId === 'price_1UJYbIJV4dyhvuKy8pXdPHbU') {
-        maxSeconds = 108000; // Starter: 30 hours (30 * 3600)
+        maxSeconds = 108000; // Starter Plan: 30 hours
       } else if (priceId === 'price_1UJtlKJV4dyhvuKy67mqD8tW') {
-        maxSeconds = 540000; // Pro: 150 hours (150 * 3600)
+        maxSeconds = 540000; // Pro Plan: 150 hours
+      } else if (session.mode === 'payment') {
+        // One-time event pass expires in 48 hours
+        oneTimeExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      }
+
+      const updatePayload = {
+        subscription_status: 'active',
+        max_streaming_seconds: maxSeconds,
+        streaming_seconds_used: 0,
+        stripe_customer_id: session.customer
+      };
+
+      if (oneTimeExpiresAt) {
+        updatePayload.one_time_expires_at = oneTimeExpiresAt;
       }
 
       const { error } = await supabase
         .from('users')
-        .update({
-          subscription_status: 'active',
-          max_streaming_seconds: maxSeconds,
-          streaming_seconds_used: 0, // Reset usage counter upon purchase/renewal
-          stripe_customer_id: session.customer
-        })
+        .update(updatePayload)
         .eq('id', userId);
 
       if (error) {
-        console.error('Failed to update Supabase user account via Webhook:', error);
+        console.error('Failed to update user in Supabase via Webhook:', error);
       } else {
-        console.log(`Successfully activated subscription & limits for user: ${userId}`);
+        console.log(`Successfully activated product/pass for user: ${userId}`);
       }
     }
   }
@@ -120,7 +131,6 @@ app.post('/api/create-checkout-session', async (req, res) => {
       return res.status(400).json({ error: 'Missing priceId in request payload' });
     }
 
-    // Authenticate user via Supabase session token
     let userId = null;
     if (token) {
       const { data: { user } } = await supabase.auth.getUser(token);
@@ -156,7 +166,7 @@ wss.on('connection', async (ws, req) => {
     return ws.close(4000, 'Missing parameters');
   }
 
-  // --- AUDIENCE CLIENT HANDLER ---
+  // --- AUDIENCE / OBS OVERLAY CLIENT HANDLER ---
   if (role === 'audience') {
     if (!rooms.has(roomId)) {
       rooms.set(roomId, new Set());
@@ -173,9 +183,10 @@ wss.on('connection', async (ws, req) => {
     return;
   }
 
-  // --- PRESENTER CLIENT HANDLER ---
+  // --- PRESENTER STUDIO CLIENT HANDLER ---
   if (role === 'presenter') {
     let userId = null;
+    let streamStartTime = null;
 
     try {
       if (!token) {
@@ -183,7 +194,7 @@ wss.on('connection', async (ws, req) => {
         return ws.close(4001, 'Auth required');
       }
 
-      // Verify Supabase User Token
+      // Verify Supabase Session Token
       const { data: authData, error: authError } = await supabase.auth.getUser(token);
       if (authError || !authData?.user) {
         console.error('Auth verification error:', authError);
@@ -193,17 +204,25 @@ wss.on('connection', async (ws, req) => {
 
       userId = authData.user.id;
 
-      // Query database profile for subscription and quota validation
-   const isSubscriptionActive = dbUser.subscription_status === 'active';
-      const isOneTimePassValid = dbUser.one_time_expires_at && new Date(dbUser.one_time_expires_at) > new Date();
+      // Query database user profile
+      const { data: dbUser, error: dbError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-      if (!isSubscriptionActive && !isOneTimePassValid) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Active subscription or valid pass required' }));
-        return ws.close(4002, 'Subscription inactive');
+      if (dbError || !dbUser) {
+        console.error('Database user lookup error:', dbError);
+        ws.send(JSON.stringify({ type: 'error', message: 'User profile not found' }));
+        return ws.close(4002, 'User not found');
       }
 
-      if (dbUser.subscription_status !== 'active') {
-        ws.send(JSON.stringify({ type: 'error', message: 'Active subscription required to start streaming' }));
+      // Dual Entitlement Validation: Check Active Subscription OR Valid Event Pass
+      const isSubscriptionActive = dbUser.subscription_status === 'active';
+      const isPassValid = dbUser.one_time_expires_at && new Date(dbUser.one_time_expires_at) > new Date();
+
+      if (!isSubscriptionActive && !isPassValid) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Active subscription or valid pass required to start streaming' }));
         return ws.close(4002, 'Subscription inactive');
       }
 
@@ -211,11 +230,11 @@ wss.on('connection', async (ws, req) => {
       const usedSeconds = Number(dbUser.streaming_seconds_used) || 0;
 
       if (usedSeconds >= maxAllowedSeconds) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Monthly streaming quota exhausted' }));
+        ws.send(JSON.stringify({ type: 'error', message: 'Streaming time quota exhausted' }));
         return ws.close(4003, 'Quota exceeded');
       }
 
-      // Establish Deepgram Nova-2 Live Engine Connection
+      // Establish Deepgram Connection
       const dgConnection = deepgram.listen.live({
         model: 'nova-2',
         language: 'en-US',
@@ -227,16 +246,17 @@ wss.on('connection', async (ws, req) => {
       const audioBufferQueue = [];
 
       dgConnection.on(LiveTranscriptionEvents.Open, () => {
-        console.log(`Deepgram WebSocket connected for room: ${roomId}`);
+        console.log(`Deepgram engine ready for room: ${roomId}`);
         isDeepgramReady = true;
+        streamStartTime = Date.now();
 
-        // Flush any buffered audio chunks queued during initial handshake
+        // Flush buffered audio chunks
         while (audioBufferQueue.length > 0) {
           const chunk = audioBufferQueue.shift();
           try {
             dgConnection.send(chunk);
           } catch (e) {
-            console.error('Error flushing buffered audio to Deepgram:', e);
+            console.error('Error flushing initial audio buffer:', e);
           }
         }
       });
@@ -250,12 +270,12 @@ wss.on('connection', async (ws, req) => {
             isFinal: data.is_final
           });
 
-          // Send transcript back to presenter
+          // Echo to Presenter
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(messagePayload);
           }
 
-          // Broadcast transcript to connected audience members
+          // Broadcast to Audience & OBS Overlays
           const audienceRoom = rooms.get(roomId);
           if (audienceRoom) {
             audienceRoom.forEach((client) => {
@@ -270,12 +290,12 @@ wss.on('connection', async (ws, req) => {
       dgConnection.on(LiveTranscriptionEvents.Error, (err) => {
         console.error('Deepgram Connection Error:', err);
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Deepgram transcription error: ' + (err.message || 'Stream processing failed') }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Deepgram transcription error: ' + (err.message || 'Stream error') }));
         }
       });
 
       dgConnection.on(LiveTranscriptionEvents.Close, () => {
-        console.log(`Deepgram connection closed for room: ${roomId}`);
+        console.log(`Deepgram engine closed for room: ${roomId}`);
       });
 
       deepgramConnections.set(roomId, dgConnection);
@@ -285,14 +305,14 @@ wss.on('connection', async (ws, req) => {
       }
       userActivePresenterRooms.get(userId).add(roomId);
 
-      // Handle Incoming Binary Audio Stream Chunks
+      // Handle Audio Chunks from Microphone
       ws.on('message', (data) => {
         if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
           if (isDeepgramReady) {
             try {
               dgConnection.send(data);
             } catch (err) {
-              console.error('Error transmitting chunk to Deepgram:', err);
+              console.error('Error sending audio chunk to Deepgram:', err);
             }
           } else if (audioBufferQueue.length < 100) {
             audioBufferQueue.push(data);
@@ -300,9 +320,23 @@ wss.on('connection', async (ws, req) => {
         }
       });
 
-      // Cleanup Presenter Disconnects
-      ws.on('close', () => {
+      // Cleanup & Calculate Quota Usage upon Disconnect
+      ws.on('close', async () => {
         console.log(`Presenter disconnected from room: ${roomId}`);
+
+        // Update Used Seconds in Supabase
+        if (streamStartTime) {
+          const elapsedSeconds = Math.ceil((Date.now() - streamStartTime) / 1000);
+          if (elapsedSeconds > 0) {
+            const newTotalUsed = usedSeconds + elapsedSeconds;
+            await supabase
+              .from('users')
+              .update({ streaming_seconds_used: newTotalUsed })
+              .eq('id', userId);
+            console.log(`Recorded ${elapsedSeconds}s of streaming for user ${userId}. Total used: ${newTotalUsed}s`);
+          }
+        }
+
         const activeDg = deepgramConnections.get(roomId);
         if (activeDg) {
           activeDg.finish();
