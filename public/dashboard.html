@@ -20,7 +20,7 @@
       <h1 class="text-2xl font-bold tracking-tight text-white">AICaptions</h1>
     </div>
     <div class="flex items-center gap-4">
-      <span id="user-email" class="text-slate-400 text-sm">Loading user...</span>
+      <span id="user-email" class="text-slate-400 text-sm">Authenticating...</span>
       <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Manage Subscription</a>
       <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
     </div>
@@ -28,7 +28,7 @@
 
   <main class="max-w-6xl mx-auto space-y-8">
     
-    <!-- Primary Action Banner -->
+    <!-- Presenter Launch Control Banner -->
     <div class="card p-6 bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-6">
       <div>
         <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -38,7 +38,7 @@
           Launch your presenter interface to start broadcasting live audio, toggle microphones, and select speech recognition languages.
         </p>
       </div>
-      <a id="presenter-btn" href="#" target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition flex items-center gap-2 whitespace-nowrap shadow-lg shadow-blue-600/20">
+      <a id="presenter-btn" href="/presenter.html?roomId=main-stage" target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition flex items-center gap-2 whitespace-nowrap shadow-lg shadow-blue-600/20">
         <span>▶ Open Presenter Studio</span>
       </a>
     </div>
@@ -50,7 +50,7 @@
       <div class="card p-6 flex flex-col justify-between">
         <div>
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Plan</span>
-          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">--</h2>
+          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">FREE</h2>
         </div>
         <div class="mt-4 pt-4 border-t border-slate-700/60 flex justify-between items-center">
           <span class="text-xs text-slate-400">Account Status</span>
@@ -65,7 +65,7 @@
             <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Quota</span>
             <span id="usage-percent-badge" class="text-xs font-bold text-blue-400">0%</span>
           </div>
-          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 0 hrs</h2>
+          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 5 hrs</h2>
         </div>
         <div class="mt-4">
           <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
@@ -74,7 +74,7 @@
         </div>
       </div>
 
-      <!-- Max Concurrent Capacity -->
+      <!-- Stage Capacity -->
       <div class="card p-6 flex flex-col justify-between">
         <div>
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stage Capacity</span>
@@ -85,39 +85,37 @@
 
     </div>
 
-    <!-- Integration & Link Hub -->
+    <!-- Quick Links & Embed Settings -->
     <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
       
-      <!-- Studio Links & Direct Launch -->
       <div class="card p-6 space-y-4">
         <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <span>🔗</span> Quick Links
+          <span>🔗</span> Studio Links
         </h3>
         <div class="space-y-3">
           <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 flex justify-between items-center">
             <div>
-              <div class="text-sm font-medium text-white">Presenter Control Studio</div>
+              <div class="text-sm font-medium text-white">Presenter Studio</div>
               <div class="text-xs text-slate-400">Main stage audio broadcasting interface</div>
             </div>
-            <a id="presenter-link" href="#" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium underline">Open Studio ↗</a>
+            <a id="presenter-link" href="/presenter.html?roomId=main-stage" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium underline">Open Studio ↗</a>
           </div>
           <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 flex justify-between items-center">
             <div>
               <div class="text-sm font-medium text-white">OBS Overlay View</div>
-              <div class="text-xs text-slate-400">Transparent output for streaming software</div>
+              <div class="text-xs text-slate-400">Transparent output for OBS Studio / vMix</div>
             </div>
             <a id="overlay-link" href="/overlay.html?roomId=main-stage" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium underline">View Overlay ↗</a>
           </div>
         </div>
       </div>
 
-      <!-- Embed Settings -->
       <div class="card p-6 space-y-4">
         <h3 class="text-lg font-bold text-white flex items-center gap-2">
           <span>⚙️</span> Embed Settings
         </h3>
         <p class="text-xs text-slate-400">
-          To embed live captions into OBS Studio or vMix, configure a Web Browser Source using your target WebSocket endpoint:
+          To embed live captions into OBS Studio or vMix, create a Browser Source pointing to:
         </p>
         <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto">
           https://<span id="domain-placeholder">aicaptions-tkoc.onrender.com</span>/overlay.html?roomId=main-stage
@@ -129,53 +127,69 @@
   </main>
 
   <script>
-    const SUPABASE_URL = "YOUR_SUPABASE_URL";
-    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Ensure actual environment keys are placed here or loaded from your config endpoint
+    const SUPABASE_URL = window.env?.SUPABASE_URL || "https://euopdmwtowuxdzczwbul.supabase.co";
+    const SUPABASE_ANON_KEY = window.env?.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
+
+    let supabase = null;
+    if (window.supabase && SUPABASE_URL && !SUPABASE_URL.includes("YOUR_SUPABASE")) {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
 
     async function initDashboard() {
       document.getElementById("domain-placeholder").innerText = window.location.host;
 
+      if (!supabase) {
+        document.getElementById("user-email").innerText = "Demo Mode (Supabase Keys Missing)";
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) {
-        window.location.href = "/login.html";
+        // Prevent looping: Only redirect if explicitly not logged in
+        window.location.replace("/login.html");
         return;
       }
 
       document.getElementById("user-email").innerText = session.user.email;
 
-      // Attach authentication token and room ID to the presenter studio links
+      // Attach access token to presenter studio links
       const presenterUrl = `/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
       document.getElementById("presenter-btn").href = presenterUrl;
       document.getElementById("presenter-link").href = presenterUrl;
 
-      // Fetch User Quota & Plan details
-      const { data: profile } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
+      // Fetch user profile metrics safely
+      try {
+        const { data: profile } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", session.user.id)
+          .maybeSingle();
 
-      if (profile) {
-        document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
-        document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
+        if (profile) {
+          document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
+          document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
 
-        const usedHrs = ((profile.streaming_seconds_used || 0) / 3600).toFixed(1);
-        const maxHrs = ((profile.max_streaming_seconds || 18000) / 3600).toFixed(0);
-        document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
+          const usedHrs = ((profile.streaming_seconds_used || 0) / 3600).toFixed(1);
+          const maxHrs = ((profile.max_streaming_seconds || 18000) / 3600).toFixed(0);
+          document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
 
-        const pct = Math.min(100, Math.round((usedHrs / maxHrs) * 100)) || 0;
-        document.getElementById("usage-bar").style.width = `${pct}%`;
-        document.getElementById("usage-percent-badge").innerText = `${pct}%`;
+          const pct = Math.min(100, Math.round((usedHrs / maxHrs) * 100)) || 0;
+          document.getElementById("usage-bar").style.width = `${pct}%`;
+          document.getElementById("usage-percent-badge").innerText = `${pct}%`;
 
-        const roomCount = profile.allowed_rooms || 1;
-        document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage${roomCount > 1 ? 's' : ''}`;
+          const roomCount = profile.allowed_rooms || 1;
+          document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage${roomCount > 1 ? 's' : ''}`;
+        }
+      } catch (e) {
+        console.warn("Could not load user quota metrics:", e);
       }
     }
 
     document.getElementById("signout-btn").addEventListener("click", async () => {
-      await supabase.auth.signOut();
-      window.location.href = "/login.html";
+      if (supabase) await supabase.auth.signOut();
+      window.location.replace("/login.html");
     });
 
     initDashboard();
