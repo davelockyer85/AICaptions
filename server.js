@@ -41,10 +41,70 @@ function safeSend(ws, payload) {
   }
 }
 
+// Stripe Webhook needs raw body parsing
+app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET || ''
+    );
+  } catch (err) {
+    console.error(`Webhook Signature Verification Failed: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.client_reference_id;
+
+    if (userId) {
+      // Determine tier and allocation from Stripe Price ID
+      const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+      const priceId = lineItems.data[0]?.price?.id;
+
+      let planTier = 'free';
+      let maxSeconds = 3600; // 1 hour free
+      let allowedRooms = 1;
+
+      if (priceId === process.env.STARTER_PRICE_ID) {
+        planTier = 'starter';
+        maxSeconds = 36000; // 10 hours
+        allowedRooms = 1;
+      } else if (priceId === process.env.PRO_PRICE_ID) {
+        planTier = 'pro';
+        maxSeconds = 180000; // 50 hours
+        allowedRooms = 3;
+      } else if (priceId === process.env.EVENT_PASS_PRICE_ID) {
+        planTier = 'one_time';
+        maxSeconds = 86400; // 24 hours pass
+        allowedRooms = 2;
+      }
+
+      await supabase
+        .from('users')
+        .update({
+          plan_tier: planTier,
+          subscription_status: 'active',
+          max_streaming_seconds: maxSeconds,
+          allowed_rooms: allowedRooms,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      console.log(`✅ User ${userId} upgraded to ${planTier}`);
+    }
+  }
+
+  res.json({ received: true });
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 
-// Render Health Check
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
@@ -78,10 +138,10 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// WebSocket Handler
+// WebSocket Handling
 wss.on('connection', async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  const roomId = urlParams.get('roomId') || 'main-stage';
+  const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
   const role = urlParams.get('role') || 'viewer';
   const token = urlParams.get('token');
   const lang = urlParams.get('lang') || 'en-US';
@@ -94,16 +154,36 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
+    // Authenticate with Supabase
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
       ws.close(4003, 'Invalid authentication token');
       return;
     }
 
-    // Guard: if a DIFFERENT authenticated user already owns this room's
-    // active presenter slot, refuse the connection instead of silently
-    // kicking the legitimate presenter off. The same user reconnecting
-    // (page refresh, dropped connection) is still allowed to take over.
+    // Verify Subscription and Streaming Quota
+    const { data: dbUser, error: dbError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (dbError || !dbUser) {
+      ws.close(4003, 'User profile record not found');
+      return;
+    }
+
+    if (dbUser.subscription_status !== 'active' && dbUser.plan_tier !== 'free') {
+      ws.close(4003, 'Active subscription required');
+      return;
+    }
+
+    if (dbUser.max_streaming_seconds > 0 && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
+      ws.close(4006, 'Monthly streaming quota exhausted');
+      return;
+    }
+
+    // Room Conflict Prevention
     const existingPresenter = room.presenterWs;
     if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
       if (room.presenterUserId && room.presenterUserId !== user.id) {
@@ -115,6 +195,29 @@ wss.on('connection', async (ws, req) => {
 
     room.presenterWs = ws;
     room.presenterUserId = user.id;
+
+    // Track Stream Usage Timer
+    let streamStartTime = Date.now();
+    const timeTrackerInterval = setInterval(async () => {
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - streamStartTime) / 1000);
+      streamStartTime = now;
+
+      if (elapsedSeconds > 0) {
+        await supabase.rpc('increment_streaming_seconds', {
+          user_id_input: user.id,
+          seconds_input: elapsedSeconds
+        }).catch(async () => {
+          // Fallback if RPC function is not created in Supabase
+          const { data: current } = await supabase.from('users').select('streaming_seconds_used').eq('id', user.id).single();
+          if (current) {
+            await supabase.from('users').update({
+              streaming_seconds_used: (current.streaming_seconds_used || 0) + elapsedSeconds
+            }).eq('id', user.id);
+          }
+        });
+      }
+    }, 10000); // Sync every 10s
 
     let deepgramLive = null;
     let deepgramReady = false;
@@ -131,7 +234,6 @@ wss.on('connection', async (ws, req) => {
 
       deepgramLive.on(LiveTranscriptionEvents.Open, () => {
         deepgramReady = true;
-        // Flush any audio chunks that arrived before Deepgram finished connecting
         while (audioQueue.length > 0) {
           deepgramLive.send(audioQueue.shift());
         }
@@ -153,12 +255,11 @@ wss.on('connection', async (ws, req) => {
 
       deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
         console.error(`Deepgram Error [room=${roomId}]:`, err);
-        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
+        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text processing error.' }));
       });
 
       deepgramLive.on(LiveTranscriptionEvents.Close, () => {
         deepgramReady = false;
-        console.warn(`Deepgram connection closed [room=${roomId}]`);
       });
     } catch (err) {
       console.error('Failed to initialize Deepgram:', err);
@@ -166,27 +267,23 @@ wss.on('connection', async (ws, req) => {
     }
 
     ws.on('message', (message) => {
-      if (typeof message === 'string') return; // control/text frames, not audio
+      if (typeof message === 'string') return;
       if (!deepgramLive) return;
 
       if (deepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
       } else {
-        // Buffer briefly instead of dropping audio while Deepgram connects
         audioQueue.push(message);
       }
     });
 
     ws.on('close', () => {
+      clearInterval(timeTrackerInterval);
+
       if (deepgramLive) {
-        try { deepgramLive.finish(); } catch (e) { /* already closed */ }
+        try { deepgramLive.finish(); } catch (e) {}
       }
 
-      // Only clear the room's presenter slot if this socket is STILL the
-      // registered presenter. Without this check, a replaced (kicked)
-      // socket's delayed 'close' event can wipe out a newer presenter's
-      // active session for the same room - this was the root cause of
-      // sessions breaking when a second user connected.
       if (room.presenterWs === ws) {
         room.presenterWs = null;
         room.presenterUserId = null;
@@ -198,7 +295,7 @@ wss.on('connection', async (ws, req) => {
     });
 
   } else {
-    // Viewer / OBS Overlay / Mobile View
+    // Spectator / OBS Overlay / Mobile Viewers
     room.viewers.add(ws);
 
     ws.on('close', () => {
@@ -212,5 +309,5 @@ wss.on('connection', async (ws, req) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Live Caption Server running on port ${PORT}`);
 });
