@@ -149,32 +149,34 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function initDashboard() {
+      const origin = window.location.origin;
+
+      // 1. Instantly populate public links (No auth session waiting required)
+      const obsUrl = `${origin}/overlay.html?roomId=main-stage`;
+      const mobileUrl = `${origin}/mobile.html?roomId=main-stage`;
+
+      document.getElementById("obs-url-input").value = obsUrl;
+      document.getElementById("mobile-url-input").value = mobileUrl;
+      document.getElementById("overlay-launch-btn").href = obsUrl;
+      document.getElementById("mobile-launch-btn").href = mobileUrl;
+
+      // 2. Fetch authenticated session & populate Presenter View + User Profile
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!session) {
+        if (error || !session) {
           window.location.replace("/auth.html");
           return;
         }
 
         document.getElementById("user-email").innerText = session.user.email;
 
-        const origin = window.location.origin;
+        // Generate Presenter URL with access token
         const presenterUrl = `${origin}/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
-        const obsUrl = `${origin}/overlay.html?roomId=main-stage`;
-        const mobileUrl = `${origin}/mobile.html?roomId=main-stage`;
-
-        // Set Textbox Input Values
         document.getElementById("presenter-url-input").value = presenterUrl;
-        document.getElementById("obs-url-input").value = obsUrl;
-        document.getElementById("mobile-url-input").value = mobileUrl;
-
-        // Set Action Buttons
         document.getElementById("presenter-launch-btn").href = presenterUrl;
-        document.getElementById("overlay-launch-btn").href = obsUrl;
-        document.getElementById("mobile-launch-btn").href = mobileUrl;
 
-        // Fetch User Profile
+        // Fetch User Profile Data
         const { data: profile } = await supabase
           .from("users")
           .select("*")
@@ -204,6 +206,7 @@
       const btn = document.getElementById(btnId);
       const input = document.getElementById(inputId);
       btn.addEventListener("click", () => {
+        if (!input.value || input.value.startsWith("Loading")) return;
         navigator.clipboard.writeText(input.value);
         const originalText = btn.innerText;
         btn.innerText = "Copied!";
