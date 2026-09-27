@@ -426,7 +426,7 @@
           activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
           activeMediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
-              activeWebSocket.send(e.data);
+              activeWebSocket.send(event.data);
             }
           };
           activeMediaRecorder.start(250); // 250ms chunks
