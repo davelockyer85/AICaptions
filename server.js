@@ -1,183 +1,148 @@
-import express from 'express';
-import http from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
-import Stripe from 'stripe';
-import { createClient as createDeepgramClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-
+import express from "express";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 dotenv.config();
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const server = http.createServer(app);
+const server = createServer(app);
 const wss = new WebSocketServer({ server });
-
-// Initialize Stripe & Service Clients
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
-const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error("❌ CRITICAL: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+app.use(express.static(path.join(__dirname, "public")));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
+if (!DEEPGRAM_KEY) {
+  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
 }
-
-const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
-const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Track active rooms (simplified room management)
-const rooms = new Map(); // roomId -> { presenterWs, viewers: Set }
-
-app.use(express.json());
-app.use(express.static('public'));
-
-// Render Health Check Route
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
-
-// ---------------------------------------------------------
-// STRIPE CHECKOUT ROUTE
-// ---------------------------------------------------------
-app.post("/create-checkout-session", async (req, res) => {
+const deepgram = createClient(DEEPGRAM_KEY);
+const clients = {
+  overlays: new Set(),
+  attendees: new Set()
+};
+// Global active target language for stage overlay (default: English)
+let targetOverlayLang = "en";
+// Free Real-time Translation Helper (MyMemory API)
+async function translateText(text, targetLang) {
+  if (!targetLang || targetLang === "en") return text;
   try {
-    const { priceId, userId } = req.body;
-
-    if (!priceId) {
-      return res.status(400).json({ error: "Missing priceId" });
-    }
-
-    // Compare incoming price ID against our one-time products
-    const oneTimePrices = [
-      process.env.EVENT_PASS_PRICE_ID,
-      process.env.PRO_EVENT_PASS_PRICE_ID
-    ].filter(Boolean);
-
-    const isOneTimePurchase = oneTimePrices.includes(priceId);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      // Dynamically switch modes between payment and subscription
-      mode: isOneTimePurchase ? "payment" : "subscription",
-      client_reference_id: userId || null,
-      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
-      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+  https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
+11/27
+22/09/2026, 23:58 AI Job Search and Assistant Setup
+    );
+    const data = await res.json();
+    return data.responseData?.translatedText || text;
+  } catch (err) {
+    console.error("[Translation Error]", err.message);
+    return text;
+} }
+wss.on("connection", (ws, req) => {
+  const url = req.url;
+  // ROUTE A: Stage Microphones / Audio Ingest
+  if (url === "/ws/ingest") {
+    console.log("[Ingest] Presenter audio connected.");
+    const audioQueue = [];
+    let isDgReady = false;
+    const dgLive = deepgram.listen.live({
+      model: "nova-3",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      endpointing: 300
     });
-
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error("Stripe session error:", error);
-    res.status(500).json({ error: error.message });
-  }
+    dgLive.on(LiveTranscriptionEvents.Open, () => {
+      console.log("[Deepgram] Connected. Flushing buffered audio...");
+      isDgReady = true;
+      while (audioQueue.length > 0) {
+        dgLive.send(audioQueue.shift());
+} });
+    dgLive.on(LiveTranscriptionEvents.Error, (err) => {
+      console.error("[Deepgram Error]", err);
 });
-
-// ---------------------------------------------------------
-// WEBSOCKET & DEEPGRAM AUDIO STREAMING
-// ---------------------------------------------------------
-wss.on('connection', async (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  const roomId = urlParams.get('roomId') || 'main-stage';
-  const role = urlParams.get('role') || 'viewer';
-  const token = urlParams.get('token');
-  const lang = urlParams.get('lang') || 'en-US';
-
-  // --- PRESENTER LOGIC ---
-  if (role === 'presenter') {
-    if (!token) {
-      ws.close(4003, "Authentication token missing");
-      return;
-    }
-    
-    // Verify user identity securely via Supabase
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      ws.close(4003, "Invalid or expired token");
-      return;
-    }
-
-    if (!rooms.has(roomId)) {
-      rooms.set(roomId, { presenterWs: null, viewers: new Set() });
-    }
-    const room = rooms.get(roomId);
-    
-    // Close existing presenter if someone new connects
-    if (room.presenterWs && room.presenterWs.readyState === WebSocket.OPEN) {
-      room.presenterWs.close(4000, "New presenter connected");
-    }
-    room.presenterWs = ws;
-
-    let deepgramLive;
-    try {
-      deepgramLive = deepgram.listen.live({
-        model: 'nova-2',
-        language: lang,
-        smart_format: true,
-        encoding: 'webm/opus',
-        sample_rate: 48000,
-      });
-
-      deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
-        const sentence = data.channel?.alternatives?.[0]?.transcript;
-        if (sentence && sentence.trim() !== "") {
-          const payload = JSON.stringify({
-            type: 'caption',
-            text: sentence,
-            isFinal: data.is_final
-          });
-
-          // Echo back to presenter
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(payload);
-          }
-
-          // Broadcast to all viewers
-          room.viewers.forEach(viewer => {
-            if (viewer.readyState === WebSocket.OPEN) {
-              viewer.send(payload);
-            }
-          });
+    dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+      const transcript = data.channel.alternatives[0]?.transcript;
+      const isFinal = data.is_final;
+      if (transcript && transcript.trim().length > 0) {
+        let overlayText = transcript;
+        // Translate finalized phrases if target language is not English
+        if (targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, targetOverlayLang);
         }
-      });
-    } catch (dgErr) {
-      console.error("Deepgram connection error:", dgErr);
-    }
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: targetOverlayLang
+        });
+        clients.overlays.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(overlayPayload);
+          }
+});
+        // Broadcast to mobile attendees with their selected language
+        if (isFinal) {
+          clients.attendees.forEach(async (attendee) => {
+            if (attendee.readyState === WebSocket.OPEN) {
+              const translated = await translateText(transcript, attendee.language || "en");
+              attendee.send(
+                JSON.stringify({ text: translated, original: transcript })
+              );
+} });
+} }
+});
+https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
+12/27
 
-    ws.on('message', (message) => {
-      // Forward raw audio blob to Deepgram
-      if (deepgramLive && typeof message !== 'string') {
-        deepgramLive.send(message);
-      }
+22/09/2026, 23:58 AI Job Search and Assistant Setup
+    // Handle incoming audio chunks OR JSON control messages (e.g. language change)
+    ws.on("message", (message, isBinary) => {
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            targetOverlayLang = controlData.lang;
+            console.log(`[Presenter] Target overlay language switched to: ${targetOverlayLang}`);
+          }
+} catch (e) {}
+return; }
+      if (isDgReady && dgLive.getReadyState() === 1) {
+        dgLive.send(message);
+      } else {
+        audioQueue.push(message);
+} });
+    ws.on("close", () => {
+      console.log("[Ingest] Presenter disconnected.");
+      dgLive.finish();
+}); }
+  // ROUTE B: Stage Video Overlay (OBS / vMix)
+  else if (url === "/ws/overlay") {
+    console.log("[Overlay] OBS / Stage display connected.");
+    clients.overlays.add(ws);
+    ws.on("close", () => clients.overlays.delete(ws));
+}
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (url.startsWith("/ws/attendee")) {
+    console.log("[Attendee] Mobile viewer connected.");
+    const params = new URLSearchParams(url.split("?")[1]);
+    ws.language = params.get("lang") || "en";
+    clients.attendees.add(ws);
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+        }
+      } catch (e) {}
     });
-
-    ws.on('close', () => {
-      if (deepgramLive) deepgramLive.finish();
-      rooms.delete(roomId);
-    });
-
-  // --- VIEWER LOGIC ---
-  } else {
-    if (!rooms.has(roomId)) {
-      rooms.set(roomId, { presenterWs: null, viewers: new Set() });
-    }
-    const room = rooms.get(roomId);
-    room.viewers.add(ws);
-
-    ws.on('close', () => {
-      room.viewers.delete(ws);
-    });
+    ws.on("close", () => clients.attendees.delete(ws));
   }
 });
-
-// ---------------------------------------------------------
-// SERVER BOOT
-// ---------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
