@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presenter Console - AICaptions</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0b1120; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+  </style>
+</head>
+<body class="min-h-screen p-6 md:p-10 flex flex-col items-center justify-center">
+
+  <div class="card max-w-2xl w-full p-8 space-y-6">
+    <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+      <div>
+        <h1 class="text-2xl font-bold text-white">🎙️ Presenter Studio</h1>
+        <p class="text-xs text-slate-400 mt-1">Room ID: <span id="display-room-id" class="font-mono text-blue-400">--</span></p>
+      </div>
+      <div id="status-badge" class="px-3 py-1 bg-slate-800 text-slate-400 text-xs font-semibold rounded-full border border-slate-700">
+        ● OFFLINE
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Target Language</label>
+        <select id="language-select" class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="en-US">English (US)</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="zh">Mandarin</option>
+          <option value="ja">Japanese</option>
+        </select>
+      </div>
+
+      <button id="toggle-stream-btn" class="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-blue-600/20">
+        Start Streaming
+      </button>
+    </div>
+
+    <!-- Live Transcript Preview -->
+    <div class="space-y-2">
+      <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Live Local Preview</label>
+      <div id="transcript-box" class="w-full h-40 bg-slate-900 border border-slate-800 rounded-lg p-4 overflow-y-auto text-slate-300 text-base leading-relaxed">
+        <span class="text-slate-500 italic">Click "Start Streaming" and begin speaking...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get("roomId") || "main-stage";
+    const token = urlParams.get("token");
+
+    document.getElementById("display-room-id").innerText = roomId;
+
+    let socket = null;
+    let mediaRecorder = null;
+    let isStreaming = false;
+
+    const toggleBtn = document.getElementById("toggle-stream-btn");
+    const statusBadge = document.getElementById("status-badge");
+    const transcriptBox = document.getElementById("transcript-box");
+
+    toggleBtn.addEventListener("click", () => {
+      if (!isStreaming) {
+        startStream();
+      } else {
+        stopStream();
+      }
+    });
+
+    async function startStream() {
+      if (!token) {
+        alert("Missing authentication token. Please launch from the dashboard.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const lang = document.getElementById("language-select").value;
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        
+        socket = new WebSocket(`${protocol}//${window.location.host}?roomId=${encodeURIComponent(roomId)}&role=presenter&token=${encodeURIComponent(token)}&lang=${lang}`);
+
+        socket.onopen = () => {
+          isStreaming = true;
+          toggleBtn.innerText = "Stop Streaming";
+          toggleBtn.className = "w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-red-600/20";
+          
+          statusBadge.innerText = "● LIVE";
+          statusBadge.className = "px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/40 text-xs font-semibold rounded-full animate-pulse";
+          
+          transcriptBox.innerText = "";
+
+          // Record and stream audio chunks
+          mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+              socket.send(event.data);
+            }
+          };
+          mediaRecorder.start(250);
+        };
+
+        socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === "caption" && data.text) {
+            transcriptBox.innerText = data.text;
+            transcriptBox.scrollTop = transcriptBox.scrollHeight;
+          }
+        };
+
+        socket.onclose = () => stopStream();
+        socket.onerror = (err) => console.error("WebSocket Error:", err);
+
+      } catch (err) {
+        alert("Microphone access denied or error occurred: " + err.message);
+      }
+    }
+
+    function stopStream() {
+      isStreaming = false;
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      if (socket) socket.close();
+
+      toggleBtn.innerText = "Start Streaming";
+      toggleBtn.className = "w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg rounded-xl transition shadow-lg shadow-blue-600/20";
+
+      statusBadge.innerText = "● OFFLINE";
+      statusBadge.className = "px-3 py-1 bg-slate-800 text-slate-400 text-xs font-semibold rounded-full border border-slate-700";
+    }
+  </script>
+</body>
+</html>
