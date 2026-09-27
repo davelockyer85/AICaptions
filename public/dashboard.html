@@ -3,138 +3,136 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AICaptions</title>
+  <title>AICaptions Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+    body { background-color: #0b0f19; color: #f1f5f9; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    .glass-card { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(51, 65, 85, 0.8); backdrop-filter: blur(8px); }
   </style>
 </head>
-<body class="min-h-screen p-6 md:p-10">
+<body class="min-h-screen pb-12">
 
-  <!-- Navigation Header -->
-  <header class="max-w-6xl mx-auto flex justify-between items-center mb-8 pb-4 border-b border-slate-800">
-    <div class="flex items-center gap-2">
-      <span class="text-2xl">🎙️</span>
-      <h1 class="text-2xl font-bold tracking-tight text-white">AICaptions</h1>
-    </div>
-    <div class="flex items-center gap-4">
-      <span id="user-email" class="text-slate-400 text-sm">Loading user...</span>
-      <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Plans & Pricing</a>
-      <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
+  <!-- Header Navigation -->
+  <header class="border-b border-slate-800 bg-slate-950/80 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🎙️</span>
+        <span class="font-bold text-xl text-white tracking-tight">AICaptions <span class="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono">LIVE</span></span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span id="user-email" class="text-xs sm:text-sm text-slate-400 font-mono">Loading...</span>
+        <a href="/pricing.html" class="text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition">Plans</a>
+        <button id="signout-btn" class="text-xs sm:text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg border border-red-500/20 transition">Sign Out</button>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto space-y-8">
-    
-    <!-- Primary Presenter Launch Banner -->
-    <div class="card p-6 bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-6">
-      <div>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+
+    <!-- Account Overview Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="glass-card p-5 rounded-xl flex justify-between items-center">
+        <div>
+          <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Current Plan</p>
+          <p id="plan-tier" class="text-2xl font-black text-white mt-1">FREE</p>
+        </div>
+        <span id="plan-status" class="px-2.5 py-1 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Active</span>
+      </div>
+
+      <div class="glass-card p-5 rounded-xl">
+        <div class="flex justify-between text-xs text-slate-400 font-medium uppercase tracking-wider mb-2">
+          <span>Streaming Usage</span>
+          <span id="usage-percent" class="text-blue-400 font-bold">0%</span>
+        </div>
+        <p id="usage-hours" class="text-2xl font-black text-white">0.0 / 5.0 hrs</p>
+        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-3">
+          <div id="usage-bar" class="bg-blue-500 h-full w-0 transition-all duration-300"></div>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-xl flex justify-between items-center">
+        <div>
+          <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Active Stage Room</p>
+          <p class="text-2xl font-black text-white mt-1">main-stage</p>
+        </div>
+        <div class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></div>
+      </div>
+    </div>
+
+    <!-- Links & Stream Controls Section -->
+    <section class="space-y-6">
+      <div class="border-b border-slate-800 pb-3">
         <h2 class="text-xl font-bold text-white flex items-center gap-2">
-          <span>🎙️</span> Presenter Studio Control
+          <span>📡</span> Broadcast Links & Control Center
         </h2>
-        <p class="text-sm text-slate-300 mt-1">
-          Start streaming live audio, control transcription languages, and broadcast captions to all overlays and mobile devices.
-        </p>
-      </div>
-      <a id="presenter-primary-btn" href="#" target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition flex items-center gap-2 whitespace-nowrap shadow-lg shadow-blue-600/20">
-        ▶ Launch Presenter View
-      </a>
-    </div>
-
-    <!-- Tier & Usage Overview -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="card p-6 flex flex-col justify-between">
-        <div>
-          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plan Tier</span>
-          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">FREE</h2>
-        </div>
-        <div class="mt-4 pt-4 border-t border-slate-700/60 flex justify-between items-center">
-          <span class="text-xs text-slate-400">Subscription Status</span>
-          <span id="plan-status" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
-        </div>
+        <p class="text-sm text-slate-400 mt-1">Direct URLs for streaming, OBS browser source integration, and mobile audience viewing.</p>
       </div>
 
-      <div class="card p-6 flex flex-col justify-between">
-        <div>
-          <div class="flex justify-between items-center">
-            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Quota</span>
-            <span id="usage-percent" class="text-xs font-bold text-blue-400">0%</span>
-          </div>
-          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 5.0 hrs</h2>
-        </div>
-        <div class="mt-4">
-          <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
-            <div id="usage-bar" class="bg-blue-500 h-full w-0 transition-all duration-500"></div>
-          </div>
-        </div>
-      </div>
+      <div class="space-y-4">
 
-      <div class="card p-6 flex flex-col justify-between">
-        <div>
-          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stage Configuration</span>
-          <h2 class="text-3xl font-extrabold text-white mt-2">Main Stage</h2>
-        </div>
-        <p class="text-xs text-slate-400 mt-4">Room ID: <code class="bg-slate-900 px-2 py-1 rounded text-blue-300">main-stage</code></p>
-      </div>
-    </div>
-
-    <!-- Stage Links section: Presenter, OBS Overlay, Mobile View -->
-    <section class="space-y-4">
-      <h3 class="text-lg font-bold text-white flex items-center gap-2">
-        <span>🔗</span> Stage Stream Links
-      </h3>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        <!-- 1. Presenter View -->
-        <div class="card p-6 flex flex-col justify-between space-y-4">
-          <div>
-            <div class="flex items-center gap-2 text-blue-400 font-bold mb-1">
-              <span>🎙️</span> Presenter Studio
+        <!-- 1. Presenter View Box -->
+        <div class="glass-card p-6 rounded-xl space-y-4 border-l-4 border-l-blue-500">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                <span>🎙️</span> Presenter Studio URL
+              </h3>
+              <p class="text-xs text-slate-400">Open this tab to capture your microphone and transmit captions live.</p>
             </div>
-            <p class="text-xs text-slate-400">Broadcast studio interface for audio capture and live microphone management.</p>
-          </div>
-          <div class="space-y-2">
-            <a id="presenter-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-center text-white font-bold text-xs rounded-lg transition">
-              Open Studio Tab ↗
+            <a id="presenter-launch-btn" href="#" target="_blank" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition text-center shadow-lg shadow-blue-600/20 whitespace-nowrap">
+              Launch Presenter Studio ↗
             </a>
           </div>
-        </div>
 
-        <!-- 2. OBS Overlay View -->
-        <div class="card p-6 flex flex-col justify-between space-y-4">
-          <div>
-            <div class="flex items-center gap-2 text-emerald-400 font-bold mb-1">
-              <span>🖥️</span> OBS Transparent Overlay
-            </div>
-            <p class="text-xs text-slate-400">Transparent overlay link designed for OBS Studio Browser Source & vMix.</p>
-          </div>
-          <div class="space-y-2">
-            <a id="overlay-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-center text-white font-bold text-xs rounded-lg transition border border-slate-700">
-              Open Overlay Preview ↗
-            </a>
-            <button id="copy-overlay-btn" class="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs rounded-lg transition border border-emerald-500/30">
-              Copy OBS Browser Link
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="presenter-url-input" readonly class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-blue-300 focus:outline-none" value="Loading authentication token..." />
+            <button id="copy-presenter-btn" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition whitespace-nowrap">
+              Copy URL
             </button>
           </div>
         </div>
 
-        <!-- 3. Mobile View -->
-        <div class="card p-6 flex flex-col justify-between space-y-4">
-          <div>
-            <div class="flex items-center gap-2 text-purple-400 font-bold mb-1">
-              <span>📱</span> Mobile Audience View
+        <!-- 2. OBS Overlay URL Box -->
+        <div class="glass-card p-6 rounded-xl space-y-4 border-l-4 border-l-emerald-500">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                <span>🖥️</span> OBS Transparent Overlay URL
+              </h3>
+              <p class="text-xs text-slate-400">Add as a <strong>Browser Source</strong> in OBS or vMix (Recommended: 1920x1080, transparent background).</p>
             </div>
-            <p class="text-xs text-slate-400">Clean, responsive web view for event attendees reading live captions on mobile devices.</p>
+            <a id="overlay-launch-btn" href="#" target="_blank" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-lg border border-emerald-500/30 transition text-center whitespace-nowrap">
+              Open Overlay Preview ↗
+            </a>
           </div>
-          <div class="space-y-2">
-            <a id="mobile-link-btn" href="#" target="_blank" class="block w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-center text-white font-bold text-xs rounded-lg transition border border-slate-700">
+
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="obs-url-input" readonly class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-emerald-300 focus:outline-none" value="Generating URL..." />
+            <button id="copy-obs-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap">
+              Copy Link
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Mobile View URL Box -->
+        <div class="glass-card p-6 rounded-xl space-y-4 border-l-4 border-l-purple-500">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                <span>📱</span> Mobile Audience View URL
+              </h3>
+              <p class="text-xs text-slate-400">Share this link or QR code with event attendees to view captions on mobile screens.</p>
+            </div>
+            <a id="mobile-launch-btn" href="#" target="_blank" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-purple-400 font-bold text-xs rounded-lg border border-purple-500/30 transition text-center whitespace-nowrap">
               Open Mobile View ↗
             </a>
-            <button id="copy-mobile-btn" class="w-full py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-semibold text-xs rounded-lg transition border border-purple-500/30">
-              Copy Mobile Audience Link
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="mobile-url-input" readonly class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-purple-300 focus:outline-none" value="Generating URL..." />
+            <button id="copy-mobile-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap">
+              Copy Link
             </button>
           </div>
         </div>
@@ -150,9 +148,6 @@
 
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let overlayUrl = "";
-    let mobileUrl = "";
-
     async function initDashboard() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -166,20 +161,20 @@
 
         const origin = window.location.origin;
         const presenterUrl = `${origin}/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
-        overlayUrl = `${origin}/overlay.html?roomId=main-stage`;
-        mobileUrl = `${origin}/mobile.html?roomId=main-stage`;
+        const obsUrl = `${origin}/overlay.html?roomId=main-stage`;
+        const mobileUrl = `${origin}/mobile.html?roomId=main-stage`;
 
-        // Bind Presenter View Links
-        document.getElementById("presenter-primary-btn").href = presenterUrl;
-        document.getElementById("presenter-link-btn").href = presenterUrl;
+        // Set Textbox Input Values
+        document.getElementById("presenter-url-input").value = presenterUrl;
+        document.getElementById("obs-url-input").value = obsUrl;
+        document.getElementById("mobile-url-input").value = mobileUrl;
 
-        // Bind OBS Overlay Links
-        document.getElementById("overlay-link-btn").href = overlayUrl;
+        // Set Action Buttons
+        document.getElementById("presenter-launch-btn").href = presenterUrl;
+        document.getElementById("overlay-launch-btn").href = obsUrl;
+        document.getElementById("mobile-launch-btn").href = mobileUrl;
 
-        // Bind Mobile View Links
-        document.getElementById("mobile-link-btn").href = mobileUrl;
-
-        // Fetch User Profile Data from Supabase
+        // Fetch User Profile
         const { data: profile } = await supabase
           .from("users")
           .select("*")
@@ -201,20 +196,24 @@
           document.getElementById("usage-percent").innerText = `${pct}%`;
         }
       } catch (err) {
-        console.error("Dashboard initialization error:", err);
+        console.error("Initialization Error:", err);
       }
     }
 
-    // Copy Handlers
-    document.getElementById("copy-overlay-btn").addEventListener("click", () => {
-      navigator.clipboard.writeText(overlayUrl);
-      alert("OBS Browser Source Link copied to clipboard!");
-    });
+    function setupCopy(btnId, inputId) {
+      const btn = document.getElementById(btnId);
+      const input = document.getElementById(inputId);
+      btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(input.value);
+        const originalText = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(() => { btn.innerText = originalText; }, 2000);
+      });
+    }
 
-    document.getElementById("copy-mobile-btn").addEventListener("click", () => {
-      navigator.clipboard.writeText(mobileUrl);
-      alert("Mobile Audience Link copied to clipboard!");
-    });
+    setupCopy("copy-presenter-btn", "presenter-url-input");
+    setupCopy("copy-obs-btn", "obs-url-input");
+    setupCopy("copy-mobile-btn", "mobile-url-input");
 
     document.getElementById("signout-btn").addEventListener("click", async () => {
       await supabase.auth.signOut();
