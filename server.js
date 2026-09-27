@@ -13,11 +13,32 @@ app.use(express.json());
 app.use(express.static("public"));
 
 // Initialization
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-const supabase = createSupabaseClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+// Endpoint to create Stripe Checkout Session
+app.post('/api/create-checkout-session', async (req, res) => {
+  try {
+    const { priceId, mode } = req.body; // mode: 'subscription' or 'payment'
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId, // Stripe Price ID (e.g. 'price_12345')
+          quantity: 1,
+        },
+      ],
+      mode: mode || 'subscription',
+      success_url: `${req.headers.origin}/dashboard.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.origin}/pricing.html`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY || "");
 
 // State Tracking Maps
