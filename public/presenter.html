@@ -12,11 +12,7 @@
       max-width: 800px;
       margin: 0 auto;
       text-align: center;
-}
-https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
-13/27
-22/09/2026, 23:58
-AI Job Search and Assistant Setup
+    }
     h1 { margin-bottom: 0.5rem; }
     p.sub { color: #94a3b8; margin-bottom: 2rem; }
     .btn-start {
@@ -33,6 +29,7 @@ AI Job Search and Assistant Setup
     }
     .btn-start:hover { background: #1d4ed8; }
     #status { margin-top: 1.5rem; font-weight: 500; color: #64748b; }
+    
     .lang-section {
       margin-top: 2.5rem;
       background: #1e293b;
@@ -40,15 +37,15 @@ AI Job Search and Assistant Setup
       border-radius: 16px;
       border: 1px solid #334155;
     }
-    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-s
+    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .lang-tabs {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       justify-content: center;
       margin-top: 1rem;
-}
-.tab {
+    }
+    .tab {
       padding: 0.6rem 1.2rem;
       background: #0f172a;
       color: #94a3b8;
@@ -64,90 +61,96 @@ AI Job Search and Assistant Setup
       color: #ffffff;
       border-color: #10b981;
       font-weight: 600;
-} </style>
+    }
+  </style>
 </head>
 <body>
   <h1>Stage Presenter Panel</h1>
   <p class="sub">Live Speech-to-Text & Real-time Overlay Translator</p>
+
   <button id="startBtn">Start Streaming Audio</button>
   <p id="status">Status: Disconnected</p>
+
   <div class="lang-section">
     <h3>Stage Overlay Target Language</h3>
     <div class="lang-tabs">
- <button class="tab active" onclick="setLanguage('en', this)">
-       English</button>
-Spanish</button>
-French</button>
-German</button>
-Chinese</button>
-Japanese</button>
-Italian</button>
-Portuguese</button>
-     <button class="tab" onclick="setLanguage('es', this)">
-    <button class="tab" onclick="setLanguage('fr', this)">
-    <button class="tab" onclick="setLanguage('de', this)">
-    <button class="tab" onclick="setLanguage('zh', this)">
-    <button class="tab" onclick="setLanguage('ja', this)">
-    <button class="tab" onclick="setLanguage('it', this)">
-    <button class="tab" onclick="setLanguage('pt', this)">
+      <button class="tab active" onclick="setLanguage('en', this)">🇺🇸 English</button>
+      <button class="tab" onclick="setLanguage('es', this)">🇪🇸 Spanish</button>
+      <button class="tab" onclick="setLanguage('fr', this)">🇫🇷 French</button>
+      <button class="tab" onclick="setLanguage('de', this)">🇩🇪 German</button>
+      <button class="tab" onclick="setLanguage('zh', this)">🇨🇳 Chinese</button>
+      <button class="tab" onclick="setLanguage('ja', this)">🇯🇵 Japanese</button>
+      <button class="tab" onclick="setLanguage('it', this)">🇮🇹 Italian</button>
+      <button class="tab" onclick="setLanguage('pt', this)">🇵🇹 Portuguese</button>
+    </div>
   </div>
-</div>
-<script>
-  const startBtn = document.getElementById("startBtn");
-  const status = document.getElementById("status");
-  let ws, mediaRecorder;
-      https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
-14/27
 
-22/09/2026, 23:58 AI Job Search and Assistant Setup
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const status = document.getElementById("status");
+    let ws, mediaRecorder;
     let selectedLang = "en";
+
     function setLanguage(langCode, btnElement) {
       selectedLang = langCode;
+      
       // Update UI tab selection styles
       document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
       btnElement.classList.add("active");
+
       // Send language switch event over WebSocket if connected
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
         console.log(`[Presenter] Switched overlay target language to: ${selectedLang}`);
       }
-}
+    }
+
     startBtn.onclick = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
         ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
+
         ws.onopen = () => {
           status.innerText = "Status: Live & Streaming Stage Audio";
           status.style.color = "#10b981";
+          
           // Send initial language preference
           ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+
           let options = {};
           if (MediaRecorder.isTypeSupported("audio/webm")) {
             options = { mimeType: "audio/webm" };
           } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
             options = { mimeType: "audio/mp4" };
           }
+
           mediaRecorder = new MediaRecorder(stream, options);
+          
           mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
             }
-};
+          };
+          
           mediaRecorder.start(250);
         };
+
         ws.onclose = () => {
           status.innerText = "Status: Disconnected";
           status.style.color = "#ef4444";
-};
+        };
+
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
-};
+        };
+
       } catch (err) {
         console.error("Mic Error:", err);
         status.innerText = "Status: Microphone Access Denied";
         status.style.color = "#ef4444";
-} };
+      }
+    };
   </script>
 </body>
 </html>
