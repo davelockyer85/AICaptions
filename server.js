@@ -183,17 +183,22 @@ wss.on("connection", async (ws, req) => {
     return;
   }
 
-  // E. Initialize Deepgram Connection
+ // E. Initialize Deepgram Connection
   try {
+    // 1. Omit encoding/sample_rate so Deepgram auto-detects browser WebM/Opus audio
     const deepgramLive = deepgram.listen.live({
       model: "nova-3",
       language: "en-US",
       smart_format: true,
-      interim_results: true,
+      interim_results: true
     });
 
+    let isDeepgramReady = false;
+
+    // 2. Set ready flag ONLY when Deepgram socket emits Open
     deepgramLive.on(LiveTranscriptionEvents.Open, () => {
       console.log(`🎙️ Deepgram connection opened for room: ${roomId}`);
+      isDeepgramReady = true;
     });
 
     deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
@@ -218,17 +223,23 @@ wss.on("connection", async (ws, req) => {
       ws.send(JSON.stringify({ error: "Transcription error occurred." }));
     });
 
+    deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+      console.log(`Deepgram connection closed for room: ${roomId}`);
+      isDeepgramReady = false;
+    });
+
     deepgramConnections.set(roomId, deepgramLive);
 
-    // Forward audio chunks from WebSocket to Deepgram
+    // 3. Forward audio chunks ONLY when Deepgram is verified open
     ws.on("message", (message) => {
-      if (deepgramLive.getReadyState() === 1) {
+      if (isDeepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
       }
     });
 
     ws.on("close", (code, reason) => {
       console.warn(`⚠️ Presenter disconnected. Code: ${code}, Reason: ${reason.toString()}`);
+      isDeepgramReady = false;
       if (deepgramConnections.has(roomId)) {
         deepgramConnections.get(roomId).finish();
         deepgramConnections.delete(roomId);
