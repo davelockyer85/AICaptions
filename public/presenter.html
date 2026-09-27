@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presenter Console - AICaptions</title>
+  <title>Presenter Studio - AICaptions</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
     .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
@@ -20,7 +21,7 @@
         <h1 class="text-xl font-bold text-white flex items-center gap-2">
           <span>🎙️</span> Presenter Studio
         </h1>
-        <p id="room-display" class="text-xs text-slate-400 mt-1">Room ID: connecting...</p>
+        <p id="room-display" class="text-xs text-slate-400 mt-1">Room: main-stage</p>
       </div>
       <div id="status-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-400">
         <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
@@ -31,7 +32,7 @@
     <!-- Controls -->
     <div class="space-y-4">
       <div>
-        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Target Language</label>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Speech Recognition Language</label>
         <select id="lang-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500">
           <option value="en-US">English (US)</option>
           <option value="en-GB">English (UK)</option>
@@ -51,26 +52,24 @@
 
     <!-- Live Preview Box -->
     <div class="space-y-2">
-      <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Live Local Preview</label>
+      <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Live Transcript Preview</label>
       <div id="transcript-box" class="w-full h-36 bg-slate-900/80 border border-slate-800 rounded-lg p-4 text-sm text-slate-300 overflow-y-auto font-mono">
-        Click "Start Streaming" and begin speaking...
+        Ready to broadcast. Click "Start Streaming" above...
       </div>
     </div>
 
   </div>
 
   <script>
+    const SUPABASE_URL = "https://euopdmwtowuxdzczwbul.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1b3BkbXd0b3d1eGR6Y3p3YnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyNDAwMDB9.s8U3eU_...v2";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('roomId') || urlParams.get('room') || 'main-stage';
-    const token = urlParams.get('token');
+    const roomId = urlParams.get('roomId') || 'main-stage';
+    let token = urlParams.get('token');
 
-    document.getElementById('room-display').innerText = `Room ID: ${roomId}`;
-
-    // If token is missing, notify the user or redirect back to login
-    if (!token) {
-      alert("Authentication session missing. Please log in through the dashboard first.");
-      window.location.href = "/login.html";
-    }
+    document.getElementById('room-display').innerText = `Room: ${roomId}`;
 
     let ws = null;
     let mediaRecorder = null;
@@ -83,9 +82,9 @@
     const transcriptBox = document.getElementById('transcript-box');
     const langSelect = document.getElementById('lang-select');
 
-    function setStatus(status, text) {
+    function setStatus(dotClass, text) {
       statusText.innerText = text;
-      statusDot.className = `w-2.5 h-2.5 rounded-full ${status}`;
+      statusDot.className = `w-2.5 h-2.5 rounded-full ${dotClass}`;
     }
 
     toggleBtn.addEventListener('click', async () => {
@@ -97,37 +96,43 @@
     });
 
     async function startStreaming() {
+      // Fallback: If token isn't in URL, grab it directly from Supabase session storage
+      if (!token) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) token = session.access_token;
+      }
+
+      if (!token) {
+        alert("Authentication required. Please open this studio from your dashboard.");
+        window.location.href = "/dashboard.html";
+        return;
+      }
+
       const lang = langSelect.value;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}?roomId=${encodeURIComponent(roomId)}&role=presenter&lang=${lang}&token=${encodeURIComponent(token)}`;
 
       try {
-        // 1. Request microphone access
+        // Request microphone
         audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-        // 2. Connect to WebSocket server with Token
         ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {
-          console.log("WebSocket Connected");
           setStatus("bg-emerald-500 animate-pulse", "LIVE");
           toggleBtn.innerText = "Stop Streaming";
           toggleBtn.className = "w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition shadow-lg shadow-red-600/20";
           langSelect.disabled = true;
           isStreaming = true;
-          transcriptBox.innerHTML = "";
+          transcriptBox.innerHTML = '<div class="text-emerald-400">Connected! Start speaking...</div>';
 
-          // 3. Set up MediaRecorder for chunks
           mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
-          
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(event.data);
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
             }
           };
-
-          // Send data chunks every 250ms
           mediaRecorder.start(250);
         };
 
@@ -138,23 +143,22 @@
               if (data.isFinal) {
                 transcriptBox.innerHTML += `<div class="mb-1 text-white">${data.text}</div>`;
               } else {
-                // Show interim result preview
-                let interimDiv = document.getElementById('interim-caption');
-                if (!interimDiv) {
-                  interimDiv = document.createElement('div');
-                  interimDiv.id = 'interim-caption';
-                  interimDiv.className = 'text-slate-500 italic mb-1';
-                  transcriptBox.appendChild(interimDiv);
+                let interim = document.getElementById('interim-caption');
+                if (!interim) {
+                  interim = document.createElement('div');
+                  interim.id = 'interim-caption';
+                  interim.className = 'text-slate-500 italic mb-1';
+                  transcriptBox.appendChild(interim);
                 }
-                interimDiv.innerText = data.text;
+                interim.innerText = data.text;
               }
               transcriptBox.scrollTop = transcriptBox.scrollHeight;
             } else if (data.error) {
               alert("Stream Error: " + data.error);
               stopStreaming();
             }
-          } catch (e) {
-            console.error("Message parse error:", e);
+          } catch (err) {
+            console.error("Parse error:", err);
           }
         };
 
@@ -166,28 +170,22 @@
         ws.onclose = (event) => {
           console.log("WebSocket closed:", event);
           if (event.code === 4003) {
-            alert("Authorization failed or session expired. Please re-authenticate from the dashboard.");
+            alert("Authorization failed. Please log in again.");
           }
           stopStreaming();
         };
 
       } catch (err) {
-        console.error("Failed to start audio stream:", err);
-        alert("Microphone permission denied or unsupported audio configuration.");
+        console.error("Mic access error:", err);
+        alert("Microphone permission denied or hardware unavailable.");
         stopStreaming();
       }
     }
 
     function stopStreaming() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws) {
-        ws.close();
-      }
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+      if (ws) ws.close();
 
       isStreaming = false;
       setStatus("bg-slate-500", "OFFLINE");
