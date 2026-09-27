@@ -66,6 +66,8 @@
       border-radius: 6px;
       cursor: pointer;
       font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
     }
 
     .btn-secondary:hover {
@@ -125,7 +127,6 @@
     .section-title {
       font-size: 1.3rem;
       font-weight: 700;
-      margin-bottom: 20px;
     }
 
     .form-group {
@@ -221,23 +222,45 @@
       color: #e2e8f0;
     }
 
+    .links-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    @media (max-width: 768px) {
+      .links-grid { grid-template-columns: 1fr; }
+    }
+
     .overlay-link-box {
-      margin-top: 20px;
       padding: 16px;
       background-color: rgba(15, 23, 42, 0.6);
       border: 1px dashed var(--border-color);
       border-radius: 8px;
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: space-between;
       gap: 12px;
     }
 
+    .overlay-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
     .overlay-url {
       font-family: monospace;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: var(--primary);
       word-break: break-all;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
     }
   </style>
 </head>
@@ -278,7 +301,7 @@
     <!-- Live Presenter Controls -->
     <div class="console-card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2 class="section-title" style="margin:0;">Presenter Studio</h2>
+        <h2 class="section-title">Presenter Studio</h2>
         <div id="streamStatusBadge" class="status-badge">
           <span class="status-dot"></span>
           <span id="streamStatusText">Offline</span>
@@ -301,14 +324,33 @@
         <em>Captions will appear here in real time once you begin speaking...</em>
       </div>
 
-      <!-- OBS Overlay Generator -->
-      <div class="overlay-link-box">
-        <div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">OBS / WEB TRANSPARENT OVERLAY URL</div>
-          <div id="overlayUrlDisplay" class="overlay-url">http://...</div>
+      <!-- External Links Grid -->
+      <div class="links-grid">
+        <!-- OBS Transparent Overlay Link -->
+        <div class="overlay-link-box">
+          <div>
+            <div class="overlay-title">OBS / BROADCAST LOWER-THIRD URL</div>
+            <div id="overlayUrlDisplay" class="overlay-url">http://...</div>
+          </div>
+          <div class="button-group">
+            <button onclick="copyUrl('overlayUrlDisplay')" class="btn-secondary">Copy Link</button>
+            <a id="overlayOpenLink" href="#" target="_blank" class="btn-secondary">Open</a>
+          </div>
         </div>
-        <button onclick="copyOverlayUrl()" class="btn-secondary">Copy Link</button>
+
+        <!-- Mobile & Browser Viewer Link -->
+        <div class="overlay-link-box">
+          <div>
+            <div class="overlay-title">MOBILE AUDIENCE SPECTATOR URL</div>
+            <div id="viewerUrlDisplay" class="overlay-url">http://...</div>
+          </div>
+          <div class="button-group">
+            <button onclick="copyUrl('viewerUrlDisplay')" class="btn-secondary">Copy Link</button>
+            <a id="viewerOpenLink" href="#" target="_blank" class="btn-secondary">Open</a>
+          </div>
+        </div>
       </div>
+
     </div>
 
   </div>
@@ -322,7 +364,6 @@
     let activeMediaRecorder = null;
     let activeAudioStream = null;
 
-    // Load User Auth & Subscription Data
     async function loadUserData() {
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
@@ -333,7 +374,6 @@
 
       document.getElementById("userEmailDisplay").innerText = user.email;
 
-      // Fetch user profile metrics from Supabase DB
       const { data: dbUser, error: dbError } = await supabaseClient
         .from("users")
         .select("*")
@@ -341,13 +381,11 @@
         .single();
 
       if (dbError || !dbUser) {
-        console.error("Failed to load user DB record:", dbError);
         document.getElementById("planTierDisplay").innerText = "Free Tier";
         document.getElementById("planStatusDisplay").innerText = "No active subscription";
         return;
       }
 
-      // Render Plan & Usage
       const planNameMap = {
         one_time: "Event Pass",
         starter: "Starter Plan",
@@ -358,33 +396,37 @@
       document.getElementById("planTierDisplay").innerText = planNameMap[dbUser.plan_tier] || "Free Tier";
       document.getElementById("planStatusDisplay").innerText = `Status: ${dbUser.subscription_status.toUpperCase()}`;
 
-      const hoursUsed = (dbUser.streaming_seconds_used / 3600).toFixed(1);
-      const maxHours = (dbUser.max_streaming_seconds / 3600).toFixed(0);
+      const hoursUsed = ((dbUser.streaming_seconds_used || 0) / 3600).toFixed(1);
+      const maxHours = ((dbUser.max_streaming_seconds || 0) / 3600).toFixed(0);
       const percentUsed = dbUser.max_streaming_seconds > 0 
         ? Math.round((dbUser.streaming_seconds_used / dbUser.max_streaming_seconds) * 100) 
         : 0;
 
       document.getElementById("usageTimeDisplay").innerText = `${hoursUsed} / ${maxHours} hrs`;
       document.getElementById("usagePercentDisplay").innerText = `${percentUsed}% of streaming quota used`;
-      document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 0} Stage(s)`;
+      document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 1} Stage(s)`;
 
-      updateOverlayUrl();
+      updateExternalUrls();
     }
 
-    // Dynamic OBS Overlay URL Helper
-    function updateOverlayUrl() {
+    function updateExternalUrls() {
       const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
+      
       const overlayUrl = `${window.location.origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
       document.getElementById("overlayUrlDisplay").innerText = overlayUrl;
+      document.getElementById("overlayOpenLink").href = overlayUrl;
+
+      const viewerUrl = `${window.location.origin}/viewer.html?room=${encodeURIComponent(roomId)}`;
+      document.getElementById("viewerUrlDisplay").innerText = viewerUrl;
+      document.getElementById("viewerOpenLink").href = viewerUrl;
     }
 
-    function copyOverlayUrl() {
-      const urlText = document.getElementById("overlayUrlDisplay").innerText;
+    function copyUrl(elementId) {
+      const urlText = document.getElementById(elementId).innerText;
       navigator.clipboard.writeText(urlText);
-      alert("OBS Overlay URL copied to clipboard!");
+      alert("Link copied to clipboard!");
     }
 
-    // Start Live Presenter Stream
     async function startPresenterStream() {
       const startBtn = document.getElementById("startBtn");
       const stopBtn = document.getElementById("stopBtn");
@@ -395,7 +437,6 @@
       startBtn.innerText = "Connecting...";
 
       try {
-        // 1. Fetch Fresh Auth Session Token
         const { data: { session }, error: sessionErr } = await supabaseClient.auth.getSession();
         if (sessionErr || !session) {
           alert("Session expired. Please sign in again.");
@@ -403,39 +444,35 @@
           return;
         }
 
-        // 2. Request Microphone Access
         activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // 3. Open WebSocket Connection
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&token=${session.access_token}`;
 
         activeWebSocket = new WebSocket(wsUrl);
 
         activeWebSocket.onopen = () => {
-          console.log("✅ Presenter WebSocket connected!");
-          
-          // Update UI Status
           document.getElementById("streamStatusBadge").classList.add("active");
           document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
           startBtn.style.display = "none";
           stopBtn.style.display = "inline-block";
-          previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
+          previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate real-time captions.</em>";
 
-          // 4. Record & Send Audio Chunks to Deepgram via Server
           activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
           activeMediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
               activeWebSocket.send(e.data);
             }
           };
-          activeMediaRecorder.start(250); // 250ms chunks
+          activeMediaRecorder.start(250);
         };
 
         activeWebSocket.onmessage = (evt) => {
           const data = JSON.parse(evt.data);
           if (data.type === "caption") {
             previewBox.innerText = data.text;
+          } else if (data.type === "error") {
+            console.error("Backend Error:", data.message);
           }
         };
 
@@ -445,12 +482,11 @@
         };
 
         activeWebSocket.onclose = (evt) => {
-          console.warn(`⚠️ Connection Closed. Code: ${evt.code}, Reason: ${evt.reason}`);
-          
           if (evt.code === 4003) alert("Stream rejected: Active subscription required.");
           if (evt.code === 4004) alert("Stream rejected: Maximum concurrent stages limit reached.");
           if (evt.code === 4005) alert("Stream rejected: Event Pass has expired.");
           if (evt.code === 4006) alert("Stream rejected: Monthly streaming quota exhausted.");
+          if (evt.code === 4009) alert("Stream rejected: This room is currently being used by another presenter.");
 
           stopPresenterStream();
         };
@@ -462,7 +498,6 @@
       }
     }
 
-    // Stop Presenter Stream
     function stopPresenterStream() {
       if (activeMediaRecorder && activeMediaRecorder.state !== "inactive") {
         activeMediaRecorder.stop();
@@ -480,7 +515,6 @@
       activeAudioStream = null;
       activeWebSocket = null;
 
-      // Reset UI Elements
       document.getElementById("streamStatusBadge").classList.remove("active");
       document.getElementById("streamStatusText").innerText = "Offline";
       
@@ -492,7 +526,6 @@
       startBtn.innerText = "Start Live Streaming";
       stopBtn.style.display = "none";
 
-      // Refresh DB metrics to show updated time used
       loadUserData();
     }
 
@@ -501,13 +534,12 @@
       window.location.href = "/auth.html";
     }
 
-    // Event Listeners
     document.addEventListener("DOMContentLoaded", () => {
       loadUserData();
 
       document.getElementById("startBtn").addEventListener("click", startPresenterStream);
       document.getElementById("stopBtn").addEventListener("click", stopPresenterStream);
-      document.getElementById("roomIdInput").addEventListener("input", updateOverlayUrl);
+      document.getElementById("roomIdInput").addEventListener("input", updateExternalUrls);
     });
   </script>
 </body>
