@@ -25,14 +25,20 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
 const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Active Rooms Map: roomId -> { presenterWs: WebSocket | null, viewers: Set<WebSocket> }
+// Active Rooms Map: roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
   if (!rooms.has(roomId)) {
-    rooms.set(roomId, { presenterWs: null, viewers: new Set() });
+    rooms.set(roomId, { presenterWs: null, presenterUserId: null, viewers: new Set() });
   }
   return rooms.get(roomId);
+}
+
+function safeSend(ws, payload) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(payload);
+  }
 }
 
 app.use(express.json());
@@ -94,13 +100,26 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    // Replace existing presenter if active
-    if (room.presenterWs && room.presenterWs.readyState === WebSocket.OPEN) {
-      room.presenterWs.close(4000, 'Replaced by new presenter session');
+    // Guard: if a DIFFERENT authenticated user already owns this room's
+    // active presenter slot, refuse the connection instead of silently
+    // kicking the legitimate presenter off. The same user reconnecting
+    // (page refresh, dropped connection) is still allowed to take over.
+    const existingPresenter = room.presenterWs;
+    if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
+      if (room.presenterUserId && room.presenterUserId !== user.id) {
+        ws.close(4009, 'This room already has an active presenter');
+        return;
+      }
+      existingPresenter.close(4000, 'Replaced by your new session');
     }
+
     room.presenterWs = ws;
+    room.presenterUserId = user.id;
 
     let deepgramLive = null;
+    let deepgramReady = false;
+    const audioQueue = [];
+
     try {
       deepgramLive = deepgram.listen.live({
         model: 'nova-2',
@@ -108,6 +127,14 @@ wss.on('connection', async (ws, req) => {
         smart_format: true,
         encoding: 'webm/opus',
         sample_rate: 48000,
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Open, () => {
+        deepgramReady = true;
+        // Flush any audio chunks that arrived before Deepgram finished connecting
+        while (audioQueue.length > 0) {
+          deepgramLive.send(audioQueue.shift());
+        }
       });
 
       deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
@@ -119,31 +146,55 @@ wss.on('connection', async (ws, req) => {
             isFinal: data.is_final
           });
 
-          if (ws.readyState === WebSocket.OPEN) ws.send(payload);
-
-          room.viewers.forEach((viewer) => {
-            if (viewer.readyState === WebSocket.OPEN) viewer.send(payload);
-          });
+          safeSend(ws, payload);
+          room.viewers.forEach((viewer) => safeSend(viewer, payload));
         }
       });
 
       deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
-        console.error('Deepgram Error:', err);
+        console.error(`Deepgram Error [room=${roomId}]:`, err);
+        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+        deepgramReady = false;
+        console.warn(`Deepgram connection closed [room=${roomId}]`);
       });
     } catch (err) {
       console.error('Failed to initialize Deepgram:', err);
+      safeSend(ws, JSON.stringify({ type: 'error', message: 'Failed to start captioning session.' }));
     }
 
     ws.on('message', (message) => {
-      if (deepgramLive && deepgramLive.getReadyState() === 1 && typeof message !== 'string') {
+      if (typeof message === 'string') return; // control/text frames, not audio
+      if (!deepgramLive) return;
+
+      if (deepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
+      } else {
+        // Buffer briefly instead of dropping audio while Deepgram connects
+        audioQueue.push(message);
       }
     });
 
     ws.on('close', () => {
-      if (deepgramLive) deepgramLive.finish();
-      room.presenterWs = null;
-      if (room.viewers.size === 0) rooms.delete(roomId);
+      if (deepgramLive) {
+        try { deepgramLive.finish(); } catch (e) { /* already closed */ }
+      }
+
+      // Only clear the room's presenter slot if this socket is STILL the
+      // registered presenter. Without this check, a replaced (kicked)
+      // socket's delayed 'close' event can wipe out a newer presenter's
+      // active session for the same room - this was the root cause of
+      // sessions breaking when a second user connected.
+      if (room.presenterWs === ws) {
+        room.presenterWs = null;
+        room.presenterUserId = null;
+      }
+
+      if (!room.presenterWs && room.viewers.size === 0) {
+        rooms.delete(roomId);
+      }
     });
 
   } else {
