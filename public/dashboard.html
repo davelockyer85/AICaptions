@@ -68,6 +68,7 @@
       cursor: pointer;
       font-weight: 600;
       font-size: 0.85rem;
+      text-decoration: none;
       transition: background-color 0.2s ease;
     }
 
@@ -219,6 +220,26 @@
       background-color: currentColor;
     }
 
+    .status-badge.active .status-dot {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse-dot 1.5s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+      }
+      100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      }
+    }
+
     /* Room Cards List */
     .rooms-list {
       display: flex;
@@ -341,9 +362,12 @@
       border-radius: 8px;
       padding: 16px;
       min-height: 90px;
+      max-height: 180px;
+      overflow-y: auto;
       font-size: 1rem;
       line-height: 1.5;
       color: #e2e8f0;
+      word-break: break-word;
     }
   </style>
 </head>
@@ -522,6 +546,23 @@
 
     let cachedRoomList = ["main-stage"];
 
+    // Browser MediaRecorder mimeType detector
+    function getSupportedMimeType() {
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/aac",
+        "audio/ogg"
+      ];
+      for (const mime of candidates) {
+        if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) {
+          return mime;
+        }
+      }
+      return "";
+    }
+
     // Populate Translation Language Select Box
     function populateLanguages() {
       const select = document.getElementById("languageSelect");
@@ -569,7 +610,8 @@
       };
 
       document.getElementById("planTierDisplay").innerText = planNameMap[dbUser.plan_tier] || "Free Tier";
-      document.getElementById("planStatusDisplay").innerText = `Status: ${dbUser.subscription_status.toUpperCase()}`;
+      const statusText = (dbUser.subscription_status || "inactive").toUpperCase();
+      document.getElementById("planStatusDisplay").innerText = `Status: ${statusText}`;
 
       userAllocatedSeconds = dbUser.max_streaming_seconds || 0;
       userUsedSeconds = dbUser.streaming_seconds_used || 0;
@@ -718,8 +760,14 @@
           return;
         }
 
-        // 2. Request Microphone Access
-        activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // 2. Request Microphone Access with Noise & Echo Suppression
+        activeAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
 
         // 3. Open WebSocket Connection with selected room & target language
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -738,10 +786,13 @@
           renderRoomList(cachedRoomList);
           startLiveTimer();
 
-          // 4. Record & Send Audio Chunks
-          activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
+          // 4. Record & Send Audio Chunks using supported MIME type
+          const mimeType = getSupportedMimeType();
+          const options = mimeType ? { mimeType } : {};
+
+          activeMediaRecorder = new MediaRecorder(activeAudioStream, options);
           activeMediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
+            if (e.data.size > 0 && activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
               activeWebSocket.send(e.data);
             }
           };
@@ -749,18 +800,22 @@
         };
 
         activeWebSocket.onmessage = (evt) => {
-          const data = JSON.parse(evt.data);
-          if (data.type === "caption") {
-            const previewBox = document.getElementById(`captionPreview_${activeRoomId}`);
-            if (previewBox) {
-              previewBox.innerText = data.text;
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.type === "caption") {
+              const previewBox = document.getElementById(`captionPreview_${activeRoomId}`);
+              if (previewBox) {
+                previewBox.innerText = data.text;
+                previewBox.scrollTop = previewBox.scrollHeight;
+              }
             }
+          } catch (err) {
+            console.error("Error parsing caption event:", err);
           }
         };
 
         activeWebSocket.onerror = (err) => {
           console.error("❌ WebSocket Error:", err);
-          alert("Connection error. Check console logs.");
         };
 
         activeWebSocket.onclose = (evt) => {
@@ -786,7 +841,7 @@
       stopLiveTimer();
 
       if (activeMediaRecorder && activeMediaRecorder.state !== "inactive") {
-        activeMediaRecorder.stop();
+        try { activeMediaRecorder.stop(); } catch(e) {}
       }
 
       if (activeAudioStream) {
@@ -813,9 +868,15 @@
     }
 
     async function handleSignOut() {
+      stopPresenterStream();
       await supabaseClient.auth.signOut();
       window.location.href = "/auth.html";
     }
+
+    // Clean up connections if user closes or reloads tab
+    window.addEventListener("beforeunload", () => {
+      stopPresenterStream();
+    });
 
     // Event Listeners & Initial Load
     document.addEventListener("DOMContentLoaded", () => {
