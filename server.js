@@ -10,14 +10,17 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Initialize Clients
+// Initialize Clients with Environment Variable Fallbacks
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const supabase = createSupabaseClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
+if (!supabaseUrl || !supabaseKey) {
+  console.error("❌ CRITICAL: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY.");
+}
+
+const supabase = createSupabaseClient(supabaseUrl, supabaseKey);
 const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY);
 
 // State Management: Rooms & Deepgram Connections
@@ -134,12 +137,14 @@ wss.on("connection", async (ws, req) => {
 
   // B. Presenter Connection: Authentication Check
   if (!token) {
+    console.warn("⚠️ Presenter connection rejected: Missing token.");
     ws.close(4003, "Stream rejected: Missing authentication token.");
     return;
   }
 
   const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) {
+    console.error("❌ Auth failure:", authErr?.message || "Invalid or expired token.");
     ws.close(4003, "Stream rejected: Invalid or expired token.");
     return;
   }
@@ -152,6 +157,7 @@ wss.on("connection", async (ws, req) => {
     .single();
 
   if (dbErr || !dbUser) {
+    console.error(`❌ DB User record lookup failed for ID ${user.id}:`, dbErr?.message || "User not found.");
     ws.close(4003, "Stream rejected: User profile not found.");
     return;
   }
@@ -163,14 +169,22 @@ wss.on("connection", async (ws, req) => {
     dbUser.plan_tier === "one_time";
 
   if (!isAuthorized) {
+    console.warn(`⚠️ Unauthorized user ${user.id}. Tier: ${dbUser.plan_tier}, Status: ${dbUser.subscription_status}`);
     ws.close(4003, "Stream rejected: Active subscription required.");
     return;
   }
 
-  // Quota Exhaustion Check
+  // Quota Exhaustion Check (Fix: avoid 0 >= 0 false-rejections)
   const used = dbUser.streaming_seconds_used || 0;
-  const max = dbUser.max_streaming_seconds || 0;
-  if (used >= max) {
+  let max = dbUser.max_streaming_seconds;
+
+  // Provide fallback default seconds for free accounts if unset/zero
+  if (max === null || max === undefined || max === 0) {
+    max = dbUser.plan_tier === "free" ? 600 : 0; // 600 seconds default allowance for free tier
+  }
+
+  if (max > 0 && used >= max) {
+    console.warn(`⚠️ Quota exhausted for user ${user.id}: Used ${used}s / Allowed ${max}s`);
     ws.close(4006, "Stream rejected: Streaming quota exhausted.");
     return;
   }
@@ -183,9 +197,8 @@ wss.on("connection", async (ws, req) => {
     return;
   }
 
- // E. Initialize Deepgram Connection
+  // E. Initialize Deepgram Connection
   try {
-    // 1. Omit encoding/sample_rate so Deepgram auto-detects browser WebM/Opus audio
     const deepgramLive = deepgram.listen.live({
       model: "nova-3",
       language: "en-US",
@@ -195,7 +208,6 @@ wss.on("connection", async (ws, req) => {
 
     let isDeepgramReady = false;
 
-    // 2. Set ready flag ONLY when Deepgram socket emits Open
     deepgramLive.on(LiveTranscriptionEvents.Open, () => {
       console.log(`🎙️ Deepgram connection opened for room: ${roomId}`);
       isDeepgramReady = true;
@@ -220,7 +232,9 @@ wss.on("connection", async (ws, req) => {
 
     deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
       console.error("❌ Deepgram Error:", err);
-      ws.send(JSON.stringify({ error: "Transcription error occurred." }));
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ error: "Transcription service error." }));
+      }
     });
 
     deepgramLive.on(LiveTranscriptionEvents.Close, () => {
@@ -230,7 +244,7 @@ wss.on("connection", async (ws, req) => {
 
     deepgramConnections.set(roomId, deepgramLive);
 
-    // 3. Forward audio chunks ONLY when Deepgram is verified open
+    // Forward binary audio chunks ONLY when Deepgram WebSocket is OPEN
     ws.on("message", (message) => {
       if (isDeepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
