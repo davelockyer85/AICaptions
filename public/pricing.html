@@ -99,10 +99,21 @@
   </main>
 
   <script>
-    // Initialize Supabase Client
-    const SUPABASE_URL = "YOUR_SUPABASE_URL";
-    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    // Initialize Supabase Client (Ensure your SUPABASE_URL and SUPABASE_ANON_KEY match your project config)
+    const SUPABASE_URL = "https://euopdmwtowuxdzczwbul.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Check user auth state to toggle Navbar links
+    async function checkAuth() {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      const authLink = document.getElementById("authLink");
+      if (user && authLink) {
+        authLink.innerText = "Account";
+        authLink.href = "/dashboard.html";
+      }
+    }
+    checkAuth();
 
     // 1. Claim One-Time 5-Hour Free Trial
     async function claimFreeTrial() {
@@ -113,7 +124,7 @@
       const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
 
       if (authErr || !user) {
-        alert("Please log in or create an account to claim your free pass.");
+        alert("Please sign in or create an account to claim your free trial pass.");
         window.location.href = "/auth.html";
         return;
       }
@@ -125,14 +136,14 @@
         .single();
 
       if (fetchErr) {
-        alert("Error checking eligibility: " + fetchErr.message);
+        alert("Error checking account eligibility: " + fetchErr.message);
         claimBtn.disabled = false;
         claimBtn.innerText = "Claim 5 Hours Free";
         return;
       }
 
       if (dbUser && dbUser.has_claimed_free) {
-        alert("You have already claimed your 5-hour free trial pass.");
+        alert("You have already claimed your 5-hour free pass.");
         window.location.href = "/dashboard.html";
         return;
       }
@@ -159,9 +170,8 @@
       window.location.href = "/dashboard.html";
     }
 
-    // 2. Paid Plan Checkout (Stripe Integration)
+    // 2. Paid Plan Checkout Session Initiator (Stripe)
     async function subscribe(priceId) {
-      // Step A: Verify user is logged in
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
       if (authError || !user || !user.id) {
@@ -170,7 +180,6 @@
         return;
       }
 
-      // Step B: Send valid user.id to create-checkout-session
       try {
         const response = await fetch("/create-checkout-session", {
           method: "POST",
