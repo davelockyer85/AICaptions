@@ -322,6 +322,17 @@
     let activeMediaRecorder = null;
     let activeAudioStream = null;
 
+    // Helper: Get browser supported audio MIME type
+    function getSupportedMimeType() {
+      const types = ['audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
+      for (const type of types) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+      return ''; // Fallback to browser default
+    }
+
     // Load User Auth & Subscription Data
     async function loadUserData() {
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
@@ -347,7 +358,6 @@
         return;
       }
 
-      // Render Plan & Usage
       const planNameMap = {
         one_time: "Event Pass",
         starter: "Starter Plan",
@@ -356,10 +366,10 @@
       };
 
       document.getElementById("planTierDisplay").innerText = planNameMap[dbUser.plan_tier] || "Free Tier";
-      document.getElementById("planStatusDisplay").innerText = `Status: ${dbUser.subscription_status.toUpperCase()}`;
+      document.getElementById("planStatusDisplay").innerText = `Status: ${(dbUser.subscription_status || 'inactive').toUpperCase()}`;
 
-      const hoursUsed = (dbUser.streaming_seconds_used / 3600).toFixed(1);
-      const maxHours = (dbUser.max_streaming_seconds / 3600).toFixed(0);
+      const hoursUsed = ((dbUser.streaming_seconds_used || 0) / 3600).toFixed(1);
+      const maxHours = ((dbUser.max_streaming_seconds || 0) / 3600).toFixed(0);
       const percentUsed = dbUser.max_streaming_seconds > 0 
         ? Math.round((dbUser.streaming_seconds_used / dbUser.max_streaming_seconds) * 100) 
         : 0;
@@ -371,7 +381,6 @@
       updateOverlayUrl();
     }
 
-    // Dynamic OBS Overlay URL Helper
     function updateOverlayUrl() {
       const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
       const overlayUrl = `${window.location.origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
@@ -395,7 +404,7 @@
       startBtn.innerText = "Connecting...";
 
       try {
-        // 1. Fetch Fresh Auth Session Token
+        // 1. Fetch Auth Session Token
         const { data: { session }, error: sessionErr } = await supabaseClient.auth.getSession();
         if (sessionErr || !session) {
           alert("Session expired. Please sign in again.");
@@ -406,48 +415,53 @@
         // 2. Request Microphone Access
         activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // 3. Open WebSocket Connection
+        // 3. Open WebSocket Connection with URI-encoded token
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&token=${session.access_token}`;
+        const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&token=${encodeURIComponent(session.access_token)}`;
 
         activeWebSocket = new WebSocket(wsUrl);
 
         activeWebSocket.onopen = () => {
           console.log("✅ Presenter WebSocket connected!");
           
-          // Update UI Status
           document.getElementById("streamStatusBadge").classList.add("active");
           document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
           startBtn.style.display = "none";
           stopBtn.style.display = "inline-block";
           previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
 
-          // 4. Record & Send Audio Chunks to Deepgram via Server
-          activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
+          // 4. Initialize MediaRecorder with browser cross-compatibility
+          const mimeType = getSupportedMimeType();
+          const recorderOptions = mimeType ? { mimeType } : {};
+          activeMediaRecorder = new MediaRecorder(activeAudioStream, recorderOptions);
+
           activeMediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
+            if (e.data.size > 0 && activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
               activeWebSocket.send(e.data);
             }
           };
-          activeMediaRecorder.start(250); // 250ms chunks
+          activeMediaRecorder.start(250); // Send audio every 250ms
         };
 
         activeWebSocket.onmessage = (evt) => {
-          const data = JSON.parse(evt.data);
-          if (data.type === "caption") {
-            previewBox.innerText = data.text;
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.type === "caption") {
+              previewBox.innerText = data.text;
+            }
+          } catch (e) {
+            console.warn("Received non-JSON message:", evt.data);
           }
         };
 
         activeWebSocket.onerror = (err) => {
           console.error("❌ WebSocket Error:", err);
-          alert("Connection error. Check console logs.");
         };
 
         activeWebSocket.onclose = (evt) => {
           console.warn(`⚠️ Connection Closed. Code: ${evt.code}, Reason: ${evt.reason}`);
           
-          if (evt.code === 4003) alert("Stream rejected: Active subscription required.");
+          if (evt.code === 4003) alert("Stream rejected: Active subscription required in public.users.");
           if (evt.code === 4004) alert("Stream rejected: Maximum concurrent stages limit reached.");
           if (evt.code === 4005) alert("Stream rejected: Event Pass has expired.");
           if (evt.code === 4006) alert("Stream rejected: Monthly streaming quota exhausted.");
@@ -462,7 +476,6 @@
       }
     }
 
-    // Stop Presenter Stream
     function stopPresenterStream() {
       if (activeMediaRecorder && activeMediaRecorder.state !== "inactive") {
         activeMediaRecorder.stop();
@@ -480,7 +493,6 @@
       activeAudioStream = null;
       activeWebSocket = null;
 
-      // Reset UI Elements
       document.getElementById("streamStatusBadge").classList.remove("active");
       document.getElementById("streamStatusText").innerText = "Offline";
       
@@ -492,7 +504,6 @@
       startBtn.innerText = "Start Live Streaming";
       stopBtn.style.display = "none";
 
-      // Refresh DB metrics to show updated time used
       loadUserData();
     }
 
@@ -501,7 +512,6 @@
       window.location.href = "/auth.html";
     }
 
-    // Event Listeners
     document.addEventListener("DOMContentLoaded", () => {
       loadUserData();
 
