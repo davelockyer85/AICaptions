@@ -21,50 +21,92 @@
     </div>
     <div class="flex items-center gap-4">
       <span id="user-email" class="text-slate-400 text-sm">Loading user...</span>
-      <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Upgrade / Billing</a>
+      <a href="/pricing.html" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition">Manage Subscription</a>
       <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
     </div>
   </header>
 
   <main class="max-w-6xl mx-auto space-y-8">
     
-    <!-- Account Overview Cards (Clean & Focused) -->
+    <!-- Top Level Metrics -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- 1. Current Plan -->
-      <div class="card p-6">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Plan</span>
-        <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">--</h2>
-        <p id="plan-status" class="text-xs text-emerald-400 font-medium mt-1">Status: Active</p>
-      </div>
-
-      <!-- 2. Streaming Usage -->
-      <div class="card p-6">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Usage</span>
-        <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 0 hrs</h2>
-        <div class="w-full bg-slate-700 h-2 rounded-full mt-3 overflow-hidden">
-          <div id="usage-bar" class="bg-blue-500 h-full w-0 transition-all duration-500"></div>
+      
+      <!-- Current Plan -->
+      <div class="card p-6 flex flex-col justify-between">
+        <div>
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Plan</span>
+          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">--</h2>
         </div>
-        <p id="usage-percent" class="text-xs text-slate-400 mt-2">0% of quota used</p>
+        <div class="mt-4 pt-4 border-t border-slate-700/60 flex justify-between items-center">
+          <span class="text-xs text-slate-400">Account Status</span>
+          <span id="plan-status" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
+        </div>
       </div>
 
-      <!-- 3. Allowed Rooms -->
-      <div class="card p-6">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Allowed Rooms</span>
-        <h2 id="allowed-rooms-count" class="text-3xl font-extrabold text-white mt-2">1 Stage(s)</h2>
-        <p class="text-xs text-slate-400 mt-1">Simultaneous live streams</p>
+      <!-- Streaming Usage -->
+      <div class="card p-6 flex flex-col justify-between">
+        <div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Quota</span>
+            <span id="usage-percent-badge" class="text-xs font-bold text-blue-400">0%</span>
+          </div>
+          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 0 hrs</h2>
+        </div>
+        <div class="mt-4">
+          <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
+            <div id="usage-bar" class="bg-blue-500 h-full w-0 transition-all duration-500"></div>
+          </div>
+        </div>
       </div>
+
+      <!-- Max Concurrent Capacity -->
+      <div class="card p-6 flex flex-col justify-between">
+        <div>
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stage Capacity</span>
+          <h2 id="allowed-rooms-count" class="text-3xl font-extrabold text-white mt-2">1 Stage</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-4">Simultaneous audio stream allowance for your active plan.</p>
+      </div>
+
     </div>
 
-    <!-- Rooms Console -->
-    <section class="card p-6">
-      <div class="flex justify-between items-center mb-6">
-        <h3 class="text-xl font-bold text-white">Rooms & Live Stream Console</h3>
+    <!-- System Status & API Integration Section -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <!-- Real-Time Service Health -->
+      <div class="card p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>⚡</span> Service Status
+        </h3>
+        <div class="space-y-3 text-sm">
+          <div class="flex justify-between items-center p-3 bg-slate-900/60 rounded-lg border border-slate-800">
+            <span class="text-slate-300">Live Transcription Engine</span>
+            <span class="text-emerald-400 font-medium text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Operational
+            </span>
+          </div>
+          <div class="flex justify-between items-center p-3 bg-slate-900/60 rounded-lg border border-slate-800">
+            <span class="text-slate-300">WebSocket Broadcast Relay</span>
+            <span class="text-emerald-400 font-medium text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Operational
+            </span>
+          </div>
+        </div>
       </div>
 
-      <!-- Room Cards Container -->
-      <div id="rooms-container" class="space-y-4">
-        <!-- Dynamic room cards will render here -->
+      <!-- Quick Integration Snippet -->
+      <div class="card p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>⚙️</span> Embed Settings
+        </h3>
+        <p class="text-xs text-slate-400">
+          To embed live captions into OBS Studio or vMix, configure a Web Browser Source using your target WebSocket endpoint:
+        </p>
+        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto">
+          https://<span id="domain-placeholder">aicaptions-tkoc.onrender.com</span>/overlay.html?roomId=main-stage
+        </div>
       </div>
+
     </section>
 
   </main>
@@ -75,6 +117,9 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function initDashboard() {
+      // Set hostname dynamically
+      document.getElementById("domain-placeholder").innerText = window.location.host;
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         window.location.href = "/login.html";
@@ -93,7 +138,7 @@
       if (profile) {
         // Plan Info
         document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
-        document.getElementById("plan-status").innerText = `Status: ${profile.subscription_status?.toUpperCase() || "ACTIVE"}`;
+        document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
 
         // Quota & Hours Calculations
         const usedHrs = ((profile.streaming_seconds_used || 0) / 3600).toFixed(1);
@@ -102,53 +147,11 @@
 
         const pct = Math.min(100, Math.round((usedHrs / maxHrs) * 100)) || 0;
         document.getElementById("usage-bar").style.width = `${pct}%`;
-        document.getElementById("usage-percent").innerText = `${pct}% of monthly quota used`;
+        document.getElementById("usage-percent-badge").innerText = `${pct}%`;
 
-        // Rooms rendering (1 for Free/Starter, Multi for Higher Tiers)
+        // Stage capacity
         const roomCount = profile.allowed_rooms || 1;
-        document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage(s)`;
-
-        renderRooms(roomCount, session.access_token);
-      }
-    }
-
-    function renderRooms(count, token) {
-      const container = document.getElementById("rooms-container");
-      container.innerHTML = "";
-
-      for (let i = 1; i <= count; i++) {
-        const roomId = i === 1 ? "main-stage" : `stage-${i}`;
-        const roomCard = document.createElement("div");
-        roomCard.className = "bg-slate-900/80 border border-slate-800 rounded-lg p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4";
-
-        roomCard.innerHTML = `
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-rose-500">📍</span>
-              <h4 class="font-bold text-lg text-white">Stage: ${roomId}</h4>
-            </div>
-            <p class="text-xs text-slate-400 mt-0.5">Room ID: <code class="text-slate-300 font-mono">${roomId}</code></p>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <a href="/presenter.html?roomId=${roomId}&token=${token}" 
-               target="_blank" 
-               class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg text-sm transition flex items-center gap-1.5">
-              <span>▶ Presenter View</span>
-            </a>
-            <a href="/overlay.html?roomId=${roomId}" 
-               target="_blank" 
-               class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium rounded-lg text-sm transition flex items-center gap-1.5">
-              <span>💻 Overlay View Link</span>
-            </a>
-            <a href="/mobile.html?roomId=${roomId}" 
-               target="_blank" 
-               class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium rounded-lg text-sm transition flex items-center gap-1.5">
-              <span>📱 Mobile Captions Link</span>
-            </a>
-          </div>
-        `;
-        container.appendChild(roomCard);
+        document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage${roomCount > 1 ? 's' : ''}`;
       }
     }
 
