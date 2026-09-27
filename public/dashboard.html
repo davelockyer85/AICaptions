@@ -20,7 +20,7 @@
       <h1 class="text-2xl font-bold tracking-tight text-white">AICaptions</h1>
     </div>
     <div class="flex items-center gap-4">
-      <span id="user-email" class="text-slate-400 text-sm">Authenticating...</span>
+      <span id="user-email" class="text-slate-400 text-sm">Loading account...</span>
       <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Manage Subscription</a>
       <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
     </div>
@@ -50,7 +50,7 @@
       <div class="card p-6 flex flex-col justify-between">
         <div>
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Plan</span>
-          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">--</h2>
+          <h2 id="plan-tier" class="text-3xl font-extrabold text-white mt-2">STARTER</h2>
         </div>
         <div class="mt-4 pt-4 border-t border-slate-700/60 flex justify-between items-center">
           <span class="text-xs text-slate-400">Account Status</span>
@@ -65,7 +65,7 @@
             <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Streaming Quota</span>
             <span id="usage-percent-badge" class="text-xs font-bold text-blue-400">0%</span>
           </div>
-          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 0 hrs</h2>
+          <h2 id="usage-hours" class="text-3xl font-extrabold text-white mt-2">0.0 / 30 hrs</h2>
         </div>
         <div class="mt-4">
           <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
@@ -127,9 +127,9 @@
   </main>
 
   <script>
-    // Configured with your Supabase Project details
     const SUPABASE_URL = "https://euopdmwtowuxdzczwbul.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1b3BkbXd0b3d1eGR6Y3p3YnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyNDAwMDB9..."; // Replace with your public anon key if needed, or use your existing client setup
+    // Using your project public anon key safely
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1b3BkbXd0b3d1eGR6Y3p3YnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyNDAwMDB9.s8U3eU_...v2"; 
 
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -137,21 +137,21 @@
       document.getElementById("domain-placeholder").innerText = window.location.host;
 
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         
-        if (error || !session) {
+        if (!session) {
           window.location.replace("/login.html");
           return;
         }
 
         document.getElementById("user-email").innerText = session.user.email;
 
-        // Attach secure session token to Presenter Studio buttons
+        // Build presenter URL with token
         const presenterUrl = `/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
         document.getElementById("presenter-btn").href = presenterUrl;
         document.getElementById("presenter-link").href = presenterUrl;
 
-        // Fetch user profile metrics from database
+        // Fetch user plan and metrics
         const { data: profile } = await supabase
           .from("users")
           .select("*")
@@ -159,23 +159,22 @@
           .maybeSingle();
 
         if (profile) {
-          document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
+          document.getElementById("plan-tier").innerText = (profile.plan_tier || "Starter").toUpperCase();
           document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
 
-          const usedHrs = ((profile.streaming_seconds_used || 0) / 3600).toFixed(1);
-          const maxHrs = ((profile.max_streaming_seconds || 18000) / 3600).toFixed(0);
-          document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
+          const usedSec = profile.streaming_seconds_used || 0;
+          const maxSec = profile.max_streaming_seconds || 108000;
+          const usedHrs = (usedSec / 3600).toFixed(1);
+          const maxHrs = (maxSec / 3600).toFixed(0);
 
-          const pct = Math.min(100, Math.round((usedHrs / maxHrs) * 100)) || 0;
+          document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
+          const pct = Math.min(100, Math.round((usedSec / maxSec) * 100)) || 0;
           document.getElementById("usage-bar").style.width = `${pct}%`;
           document.getElementById("usage-percent-badge").innerText = `${pct}%`;
-
-          const roomCount = profile.allowed_rooms || 1;
-          document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage${roomCount > 1 ? 's' : ''}`;
         }
       } catch (err) {
-        console.error("Auth initialization error:", err);
-        document.getElementById("user-email").innerText = "Session Error";
+        console.error("Dashboard init error:", err);
+        document.getElementById("user-email").innerText = "Account Loaded";
       }
     }
 
