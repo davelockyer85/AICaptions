@@ -2,197 +2,152 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presenter Studio - AICaptions</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <title>Stage Presenter Control Panel</title>
   <style>
-    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
-  </style>
-</head>
-<body class="min-h-screen flex items-center justify-center p-6">
-
-  <div class="card w-full max-w-xl p-8 space-y-6 shadow-2xl">
-    
-    <!-- Header -->
-    <div class="flex justify-between items-center border-b border-slate-700/60 pb-4">
-      <div>
-        <h1 class="text-xl font-bold text-white flex items-center gap-2">
-          <span>🎙️</span> Presenter Studio
-        </h1>
-        <p id="room-display" class="text-xs text-slate-400 mt-1">Room: main-stage</p>
-      </div>
-      <div id="status-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-400">
-        <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
-        <span id="status-text">OFFLINE</span>
-      </div>
-    </div>
-
-    <!-- Controls -->
-    <div class="space-y-4">
-      <div>
-        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Speech Recognition Language</label>
-        <select id="lang-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500">
-          <option value="en-US">English (US)</option>
-          <option value="en-GB">English (UK)</option>
-          <option value="es">Spanish</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
-          <option value="it">Italian</option>
-          <option value="pt">Portuguese</option>
-          <option value="ja">Japanese</option>
-        </select>
-      </div>
-
-      <button id="toggle-stream-btn" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition shadow-lg shadow-blue-600/20">
-        Start Streaming
-      </button>
-    </div>
-
-    <!-- Live Preview Box -->
-    <div class="space-y-2">
-      <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Live Transcript Preview</label>
-      <div id="transcript-box" class="w-full h-36 bg-slate-900/80 border border-slate-800 rounded-lg p-4 text-sm text-slate-300 overflow-y-auto font-mono">
-        Ready to broadcast. Click "Start Streaming" above...
-      </div>
-    </div>
-
-  </div>
-
-  <script>
-    const SUPABASE_URL = "https://euopdmwtowuxdzczwbul.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1b3BkbXd0b3d1eGR6Y3p3YnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyNDAwMDB9.s8U3eU_...v2";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('roomId') || 'main-stage';
-    let token = urlParams.get('token');
-
-    document.getElementById('room-display').innerText = `Room: ${roomId}`;
-
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
-    let isStreaming = false;
-
-    const toggleBtn = document.getElementById('toggle-stream-btn');
-    const statusDot = document.getElementById('status-dot');
-    const statusText = document.getElementById('status-text');
-    const transcriptBox = document.getElementById('transcript-box');
-    const langSelect = document.getElementById('lang-select');
-
-    function setStatus(dotClass, text) {
-      statusText.innerText = text;
-      statusDot.className = `w-2.5 h-2.5 rounded-full ${dotClass}`;
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 2rem;
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+}
+https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
+13/27
+22/09/2026, 23:58
+AI Job Search and Assistant Setup
+    h1 { margin-bottom: 0.5rem; }
+    p.sub { color: #94a3b8; margin-bottom: 2rem; }
+    .btn-start {
+      padding: 1rem 2.5rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
+    .btn-start:hover { background: #1d4ed8; }
+    #status { margin-top: 1.5rem; font-weight: 500; color: #64748b; }
+    .lang-section {
+      margin-top: 2.5rem;
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 16px;
+      border: 1px solid #334155;
+    }
+    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-s
+    .lang-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+}
+.tab {
+      padding: 0.6rem 1.2rem;
+      background: #0f172a;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: #334155; color: #fff; }
+    .tab.active {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #10b981;
+      font-weight: 600;
+} </style>
+</head>
+<body>
+  <h1>Stage Presenter Panel</h1>
+  <p class="sub">Live Speech-to-Text & Real-time Overlay Translator</p>
+  <button id="startBtn">Start Streaming Audio</button>
+  <p id="status">Status: Disconnected</p>
+  <div class="lang-section">
+    <h3>Stage Overlay Target Language</h3>
+    <div class="lang-tabs">
+ <button class="tab active" onclick="setLanguage('en', this)">
+       English</button>
+Spanish</button>
+French</button>
+German</button>
+Chinese</button>
+Japanese</button>
+Italian</button>
+Portuguese</button>
+     <button class="tab" onclick="setLanguage('es', this)">
+    <button class="tab" onclick="setLanguage('fr', this)">
+    <button class="tab" onclick="setLanguage('de', this)">
+    <button class="tab" onclick="setLanguage('zh', this)">
+    <button class="tab" onclick="setLanguage('ja', this)">
+    <button class="tab" onclick="setLanguage('it', this)">
+    <button class="tab" onclick="setLanguage('pt', this)">
+  </div>
+</div>
+<script>
+  const startBtn = document.getElementById("startBtn");
+  const status = document.getElementById("status");
+  let ws, mediaRecorder;
+      https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
+14/27
 
-    toggleBtn.addEventListener('click', async () => {
-      if (!isStreaming) {
-        await startStreaming();
-      } else {
-        stopStreaming();
+22/09/2026, 23:58 AI Job Search and Assistant Setup
+    let selectedLang = "en";
+    function setLanguage(langCode, btnElement) {
+      selectedLang = langCode;
+      // Update UI tab selection styles
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+      btnElement.classList.add("active");
+      // Send language switch event over WebSocket if connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+        console.log(`[Presenter] Switched overlay target language to: ${selectedLang}`);
       }
-    });
-
-    async function startStreaming() {
-      // Fallback: If token isn't in URL, grab it directly from Supabase session storage
-      if (!token) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) token = session.access_token;
-      }
-
-      if (!token) {
-        alert("Authentication required. Please open this studio from your dashboard.");
-        window.location.href = "/dashboard.html";
-        return;
-      }
-
-      const lang = langSelect.value;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?roomId=${encodeURIComponent(roomId)}&role=presenter&lang=${lang}&token=${encodeURIComponent(token)}`;
-
+}
+    startBtn.onclick = async () => {
       try {
-        // Request microphone
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-
-        ws = new WebSocket(wsUrl);
-        ws.binaryType = 'arraybuffer';
-
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
         ws.onopen = () => {
-          setStatus("bg-emerald-500 animate-pulse", "LIVE");
-          toggleBtn.innerText = "Stop Streaming";
-          toggleBtn.className = "w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition shadow-lg shadow-red-600/20";
-          langSelect.disabled = true;
-          isStreaming = true;
-          transcriptBox.innerHTML = '<div class="text-emerald-400">Connected! Start speaking...</div>';
-
-          mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
+          status.innerText = "Status: Live & Streaming Stage Audio";
+          status.style.color = "#10b981";
+          // Send initial language preference
+          ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+          let options = {};
+          if (MediaRecorder.isTypeSupported("audio/webm")) {
+            options = { mimeType: "audio/webm" };
+          } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+            options = { mimeType: "audio/mp4" };
+          }
+          mediaRecorder = new MediaRecorder(stream, options);
           mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
             }
-          };
+};
           mediaRecorder.start(250);
         };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'caption' && data.text) {
-              if (data.isFinal) {
-                transcriptBox.innerHTML += `<div class="mb-1 text-white">${data.text}</div>`;
-              } else {
-                let interim = document.getElementById('interim-caption');
-                if (!interim) {
-                  interim = document.createElement('div');
-                  interim.id = 'interim-caption';
-                  interim.className = 'text-slate-500 italic mb-1';
-                  transcriptBox.appendChild(interim);
-                }
-                interim.innerText = data.text;
-              }
-              transcriptBox.scrollTop = transcriptBox.scrollHeight;
-            } else if (data.error) {
-              alert("Stream Error: " + data.error);
-              stopStreaming();
-            }
-          } catch (err) {
-            console.error("Parse error:", err);
-          }
-        };
-
+        ws.onclose = () => {
+          status.innerText = "Status: Disconnected";
+          status.style.color = "#ef4444";
+};
         ws.onerror = (err) => {
-          console.error("WebSocket error:", err);
-          setStatus("bg-amber-500", "ERROR");
-        };
-
-        ws.onclose = (event) => {
-          console.log("WebSocket closed:", event);
-          if (event.code === 4003) {
-            alert("Authorization failed. Please log in again.");
-          }
-          stopStreaming();
-        };
-
+          console.error("WebSocket Error:", err);
+};
       } catch (err) {
-        console.error("Mic access error:", err);
-        alert("Microphone permission denied or hardware unavailable.");
-        stopStreaming();
-      }
-    }
-
-    function stopStreaming() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-      if (audioStream) audioStream.getTracks().forEach(t => t.stop());
-      if (ws) ws.close();
-
-      isStreaming = false;
-      setStatus("bg-slate-500", "OFFLINE");
-      toggleBtn.innerText = "Start Streaming";
-      toggleBtn.className = "w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition shadow-lg shadow-blue-600/20";
-      langSelect.disabled = false;
-    }
+        console.error("Mic Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+} };
   </script>
 </body>
 </html>
