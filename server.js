@@ -5,40 +5,29 @@ import Stripe from "stripe";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient as createDeepgramClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 
+// --- ENVIRONMENT & CLIENT INITIALIZATION ---
+const requiredEnv = [
+  "STRIPE_SECRET_KEY",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "DEEPGRAM_API_KEY"
+];
+
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.warn(`⚠️ Warning: Environment variable ${key} is missing!`);
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.json());
-app.use(express.static("public"));
-
-// Initialization
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-// Endpoint to create Stripe Checkout Session
-app.post('/api/create-checkout-session', async (req, res) => {
-  try {
-    const { priceId, mode } = req.body; // mode: 'subscription' or 'payment'
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId, // Stripe Price ID (e.g. 'price_12345')
-          quantity: 1,
-        },
-      ],
-      mode: mode || 'subscription',
-      success_url: `${req.headers.origin}/dashboard.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.origin}/pricing.html`,
-    });
-
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error("Stripe Error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const supabase = createSupabaseClient(
+  process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+);
 const deepgram = createDeepgramClient(process.env.DEEPGRAM_API_KEY || "");
 
 // State Tracking Maps
@@ -46,7 +35,35 @@ const rooms = new Map(); // roomId -> Set<WebSocket>
 const deepgramConnections = new Map(); // roomId -> Deepgram Live Connection
 const userActivePresenterRooms = new Map(); // userId -> Set<roomId>
 
-// WebSocket Handler
+// Middlewares
+app.use(express.json());
+app.use(express.static("public"));
+
+// --- STRIPE CHECKOUT ENDPOINT ---
+app.post("/api/create-checkout-session", async (req, res) => {
+  try {
+    const { priceId, mode } = req.body;
+
+    if (!priceId) {
+      return res.status(400).json({ error: "Missing priceId in request payload" });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: mode || "subscription",
+      success_url: `${req.headers.origin || "https://aicaptions-tkoc.onrender.com"}/dashboard.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.origin || "https://aicaptions-tkoc.onrender.com"}/pricing.html`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe Session Creation Failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- WEBSOCKET STREAMING HANDLER ---
 wss.on("connection", async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.split("?")[1]);
   const role = urlParams.get("role"); // "presenter" or "audience"
@@ -58,7 +75,7 @@ wss.on("connection", async (ws, req) => {
     return ws.close(4000, "Missing parameters");
   }
 
-  // --- AUDIENCE CONNECTION ---
+  // AUDIENCE ROOM SUBSCRIPTION
   if (role === "audience") {
     if (!rooms.has(roomId)) {
       rooms.set(roomId, new Set());
@@ -75,12 +92,11 @@ wss.on("connection", async (ws, req) => {
     return;
   }
 
-  // --- PRESENTER CONNECTION ---
+  // PRESENTER BROADCAST SETUP
   if (role === "presenter") {
     let userId = null;
 
     try {
-      // 1. Verify User Auth Token
       if (!token) {
         ws.send(JSON.stringify({ type: "error", message: "Authentication token required" }));
         return ws.close(4001, "Auth required");
@@ -95,7 +111,6 @@ wss.on("connection", async (ws, req) => {
 
       userId = authData.user.id;
 
-      // 2. Fetch User Profile & Subscription Check
       const { data: dbUser, error: dbError } = await supabase
         .from("users")
         .select("*")
@@ -113,7 +128,6 @@ wss.on("connection", async (ws, req) => {
         return ws.close(4002, "Subscription inactive");
       }
 
-      // Safe Quota Check (Defaults to 7200 seconds / 2 hrs if null)
       const maxAllowedSeconds = Number(dbUser.max_streaming_seconds || dbUser.max_streaming_settings) || 7200;
       const usedSeconds = Number(dbUser.streaming_seconds_used) || 0;
 
@@ -122,13 +136,14 @@ wss.on("connection", async (ws, req) => {
         return ws.close(4003, "Quota exceeded");
       }
 
-      // 3. Setup Deepgram Live Client
+      // Initialize Deepgram Live Connection
       const dgConnection = deepgram.listen.live({
-  model: "nova-2",
-  language: "en-US",
-  smart_format: true,
-  interim_results: true
-});
+        model: "nova-2",
+        language: "en-US",
+        smart_format: true,
+        interim_results: true
+      });
+
       let isDeepgramReady = false;
       const audioBufferQueue = [];
 
@@ -136,14 +151,40 @@ wss.on("connection", async (ws, req) => {
         console.log(`Deepgram connected for room: ${roomId}`);
         isDeepgramReady = true;
 
-        // Flush any audio chunks received while waiting for Deepgram to open
         while (audioBufferQueue.length > 0) {
           const chunk = audioBufferQueue.shift();
-          dgConnection.send(chunk);
+          try {
+            dgConnection.send(chunk);
+          } catch (e) {
+            console.error("Error flushing audio buffer:", e);
+          }
         }
       });
 
-      // Handle Transcripts from Deepgram -> Broadcast to Audience
+      dgConnection.on(LiveTranscriptionEvents.Transcript, (data) => {
+        const transcript = data.channel?.alternatives[0]?.transcript;
+        if (transcript) {
+          const messagePayload = JSON.stringify({
+            type: "transcript",
+            text: transcript,
+            isFinal: data.is_final
+          });
+
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(messagePayload);
+          }
+
+          const audienceRoom = rooms.get(roomId);
+          if (audienceRoom) {
+            audienceRoom.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(messagePayload);
+              }
+            });
+          }
+        }
+      });
+
       dgConnection.on(LiveTranscriptionEvents.Error, (err) => {
         console.error("Deepgram Error:", err);
         if (ws.readyState === WebSocket.OPEN) {
@@ -162,7 +203,6 @@ wss.on("connection", async (ws, req) => {
       }
       userActivePresenterRooms.get(userId).add(roomId);
 
-      // 4. Listen for Audio Data from Presenter Client
       ws.on("message", (data) => {
         if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
           if (isDeepgramReady) {
@@ -171,42 +211,12 @@ wss.on("connection", async (ws, req) => {
             } catch (err) {
               console.error("Error sending chunk to Deepgram:", err);
             }
-          } else {
-            if (audioBufferQueue.length < 100) {
-              audioBufferQueue.push(data);
-            }
-          }
-        }
-      });
-
-      dgConnection.on(LiveTranscriptionEvents.Error, (err) => {
-        console.error("Deepgram Error:", err);
-      });
-
-      dgConnection.on(LiveTranscriptionEvents.Close, () => {
-        console.log(`Deepgram closed for room: ${roomId}`);
-      });
-
-      deepgramConnections.set(roomId, dgConnection);
-
-      // Track active room for presenter
-      if (!userActivePresenterRooms.has(userId)) {
-        userActivePresenterRooms.set(userId, new Set());
-      }
-      userActivePresenterRooms.get(userId).add(roomId);
-
-      // 4. Listen for Audio Data from Presenter Client
-      ws.on("message", (data) => {
-        if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
-          if (isDeepgramReady) {
-            dgConnection.send(data);
-          } else {
+          } else if (audioBufferQueue.length < 100) {
             audioBufferQueue.push(data);
           }
         }
       });
 
-      // 5. Cleanup on Presenter Disconnect
       ws.on("close", () => {
         console.log(`Presenter disconnected from room: ${roomId}`);
         const activeDg = deepgramConnections.get(roomId);
