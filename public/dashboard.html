@@ -15,6 +15,7 @@
       --danger: #ef4444;
       --danger-hover: #dc2626;
       --success: #10b981;
+      --warning: #f59e0b;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
     }
@@ -66,6 +67,8 @@
       border-radius: 6px;
       cursor: pointer;
       font-weight: 600;
+      font-size: 0.85rem;
+      transition: background-color 0.2s ease;
     }
 
     .btn-secondary:hover {
@@ -80,6 +83,7 @@
       width: 100%;
     }
 
+    /* Metrics Grid */
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -114,6 +118,7 @@
       margin-top: 4px;
     }
 
+    /* Cards Layout */
     .console-card {
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
@@ -122,33 +127,86 @@
       margin-bottom: 32px;
     }
 
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
     .section-title {
       font-size: 1.3rem;
       font-weight: 700;
-      margin-bottom: 20px;
     }
 
+    /* Status Bar in Presenter View */
+    .presenter-status-bar {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      align-items: center;
+    }
+
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .status-item-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .status-item-value {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .timer-highlight {
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 1.1rem;
+    }
+
+    /* Form Controls & Selectors */
     .form-group {
       margin-bottom: 20px;
     }
 
     label {
       display: block;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       font-weight: 600;
       margin-bottom: 8px;
       color: var(--text-muted);
     }
 
-    input[type="text"] {
+    input[type="text"], select {
       width: 100%;
-      max-width: 400px;
       padding: 12px;
       background-color: var(--bg-dark);
       border: 1px solid var(--border-color);
       border-radius: 8px;
       color: var(--text-main);
-      font-size: 1rem;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    input[type="text"]:focus, select:focus {
+      border-color: var(--primary);
     }
 
     .action-row {
@@ -165,6 +223,7 @@
       font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
+      transition: background-color 0.2s ease;
     }
 
     .btn-start {
@@ -210,7 +269,7 @@
     }
 
     .preview-box {
-      margin-top: 24px;
+      margin-top: 16px;
       background-color: var(--bg-dark);
       border: 1px solid var(--border-color);
       border-radius: 8px;
@@ -221,23 +280,68 @@
       color: #e2e8f0;
     }
 
-    .overlay-link-box {
-      margin-top: 20px;
-      padding: 16px;
-      background-color: rgba(15, 23, 42, 0.6);
-      border: 1px dashed var(--border-color);
-      border-radius: 8px;
+    /* Room List Table / Cards */
+    .rooms-list {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      flex-direction: column;
+      gap: 16px;
     }
 
-    .overlay-url {
+    .room-card {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .room-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .room-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .room-tag {
+      font-size: 0.8rem;
+      color: var(--text-muted);
       font-family: monospace;
-      font-size: 0.9rem;
-      color: var(--primary);
-      word-break: break-all;
+    }
+
+    .room-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-link-action {
+      background-color: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .btn-link-action:hover {
+      background-color: var(--border-color);
+      border-color: var(--primary);
     }
   </style>
 </head>
@@ -275,13 +379,50 @@
       </div>
     </div>
 
-    <!-- Live Presenter Controls -->
+    <!-- Rooms & Stages List Section -->
     <div class="console-card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2 class="section-title" style="margin:0;">Presenter Studio</h2>
+      <div class="section-header">
+        <h2 class="section-title">Active Rooms & Stream Links</h2>
+        <span class="metric-subtitle">Select a room to launch Presenter, Overlay, or Mobile Captions View</span>
+      </div>
+
+      <div id="roomsContainer" class="rooms-list">
+        <!-- Dynamically rendered room items -->
+      </div>
+    </div>
+
+    <!-- Live Presenter Controls -->
+    <div class="console-card" id="presenterStudio">
+      <div class="section-header">
+        <h2 class="section-title">Presenter Studio View</h2>
         <div id="streamStatusBadge" class="status-badge">
           <span class="status-dot"></span>
           <span id="streamStatusText">Offline</span>
+        </div>
+      </div>
+
+      <!-- Presenter Room Status Bar -->
+      <div class="presenter-status-bar">
+        <div class="status-item">
+          <span class="status-item-label">Active Room</span>
+          <span id="activeRoomDisplay" class="status-item-value">main-stage</span>
+        </div>
+
+        <div class="status-item">
+          <span class="status-item-label">Allocated Account Time</span>
+          <span id="allocatedTimeDisplay" class="status-item-value">0 hrs</span>
+        </div>
+
+        <div class="status-item">
+          <span class="status-item-label">Time Remaining in Room</span>
+          <span id="timeRemainingDisplay" class="status-item-value timer-highlight">--:--:--</span>
+        </div>
+
+        <div class="status-item">
+          <span class="status-item-label">Translation Language (80+)</span>
+          <select id="languageSelect" onchange="handleLanguageChange()">
+            <!-- 80+ Languages Options -->
+          </select>
         </div>
       </div>
 
@@ -300,15 +441,6 @@
       <div id="captionPreview" class="preview-box">
         <em>Captions will appear here in real time once you begin speaking...</em>
       </div>
-
-      <!-- OBS Overlay Generator -->
-      <div class="overlay-link-box">
-        <div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">OBS / WEB TRANSPARENT OVERLAY URL</div>
-          <div id="overlayUrlDisplay" class="overlay-url">http://...</div>
-        </div>
-        <button onclick="copyOverlayUrl()" class="btn-secondary">Copy Link</button>
-      </div>
     </div>
 
   </div>
@@ -321,6 +453,109 @@
     let activeWebSocket = null;
     let activeMediaRecorder = null;
     let activeAudioStream = null;
+
+    let userAllocatedSeconds = 0;
+    let userUsedSeconds = 0;
+    let remainingSeconds = 0;
+    let timerInterval = null;
+
+    // Supported 80+ Translation Languages List
+    const languages = [
+      { code: "en", name: "English (US)" },
+      { code: "en-GB", name: "English (UK)" },
+      { code: "es", name: "Spanish" },
+      { code: "fr", name: "French" },
+      { code: "de", name: "German" },
+      { code: "it", name: "Italian" },
+      { code: "pt", name: "Portuguese (Brazil)" },
+      { code: "pt-PT", name: "Portuguese (Portugal)" },
+      { code: "nl", name: "Dutch" },
+      { code: "ru", name: "Russian" },
+      { code: "zh", name: "Chinese (Simplified)" },
+      { code: "zh-TW", name: "Chinese (Traditional)" },
+      { code: "ja", name: "Japanese" },
+      { code: "ko", name: "Korean" },
+      { code: "ar", name: "Arabic" },
+      { code: "hi", name: "Hindi" },
+      { code: "tr", name: "Turkish" },
+      { code: "pl", name: "Polish" },
+      { code: "sv", name: "Swedish" },
+      { code: "da", name: "Danish" },
+      { code: "no", name: "Norwegian" },
+      { code: "fi", name: "Finnish" },
+      { code: "uk", name: "Ukrainian" },
+      { code: "cs", name: "Czech" },
+      { code: "el", name: "Greek" },
+      { code: "hu", name: "Hungarian" },
+      { code: "ro", name: "Romanian" },
+      { code: "id", name: "Indonesian" },
+      { code: "th", name: "Thai" },
+      { code: "vi", name: "Vietnamese" },
+      { code: "ms", name: "Malay" },
+      { code: "tl", name: "Tagalog / Filipino" },
+      { code: "he", name: "Hebrew" },
+      { code: "bn", name: "Bengali" },
+      { code: "ta", name: "Tamil" },
+      { code: "te", name: "Telugu" },
+      { code: "mr", name: "Marathi" },
+      { code: "gu", name: "Gujarati" },
+      { code: "pa", name: "Punjabi" },
+      { code: "kn", name: "Kannada" },
+      { code: "ml", name: "Malayalam" },
+      { code: "ur", name: "Urdu" },
+      { code: "sw", name: "Swahili" },
+      { code: "af", name: "Afrikaans" },
+      { code: "fa", name: "Persian / Farsi" },
+      { code: "ps", name: "Pashto" },
+      { code: "ku", name: "Kurdish" },
+      { code: "am", name: "Amharic" },
+      { code: "so", name: "Somali" },
+      { code: "ha", name: "Hausa" },
+      { code: "yo", name: "Yoruba" },
+      { code: "ig", name: "Igbo" },
+      { code: "zu", name: "Zulu" },
+      { code: "xh", name: "Xhosa" },
+      { code: "sq", name: "Albanian" },
+      { code: "hy", name: "Armenian" },
+      { code: "az", name: "Azerbaijani" },
+      { code: "be", name: "Belarusian" },
+      { code: "bs", name: "Bosnian" },
+      { code: "bg", name: "Bulgarian" },
+      { code: "ca", name: "Catalan" },
+      { code: "hr", name: "Croatian" },
+      { code: "et", name: "Estonian" },
+      { code: "ka", name: "Georgian" },
+      { code: "ht", name: "Haitian Creole" },
+      { code: "is", name: "Icelandic" },
+      { code: "ga", name: "Irish" },
+      { code: "kk", name: "Kazakh" },
+      { code: "km", name: "Khmer" },
+      { code: "lo", name: "Lao" },
+      { code: "lv", name: "Latvian" },
+      { code: "lt", name: "Lithuanian" },
+      { code: "mk", name: "Macedonian" },
+      { code: "mt", name: "Maltese" },
+      { code: "mn", name: "Mongolian" },
+      { code: "ne", name: "Nepali" },
+      { code: "sr", name: "Serbian" },
+      { code: "sk", name: "Slovak" },
+      { code: "sl", name: "Slovenian" },
+      { code: "uz", name: "Uzbek" },
+      { code: "cy", name: "Welsh" },
+      { code: "yi", name: "Yiddish" }
+    ];
+
+    // Populate Translation Language Select Box
+    function populateLanguages() {
+      const select = document.getElementById("languageSelect");
+      select.innerHTML = "";
+      languages.forEach(lang => {
+        const opt = document.createElement("option");
+        opt.value = lang.code;
+        opt.innerText = `${lang.name} (${lang.code})`;
+        select.appendChild(opt);
+      });
+    }
 
     // Load User Auth & Subscription Data
     async function loadUserData() {
@@ -344,6 +579,7 @@
         console.error("Failed to load user DB record:", dbError);
         document.getElementById("planTierDisplay").innerText = "Free Tier";
         document.getElementById("planStatusDisplay").innerText = "No active subscription";
+        renderRoomList(["main-stage"]);
         return;
       }
 
@@ -358,30 +594,117 @@
       document.getElementById("planTierDisplay").innerText = planNameMap[dbUser.plan_tier] || "Free Tier";
       document.getElementById("planStatusDisplay").innerText = `Status: ${dbUser.subscription_status.toUpperCase()}`;
 
-      const hoursUsed = (dbUser.streaming_seconds_used / 3600).toFixed(1);
-      const maxHours = (dbUser.max_streaming_seconds / 3600).toFixed(0);
-      const percentUsed = dbUser.max_streaming_seconds > 0 
-        ? Math.round((dbUser.streaming_seconds_used / dbUser.max_streaming_seconds) * 100) 
+      userAllocatedSeconds = dbUser.max_streaming_seconds || 0;
+      userUsedSeconds = dbUser.streaming_seconds_used || 0;
+      remainingSeconds = Math.max(0, userAllocatedSeconds - userUsedSeconds);
+
+      const hoursUsed = (userUsedSeconds / 3600).toFixed(1);
+      const maxHours = (userAllocatedSeconds / 3600).toFixed(0);
+      const percentUsed = userAllocatedSeconds > 0 
+        ? Math.round((userUsedSeconds / userAllocatedSeconds) * 100) 
         : 0;
 
       document.getElementById("usageTimeDisplay").innerText = `${hoursUsed} / ${maxHours} hrs`;
-      document.getElementById("usagePercentDisplay").innerText = `${percentUsed}% of streaming quota used`;
-      document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 0} Stage(s)`;
+      document.getElementById("usagePercentDisplay").innerText = `${percentUsed}% of monthly quota used`;
+      document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 1} Stage(s)`;
 
-      updateOverlayUrl();
+      // Update Presenter Status Bar Metrics
+      document.getElementById("allocatedTimeDisplay").innerText = `${maxHours} Hours`;
+      updateTimerDisplay();
+
+      // Setup Rooms List according to allowed stages
+      const roomCount = Math.max(1, dbUser.allowed_rooms || 1);
+      const roomList = [];
+      for (let i = 1; i <= roomCount; i++) {
+        roomList.push(i === 1 ? "main-stage" : `stage-${i}`);
+      }
+      renderRoomList(roomList);
     }
 
-    // Dynamic OBS Overlay URL Helper
-    function updateOverlayUrl() {
-      const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
-      const overlayUrl = `${window.location.origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
-      document.getElementById("overlayUrlDisplay").innerText = overlayUrl;
+    // Render List of Rooms with Stream Links
+    function renderRoomList(rooms) {
+      const container = document.getElementById("roomsContainer");
+      container.innerHTML = "";
+
+      const origin = window.location.origin;
+
+      rooms.forEach((roomId) => {
+        const presenterUrl = `${origin}/dashboard.html?room=${encodeURIComponent(roomId)}`;
+        const overlayUrl = `${origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
+        const mobileUrl = `${origin}/mobile.html?room=${encodeURIComponent(roomId)}`;
+
+        const card = document.createElement("div");
+        card.className = "room-card";
+        card.innerHTML = `
+          <div class="room-info">
+            <div class="room-title">📍 Stage: ${roomId}</div>
+            <div class="room-tag">Room ID: ${roomId}</div>
+          </div>
+          <div class="room-actions">
+            <button class="btn-link-action" onclick="selectPresenterRoom('${roomId}')">
+              🎙️ Presenter View
+            </button>
+            <button class="btn-link-action" onclick="copyToClipboard('${overlayUrl}', 'OBS Overlay URL')">
+              🖥️ Overlay View Link
+            </button>
+            <button class="btn-link-action" onclick="copyToClipboard('${mobileUrl}', 'Mobile Captions Link')">
+              📱 Mobile Captions Link
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
     }
 
-    function copyOverlayUrl() {
-      const urlText = document.getElementById("overlayUrlDisplay").innerText;
-      navigator.clipboard.writeText(urlText);
-      alert("OBS Overlay URL copied to clipboard!");
+    function selectPresenterRoom(roomId) {
+      document.getElementById("roomIdInput").value = roomId;
+      document.getElementById("activeRoomDisplay").innerText = roomId;
+      document.getElementById("presenterStudio").scrollIntoView({ behavior: "smooth" });
+    }
+
+    function copyToClipboard(text, label) {
+      navigator.clipboard.writeText(text);
+      alert(`${label} copied to clipboard!\n${text}`);
+    }
+
+    // Countdown Timer Helper
+    function updateTimerDisplay() {
+      const display = document.getElementById("timeRemainingDisplay");
+      if (remainingSeconds <= 0) {
+        display.innerText = "00:00:00 (Quota Exceeded)";
+        return;
+      }
+
+      const hrs = Math.floor(remainingSeconds / 3600);
+      const mins = Math.floor((remainingSeconds % 3600) / 60);
+      const secs = remainingSeconds % 60;
+
+      display.innerText = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function startLiveTimer() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (remainingSeconds > 0) {
+          remainingSeconds--;
+          userUsedSeconds++;
+          updateTimerDisplay();
+        } else {
+          stopPresenterStream();
+          alert("Streaming quota reached. Stream stopped.");
+        }
+      }, 1000);
+    }
+
+    function stopLiveTimer() {
+      clearInterval(timerInterval);
+    }
+
+    function handleLanguageChange() {
+      const selectedLang = document.getElementById("languageSelect").value;
+      if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
+        activeWebSocket.send(JSON.stringify({ type: "config", target_language: selectedLang }));
+      }
     }
 
     // Start Live Presenter Stream
@@ -389,7 +712,13 @@
       const startBtn = document.getElementById("startBtn");
       const stopBtn = document.getElementById("stopBtn");
       const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
+      const targetLang = document.getElementById("languageSelect").value;
       const previewBox = document.getElementById("captionPreview");
+
+      if (remainingSeconds <= 0) {
+        alert("Cannot start stream: Streaming time quota exhausted.");
+        return;
+      }
 
       startBtn.disabled = true;
       startBtn.innerText = "Connecting...";
@@ -406,23 +735,26 @@
         // 2. Request Microphone Access
         activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // 3. Open WebSocket Connection
+        // 3. Open WebSocket Connection with target language parameter
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&token=${session.access_token}`;
+        const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&lang=${encodeURIComponent(targetLang)}&token=${session.access_token}`;
 
         activeWebSocket = new WebSocket(wsUrl);
 
         activeWebSocket.onopen = () => {
           console.log("✅ Presenter WebSocket connected!");
           
-          // Update UI Status
+          // Update UI Status & Start Timer
           document.getElementById("streamStatusBadge").classList.add("active");
           document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
+          document.getElementById("activeRoomDisplay").innerText = roomId;
           startBtn.style.display = "none";
           stopBtn.style.display = "inline-block";
           previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
 
-          // 4. Record & Send Audio Chunks to Deepgram via Server
+          startLiveTimer();
+
+          // 4. Record & Send Audio Chunks
           activeMediaRecorder = new MediaRecorder(activeAudioStream, { mimeType: "audio/webm" });
           activeMediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && activeWebSocket.readyState === WebSocket.OPEN) {
@@ -464,6 +796,8 @@
 
     // Stop Presenter Stream
     function stopPresenterStream() {
+      stopLiveTimer();
+
       if (activeMediaRecorder && activeMediaRecorder.state !== "inactive") {
         activeMediaRecorder.stop();
       }
@@ -492,7 +826,7 @@
       startBtn.innerText = "Start Live Streaming";
       stopBtn.style.display = "none";
 
-      // Refresh DB metrics to show updated time used
+      // Refresh DB metrics
       loadUserData();
     }
 
@@ -501,13 +835,23 @@
       window.location.href = "/auth.html";
     }
 
-    // Event Listeners
+    // Event Listeners & Initial Load
     document.addEventListener("DOMContentLoaded", () => {
+      populateLanguages();
       loadUserData();
+
+      // Pre-select room if specified in query string
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get("room");
+      if (roomParam) {
+        selectPresenterRoom(roomParam);
+      }
 
       document.getElementById("startBtn").addEventListener("click", startPresenterStream);
       document.getElementById("stopBtn").addEventListener("click", stopPresenterStream);
-      document.getElementById("roomIdInput").addEventListener("input", updateOverlayUrl);
+      document.getElementById("roomIdInput").addEventListener("input", (e) => {
+        document.getElementById("activeRoomDisplay").innerText = e.target.value.trim() || "main-stage";
+      });
     });
   </script>
 </body>
