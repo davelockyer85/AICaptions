@@ -26,6 +26,7 @@
       text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
       min-height: 80px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      word-wrap: break-word;
     }
   </style>
 </head>
@@ -34,12 +35,44 @@
 
   <script>
     const box = document.getElementById("caption-box");
+
+    // 1. Extract roomId from current page URL (e.g. overlay.html?roomId=stage-2 or ?room=stage-2)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get("roomId") || urlParams.get("room") || "default";
+
+    // 2. Build WebSocket URL matching server.js expectation (roomId and role=viewer)
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/overlay`);
+    const wsUrl = `${protocol}//${location.host}?roomId=${encodeURIComponent(roomId)}&role=viewer`;
+
+    console.log(`Connecting overlay WebSocket to room: ${roomId}`);
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log(`Connected to stream room: ${roomId}`);
+    };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      box.innerText = data.text;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "caption" && data.text) {
+          box.innerText = data.text;
+        } else if (data.text) {
+          box.innerText = data.text;
+        }
+      } catch (err) {
+        console.error("Error parsing caption payload:", err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error("Overlay WebSocket Error:", err);
+    };
+
+    ws.onclose = () => {
+      box.innerText = "Connection lost. Reconnecting...";
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
     };
   </script>
 </body>
