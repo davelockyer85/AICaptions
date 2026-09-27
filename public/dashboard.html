@@ -21,13 +21,28 @@
     </div>
     <div class="flex items-center gap-4">
       <span id="user-email" class="text-slate-400 text-sm">Loading user...</span>
-      <a href="/pricing.html" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition">Manage Subscription</a>
+      <a href="/pricing.html" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg font-medium transition">Manage Subscription</a>
       <button id="signout-btn" class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg font-medium transition">Sign Out</button>
     </div>
   </header>
 
   <main class="max-w-6xl mx-auto space-y-8">
     
+    <!-- Primary Action Banner -->
+    <div class="card p-6 bg-gradient-to-r from-blue-900/40 via-slate-900 to-slate-900 border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>🎙️</span> Presenter Studio Control
+        </h2>
+        <p class="text-sm text-slate-300 mt-1">
+          Launch your presenter interface to start broadcasting live audio, toggle microphones, and select speech recognition languages.
+        </p>
+      </div>
+      <a id="presenter-btn" href="#" target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition flex items-center gap-2 whitespace-nowrap shadow-lg shadow-blue-600/20">
+        <span>▶ Open Presenter Studio</span>
+      </a>
+    </div>
+
     <!-- Top Level Metrics -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       
@@ -70,31 +85,33 @@
 
     </div>
 
-    <!-- System Status & API Integration Section -->
+    <!-- Integration & Link Hub -->
     <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
       
-      <!-- Real-Time Service Health -->
+      <!-- Studio Links & Direct Launch -->
       <div class="card p-6 space-y-4">
         <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <span>⚡</span> Service Status
+          <span>🔗</span> Quick Links
         </h3>
-        <div class="space-y-3 text-sm">
-          <div class="flex justify-between items-center p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-            <span class="text-slate-300">Live Transcription Engine</span>
-            <span class="text-emerald-400 font-medium text-xs flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Operational
-            </span>
+        <div class="space-y-3">
+          <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 flex justify-between items-center">
+            <div>
+              <div class="text-sm font-medium text-white">Presenter Control Studio</div>
+              <div class="text-xs text-slate-400">Main stage audio broadcasting interface</div>
+            </div>
+            <a id="presenter-link" href="#" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium underline">Open Studio ↗</a>
           </div>
-          <div class="flex justify-between items-center p-3 bg-slate-900/60 rounded-lg border border-slate-800">
-            <span class="text-slate-300">WebSocket Broadcast Relay</span>
-            <span class="text-emerald-400 font-medium text-xs flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Operational
-            </span>
+          <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800 flex justify-between items-center">
+            <div>
+              <div class="text-sm font-medium text-white">OBS Overlay View</div>
+              <div class="text-xs text-slate-400">Transparent output for streaming software</div>
+            </div>
+            <a id="overlay-link" href="/overlay.html?roomId=main-stage" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 font-medium underline">View Overlay ↗</a>
           </div>
         </div>
       </div>
 
-      <!-- Quick Integration Snippet -->
+      <!-- Embed Settings -->
       <div class="card p-6 space-y-4">
         <h3 class="text-lg font-bold text-white flex items-center gap-2">
           <span>⚙️</span> Embed Settings
@@ -117,7 +134,6 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function initDashboard() {
-      // Set hostname dynamically
       document.getElementById("domain-placeholder").innerText = window.location.host;
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -128,6 +144,11 @@
 
       document.getElementById("user-email").innerText = session.user.email;
 
+      // Attach authentication token and room ID to the presenter studio links
+      const presenterUrl = `/presenter.html?roomId=main-stage&token=${encodeURIComponent(session.access_token)}`;
+      document.getElementById("presenter-btn").href = presenterUrl;
+      document.getElementById("presenter-link").href = presenterUrl;
+
       // Fetch User Quota & Plan details
       const { data: profile } = await supabase
         .from("users")
@@ -136,11 +157,9 @@
         .single();
 
       if (profile) {
-        // Plan Info
         document.getElementById("plan-tier").innerText = (profile.plan_tier || "Free").toUpperCase();
         document.getElementById("plan-status").innerText = (profile.subscription_status || "ACTIVE").toUpperCase();
 
-        // Quota & Hours Calculations
         const usedHrs = ((profile.streaming_seconds_used || 0) / 3600).toFixed(1);
         const maxHrs = ((profile.max_streaming_seconds || 18000) / 3600).toFixed(0);
         document.getElementById("usage-hours").innerText = `${usedHrs} / ${maxHrs} hrs`;
@@ -149,7 +168,6 @@
         document.getElementById("usage-bar").style.width = `${pct}%`;
         document.getElementById("usage-percent-badge").innerText = `${pct}%`;
 
-        // Stage capacity
         const roomCount = profile.allowed_rooms || 1;
         document.getElementById("allowed-rooms-count").innerText = `${roomCount} Stage${roomCount > 1 ? 's' : ''}`;
       }
