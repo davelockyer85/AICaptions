@@ -189,6 +189,83 @@
     </div>
   </div>
 
+  <!-- FREE TIER CARD (Add inside your .pricing-grid container) -->
+<div class="pricing-card">
+  <div class="card-header">
+    <h3>Free Trial</h3>
+    <p class="price">$0 <span>/ one-time</span></p>
+  </div>
+  <ul class="features-list">
+    <li>⚡ 5 Hours Live Captioning</li>
+    <li>🎙️ 1 Stage / Room</li>
+    <li>📺 OBS Transparent Overlay</li>
+    <li>⏱️ No Credit Card Required</li>
+  </ul>
+  <button id="claimFreeBtn" onclick="claimFreeTrial()" class="btn-primary">
+    Claim 5 Hours Free
+  </button>
+</div>
+
+<script>
+  async function claimFreeTrial() {
+    const claimBtn = document.getElementById("claimFreeBtn");
+    claimBtn.disabled = true;
+    claimBtn.innerText = "Processing...";
+
+    // 1. Check user authentication
+    const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
+
+    if (authErr || !user) {
+      alert("Please sign in or create an account to claim your free pass.");
+      window.location.href = "/auth.html";
+      return;
+    }
+
+    // 2. Fetch current user data from Supabase
+    const { data: dbUser, error: fetchErr } = await supabaseClient
+      .from("users")
+      .select("has_claimed_free, plan_tier")
+      .eq("id", user.id)
+      .single();
+
+    if (fetchErr) {
+      alert("Error checking account eligibility: " + fetchErr.message);
+      claimBtn.disabled = false;
+      claimBtn.innerText = "Claim 5 Hours Free";
+      return;
+    }
+
+    // 3. Prevent re-claiming if already used
+    if (dbUser.has_claimed_free) {
+      alert("You have already claimed your 5-hour free pass.");
+      window.location.href = "/dashboard.html";
+      return;
+    }
+
+    // 4. Update user plan to 'free' with 18,000 seconds (5 hours)
+    const { error: updateErr } = await supabaseClient
+      .from("users")
+      .update({
+        plan_tier: "free",
+        subscription_status: "active",
+        max_streaming_seconds: 18000, // 5 hours in seconds
+        allowed_rooms: 1,
+        has_claimed_free: true
+      })
+      .eq("id", user.id);
+
+    if (updateErr) {
+      alert("Failed to activate free pass: " + updateErr.message);
+      claimBtn.disabled = false;
+      claimBtn.innerText = "Claim 5 Hours Free";
+      return;
+    }
+
+    alert("🎉 5 Hours of Free Captioning activated!");
+    window.location.href = "/dashboard.html";
+  }
+</script>
+
   <script>
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
