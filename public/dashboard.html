@@ -141,15 +141,15 @@
       font-weight: 700;
     }
 
-    /* Status Bar in Presenter View */
+    /* Presenter Status Bar */
     .presenter-status-bar {
       background-color: var(--bg-dark);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      padding: 16px 20px;
+      padding: 18px 20px;
       margin-bottom: 24px;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 16px;
       align-items: center;
     }
@@ -180,68 +180,19 @@
       font-size: 1.1rem;
     }
 
-    /* Form Controls & Selectors */
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    label {
-      display: block;
-      font-size: 0.88rem;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: var(--text-muted);
-    }
-
-    input[type="text"], select {
+    select {
       width: 100%;
-      padding: 12px;
-      background-color: var(--bg-dark);
+      padding: 8px 12px;
+      background-color: var(--card-bg);
       border: 1px solid var(--border-color);
-      border-radius: 8px;
+      border-radius: 6px;
       color: var(--text-main);
-      font-size: 0.95rem;
+      font-size: 0.88rem;
       outline: none;
-      transition: border-color 0.2s ease;
     }
 
-    input[type="text"]:focus, select:focus {
+    select:focus {
       border-color: var(--primary);
-    }
-
-    .action-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-top: 24px;
-    }
-
-    .btn-action {
-      padding: 12px 28px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-    }
-
-    .btn-start {
-      background-color: var(--primary);
-      color: #ffffff;
-    }
-
-    .btn-start:hover {
-      background-color: var(--primary-hover);
-    }
-
-    .btn-stop {
-      background-color: var(--danger);
-      color: #ffffff;
-    }
-
-    .btn-stop:hover {
-      background-color: var(--danger-hover);
     }
 
     .status-badge {
@@ -268,19 +219,7 @@
       background-color: currentColor;
     }
 
-    .preview-box {
-      margin-top: 16px;
-      background-color: var(--bg-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 20px;
-      min-height: 120px;
-      font-size: 1.1rem;
-      line-height: 1.6;
-      color: #e2e8f0;
-    }
-
-    /* Room List Table / Cards */
+    /* Room Cards List */
     .rooms-list {
       display: flex;
       flex-direction: column;
@@ -292,6 +231,15 @@
       border: 1px solid var(--border-color);
       border-radius: 10px;
       padding: 20px;
+      transition: border-color 0.2s ease;
+    }
+
+    .room-card.is-live {
+      border-color: var(--success);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+    }
+
+    .room-card-header {
       display: flex;
       flex-wrap: wrap;
       justify-content: space-between;
@@ -309,6 +257,9 @@
       font-size: 1.1rem;
       font-weight: 700;
       color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .room-tag {
@@ -321,6 +272,45 @@
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn-action-start {
+      background-color: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-action-start:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-action-stop {
+      background-color: var(--danger);
+      color: #ffffff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-action-stop:hover {
+      background-color: var(--danger-hover);
     }
 
     .btn-link-action {
@@ -331,7 +321,6 @@
       border-radius: 6px;
       font-size: 0.85rem;
       font-weight: 600;
-      text-decoration: none;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -342,6 +331,19 @@
     .btn-link-action:hover {
       background-color: var(--border-color);
       border-color: var(--primary);
+    }
+
+    /* Embedded Preview Box in Room Card */
+    .preview-box {
+      margin-top: 16px;
+      background-color: #090d16;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 90px;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: #e2e8f0;
     }
   </style>
 </head>
@@ -379,22 +381,10 @@
       </div>
     </div>
 
-    <!-- Rooms & Stages List Section -->
+    <!-- Rooms & Stream Controls Section -->
     <div class="console-card">
       <div class="section-header">
-        <h2 class="section-title">Active Rooms & Stream Links</h2>
-        <span class="metric-subtitle">Select a room to launch Presenter, Overlay, or Mobile Captions View</span>
-      </div>
-
-      <div id="roomsContainer" class="rooms-list">
-        <!-- Dynamically rendered room items -->
-      </div>
-    </div>
-
-    <!-- Live Presenter Controls -->
-    <div class="console-card" id="presenterStudio">
-      <div class="section-header">
-        <h2 class="section-title">Presenter Studio View</h2>
+        <h2 class="section-title">Rooms & Live Stream Console</h2>
         <div id="streamStatusBadge" class="status-badge">
           <span class="status-dot"></span>
           <span id="streamStatusText">Offline</span>
@@ -404,42 +394,26 @@
       <!-- Presenter Room Status Bar -->
       <div class="presenter-status-bar">
         <div class="status-item">
-          <span class="status-item-label">Active Room</span>
-          <span id="activeRoomDisplay" class="status-item-value">main-stage</span>
-        </div>
-
-        <div class="status-item">
           <span class="status-item-label">Allocated Account Time</span>
           <span id="allocatedTimeDisplay" class="status-item-value">0 hrs</span>
         </div>
 
         <div class="status-item">
-          <span class="status-item-label">Time Remaining in Room</span>
+          <span class="status-item-label">Time Remaining in Stream</span>
           <span id="timeRemainingDisplay" class="status-item-value timer-highlight">--:--:--</span>
         </div>
 
         <div class="status-item">
-          <span class="status-item-label">Translation Language (80+)</span>
+          <span class="status-item-label">Target Translation (80+ Languages)</span>
           <select id="languageSelect" onchange="handleLanguageChange()">
-            <!-- 80+ Languages Options -->
+            <!-- Populated via JavaScript -->
           </select>
         </div>
       </div>
 
-      <div class="form-group">
-        <label for="roomIdInput">Stage / Room ID</label>
-        <input type="text" id="roomIdInput" value="main-stage" placeholder="e.g. main-stage">
-      </div>
-
-      <div class="action-row">
-        <button id="startBtn" class="btn-action btn-start">Start Live Streaming</button>
-        <button id="stopBtn" class="btn-action btn-stop" style="display: none;">Stop Streaming</button>
-      </div>
-
-      <!-- Live Transcribed Preview -->
-      <label style="margin-top: 24px;">Live Caption Transcript Preview</label>
-      <div id="captionPreview" class="preview-box">
-        <em>Captions will appear here in real time once you begin speaking...</em>
+      <!-- Rooms List -->
+      <div id="roomsContainer" class="rooms-list">
+        <!-- Dynamically rendered room items -->
       </div>
     </div>
 
@@ -454,6 +428,7 @@
     let activeMediaRecorder = null;
     let activeAudioStream = null;
 
+    let activeRoomId = null; // Currently streaming room ID
     let userAllocatedSeconds = 0;
     let userUsedSeconds = 0;
     let remainingSeconds = 0;
@@ -545,6 +520,8 @@
       { code: "yi", name: "Yiddish" }
     ];
 
+    let cachedRoomList = ["main-stage"];
+
     // Populate Translation Language Select Box
     function populateLanguages() {
       const select = document.getElementById("languageSelect");
@@ -608,20 +585,20 @@
       document.getElementById("usagePercentDisplay").innerText = `${percentUsed}% of monthly quota used`;
       document.getElementById("allowedRoomsDisplay").innerText = `${dbUser.allowed_rooms || 1} Stage(s)`;
 
-      // Update Presenter Status Bar Metrics
+      // Update Status Bar Metrics
       document.getElementById("allocatedTimeDisplay").innerText = `${maxHours} Hours`;
       updateTimerDisplay();
 
       // Setup Rooms List according to allowed stages
       const roomCount = Math.max(1, dbUser.allowed_rooms || 1);
-      const roomList = [];
+      cachedRoomList = [];
       for (let i = 1; i <= roomCount; i++) {
-        roomList.push(i === 1 ? "main-stage" : `stage-${i}`);
+        cachedRoomList.push(i === 1 ? "main-stage" : `stage-${i}`);
       }
-      renderRoomList(roomList);
+      renderRoomList(cachedRoomList);
     }
 
-    // Render List of Rooms with Stream Links
+    // Render List of Rooms with Direct Stream Button & Links
     function renderRoomList(rooms) {
       const container = document.getElementById("roomsContainer");
       container.innerHTML = "";
@@ -629,37 +606,48 @@
       const origin = window.location.origin;
 
       rooms.forEach((roomId) => {
-        const presenterUrl = `${origin}/dashboard.html?room=${encodeURIComponent(roomId)}`;
         const overlayUrl = `${origin}/overlay.html?room=${encodeURIComponent(roomId)}`;
         const mobileUrl = `${origin}/mobile.html?room=${encodeURIComponent(roomId)}`;
+        const isLive = activeRoomId === roomId;
 
         const card = document.createElement("div");
-        card.className = "room-card";
+        card.className = `room-card ${isLive ? 'is-live' : ''}`;
+        
         card.innerHTML = `
-          <div class="room-info">
-            <div class="room-title">📍 Stage: ${roomId}</div>
-            <div class="room-tag">Room ID: ${roomId}</div>
+          <div class="room-card-header">
+            <div class="room-info">
+              <div class="room-title">
+                📍 Stage: ${roomId}
+                ${isLive ? '<span class="status-badge active"><span class="status-dot"></span> LIVE</span>' : ''}
+              </div>
+              <div class="room-tag">Room ID: ${roomId}</div>
+            </div>
+            <div class="room-actions">
+              ${isLive ? `
+                <button class="btn-action-stop" onclick="stopPresenterStream()">
+                  ⏹️ Stop Stream
+                </button>
+              ` : `
+                <button class="btn-action-start" onclick="startPresenterStream('${roomId}')">
+                  ▶️ Start Stream
+                </button>
+              `}
+              <button class="btn-link-action" onclick="copyToClipboard('${overlayUrl}', 'OBS Overlay URL')">
+                🖥️ Overlay View Link
+              </button>
+              <button class="btn-link-action" onclick="copyToClipboard('${mobileUrl}', 'Mobile Captions Link')">
+                📱 Mobile Captions Link
+              </button>
+            </div>
           </div>
-          <div class="room-actions">
-            <button class="btn-link-action" onclick="selectPresenterRoom('${roomId}')">
-              🎙️ Presenter View
-            </button>
-            <button class="btn-link-action" onclick="copyToClipboard('${overlayUrl}', 'OBS Overlay URL')">
-              🖥️ Overlay View Link
-            </button>
-            <button class="btn-link-action" onclick="copyToClipboard('${mobileUrl}', 'Mobile Captions Link')">
-              📱 Mobile Captions Link
-            </button>
-          </div>
+          ${isLive ? `
+            <div id="captionPreview_${roomId}" class="preview-box">
+              <em>Listening to microphone audio... Speak to generate real-time captions.</em>
+            </div>
+          ` : ''}
         `;
         container.appendChild(card);
       });
-    }
-
-    function selectPresenterRoom(roomId) {
-      document.getElementById("roomIdInput").value = roomId;
-      document.getElementById("activeRoomDisplay").innerText = roomId;
-      document.getElementById("presenterStudio").scrollIntoView({ behavior: "smooth" });
     }
 
     function copyToClipboard(text, label) {
@@ -707,21 +695,19 @@
       }
     }
 
-    // Start Live Presenter Stream
-    async function startPresenterStream() {
-      const startBtn = document.getElementById("startBtn");
-      const stopBtn = document.getElementById("stopBtn");
-      const roomId = document.getElementById("roomIdInput").value.trim() || "main-stage";
-      const targetLang = document.getElementById("languageSelect").value;
-      const previewBox = document.getElementById("captionPreview");
+    // Start Live Presenter Stream directly from room button
+    async function startPresenterStream(roomId) {
+      if (activeRoomId) {
+        alert(`You are already streaming live on ${activeRoomId}. Stop that stream first.`);
+        return;
+      }
 
       if (remainingSeconds <= 0) {
         alert("Cannot start stream: Streaming time quota exhausted.");
         return;
       }
 
-      startBtn.disabled = true;
-      startBtn.innerText = "Connecting...";
+      const targetLang = document.getElementById("languageSelect").value;
 
       try {
         // 1. Fetch Fresh Auth Session Token
@@ -735,23 +721,21 @@
         // 2. Request Microphone Access
         activeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // 3. Open WebSocket Connection with target language parameter
+        // 3. Open WebSocket Connection with selected room & target language
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${wsProtocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=presenter&lang=${encodeURIComponent(targetLang)}&token=${session.access_token}`;
 
         activeWebSocket = new WebSocket(wsUrl);
 
         activeWebSocket.onopen = () => {
-          console.log("✅ Presenter WebSocket connected!");
-          
+          console.log(`✅ Live stream connected for room: ${roomId}`);
+          activeRoomId = roomId;
+
           // Update UI Status & Start Timer
           document.getElementById("streamStatusBadge").classList.add("active");
-          document.getElementById("streamStatusText").innerText = "LIVE STREAMING";
-          document.getElementById("activeRoomDisplay").innerText = roomId;
-          startBtn.style.display = "none";
-          stopBtn.style.display = "inline-block";
-          previewBox.innerHTML = "<em>Listening to microphone audio... Speak to generate captions.</em>";
-
+          document.getElementById("streamStatusText").innerText = `LIVE (${roomId})`;
+          
+          renderRoomList(cachedRoomList);
           startLiveTimer();
 
           // 4. Record & Send Audio Chunks
@@ -767,7 +751,10 @@
         activeWebSocket.onmessage = (evt) => {
           const data = JSON.parse(evt.data);
           if (data.type === "caption") {
-            previewBox.innerText = data.text;
+            const previewBox = document.getElementById(`captionPreview_${activeRoomId}`);
+            if (previewBox) {
+              previewBox.innerText = data.text;
+            }
           }
         };
 
@@ -813,18 +800,13 @@
       activeMediaRecorder = null;
       activeAudioStream = null;
       activeWebSocket = null;
+      activeRoomId = null;
 
       // Reset UI Elements
       document.getElementById("streamStatusBadge").classList.remove("active");
       document.getElementById("streamStatusText").innerText = "Offline";
       
-      const startBtn = document.getElementById("startBtn");
-      const stopBtn = document.getElementById("stopBtn");
-
-      startBtn.style.display = "inline-block";
-      startBtn.disabled = false;
-      startBtn.innerText = "Start Live Streaming";
-      stopBtn.style.display = "none";
+      renderRoomList(cachedRoomList);
 
       // Refresh DB metrics
       loadUserData();
@@ -839,19 +821,6 @@
     document.addEventListener("DOMContentLoaded", () => {
       populateLanguages();
       loadUserData();
-
-      // Pre-select room if specified in query string
-      const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get("room");
-      if (roomParam) {
-        selectPresenterRoom(roomParam);
-      }
-
-      document.getElementById("startBtn").addEventListener("click", startPresenterStream);
-      document.getElementById("stopBtn").addEventListener("click", stopPresenterStream);
-      document.getElementById("roomIdInput").addEventListener("input", (e) => {
-        document.getElementById("activeRoomDisplay").innerText = e.target.value.trim() || "main-stage";
-      });
     });
   </script>
 </body>
