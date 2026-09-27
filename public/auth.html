@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login & Signup - Stage Captions SaaS</title>
+  <title>Login & Sign Up - Stage Captions SaaS</title>
   <!-- Supabase JS SDK via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style> *{
@@ -17,36 +17,37 @@
       color: #f8fafc;
       min-height: 100vh;
       display: flex;
-  https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU 29/62
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+}
+    .auth-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px 32px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
+}
+    .auth-header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+}
+    .auth-header p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+    .form-group {
+  https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
+34/62
 25/09/2026, 18:25
 AI Job Search and Assistant Setup
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-}
-.auth-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 16px;
-  padding: 40px 32px;
-  width: 100%;
-  max-width: 420px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-}
-.auth-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.auth-header h1 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-.auth-header p {
-  color: #94a3b8;
-  font-size: 0.95rem;
-}
-.form-group {
   margin-bottom: 20px;
 }
 label {
@@ -88,40 +89,40 @@ button[type="submit"]:hover {
 }
 button[type="submit"]:disabled {
   background-color: #475569;
+  cursor: not-allowed;
+}
+.toggle-mode {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+.toggle-mode span {
+  color: #3b82f6;
+  cursor: pointer;
+  font-weight: 600;
+}
+.toggle-mode span:hover {
+  text-decoration: underline;
+}
+#messageBox {
+  display: none;
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+.msg-error {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
-30/62
+35/62
 
 25/09/2026, 18:25
 AI Job Search and Assistant Setup
-      cursor: not-allowed;
-    }
-    .toggle-mode {
-      text-align: center;
-      margin-top: 24px;
-      font-size: 0.9rem;
-      color: #94a3b8;
-}
-    .toggle-mode span {
-      color: #3b82f6;
-      cursor: pointer;
-      font-weight: 600;
-}
-    .toggle-mode span:hover {
-      text-decoration: underline;
-}
-    #messageBox {
-      display: none;
-      margin-bottom: 20px;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      text-align: center;
-}
-    .msg-error {
-      background-color: rgba(239, 68, 68, 0.1);
-      color: #ef4444;
       border: 1px solid rgba(239, 68, 68, 0.2);
-}
+    }
     .msg-success {
       background-color: rgba(34, 197, 94, 0.1);
       color: #22c55e;
@@ -151,90 +152,83 @@ AI Job Search and Assistant Setup
     </div>
   </div>
   <script>
-    // 1. Initialize Supabase (Replace with your actual URL and Anon Key from Supabase Dashboard)
+    // 1. Initialize Supabase
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // 2. UI State Management
+    // 2. State & Elements
     let isLoginMode = true;
-https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
-31/62
-
-25/09/2026, 18:25 AI Job Search and Assistant Setup
-const authForm = document.getElementById('authForm');
-const emailInput = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const submitBtn = document.getElementById('submitBtn');
-const formTitle = document.getElementById('formTitle');
-const formSubtitle = document.getElementById('formSubtitle');
-const modeText = document.getElementById('modeText');
-const messageBox = document.getElementById('messageBox');
-// Toggle between Sign In and Sign Up
-modeText.addEventListener('click', () => {
-  isLoginMode = !isLoginMode;
-  if (isLoginMode) {
-    formTitle.innerText = "Welcome Back";
-    formSubtitle.innerText = "Sign in to manage your stage captions";
-    submitBtn.innerText = "Sign In";
-    modeText.innerHTML = `Don't have an account? <span>Sign Up</span>`;
-  } else {
-    formTitle.innerText = "Create Account";
-    formSubtitle.innerText = "Start generating live captions today";
-    submitBtn.innerText = "Create Account";
-    modeText.innerHTML = `Already have an account? <span>Sign In</span>`;
+    const authForm = document.getElementById('authForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const formTitle = document.getElementById('formTitle');
+    const formSubtitle = document.getElementById('formSubtitle');
+    const modeText = document.getElementById('modeText');
+    const messageBox = document.getElementById('messageBox');
+    // Toggle between Sign In and Sign Up
+    modeText.addEventListener('click', () => {
+      isLoginMode = !isLoginMode;
+      if (isLoginMode) {
+        formTitle.innerText = "Welcome Back";
+        formSubtitle.innerText = "Sign in to manage your stage captions";
+        submitBtn.innerText = "Sign In";
+        modeText.innerHTML = `Don't have an account? <span>Sign Up</span>`;
+      } else {
+        formTitle.innerText = "Create Account";
+        formSubtitle.innerText = "Start generating live captions today";
+        submitBtn.innerText = "Create Account";
+        modeText.innerHTML = `Already have an account? <span>Sign In</span>`;
 }
-  showMessage('', ''); // Clear messages on toggle
-});
-function showMessage(text, type) {
-  if (!text) {
-    messageBox.style.display = 'none';
+      showMessage('', '');
+    });
+    function showMessage(text, type) {
+      if (!text) {
+        messageBox.style.display = 'none';
 return; }
-  messageBox.style.display = 'block';
-  messageBox.innerText = text;
-  messageBox.className = type === 'error' ? 'msg-error' : 'msg-success';
-}
-// 3. Handle Form Submission
-authForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = emailInput.value;
-  const password = passwordInput.value;
-  submitBtn.disabled = true;
-  submitBtn.innerText = "Processing...";
-  showMessage('', '');
-  try {
-    let error = null;
-    if (isLoginMode) {
-      // Process Sign In
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      error = signInError;
-    } else {
-      // Process Sign Up
-      const { error: signUpError } = await supabase.auth.signUp({ email, password });
-      error = signUpError;
-    }
-    if (error) throw error;
-    // Success Action
-    if (isLoginMode) {
-      showMessage('Login successful! Redirecting...', 'success');
-      setTimeout(() => window.location.href = '/dashboard.html', 1000);
-    } else {
-      showMessage('Account created! Please check your email to verify.', 'success');
-    }
-  } catch (err) {
-    showMessage(err.message, 'error');
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerText = isLoginMode ? "Sign In" : "Create Account";
-} });
 https://gemini.google.com/app/b1b2e862a96f36b2?hl=en-AU
-32/62
+36/62
 
 25/09/2026, 18:25 AI Job Search and Assistant Setup
-    // 4. Session Check (Redirect if already logged in)
+messageBox.style.display = 'block';
+messageBox.innerText = text;
+messageBox.className = type === 'error' ? 'msg-error' : 'msg-success';
+}
+    // 3. Auth Handler
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailInput.value;
+      const password = passwordInput.value;
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Processing...";
+      showMessage('', '');
+      try {
+        let error = null;
+        if (isLoginMode) {
+          const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+          error = signInError;
+        } else {
+          const { error: signUpError } = await supabase.auth.signUp({ email, password });
+          error = signUpError;
+}
+        if (error) throw error;
+        if (isLoginMode) {
+          showMessage('Login successful! Redirecting...', 'success');
+          setTimeout(() => window.location.href = '/dashboard.html', 1000);
+        } else {
+          showMessage('Account created! Check your email to confirm, or log in.', 'success');
+}
+      } catch (err) {
+        showMessage(err.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = isLoginMode ? "Sign In" : "Create Account";
+} });
+    // 4. Session Auto-Redirect
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        window.location.href = '/dashboard.html'; // Send active users straight to dashboard
+        window.location.href = '/dashboard.html';
       }
 }
     checkSession();
