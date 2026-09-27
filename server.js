@@ -194,16 +194,12 @@ wss.on('connection', async (ws, req) => {
       userId = authData.user.id;
 
       // Query database profile for subscription and quota validation
-      const { data: dbUser, error: dbError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+   const isSubscriptionActive = dbUser.subscription_status === 'active';
+      const isOneTimePassValid = dbUser.one_time_expires_at && new Date(dbUser.one_time_expires_at) > new Date();
 
-      if (dbError || !dbUser) {
-        console.error('Database user lookup error:', dbError);
-        ws.send(JSON.stringify({ type: 'error', message: 'User profile not found' }));
-        return ws.close(4002, 'User not found');
+      if (!isSubscriptionActive && !isOneTimePassValid) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Active subscription or valid pass required' }));
+        return ws.close(4002, 'Subscription inactive');
       }
 
       if (dbUser.subscription_status !== 'active') {
