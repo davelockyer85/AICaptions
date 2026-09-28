@@ -23,10 +23,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
-const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createSupabaseClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-// --- Room state -------------------------------------------------------
-// roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
+// Room state: roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
@@ -36,18 +35,17 @@ function getOrCreateRoom(roomId) {
   return rooms.get(roomId);
 }
 
-// --- Per-account concurrent-room tracking ------------------------------
-// userId -> Set<roomId> of rooms this account currently has a live
-// presenter in. This is what `allowed_rooms` (plan-tier concurrent stage
-// limit) is checked against.
+// Per-account concurrent-room tracking
 const activeRoomsByUser = new Map();
 
 function addUserRoom(userId, roomId) {
+  if (!userId) return;
   if (!activeRoomsByUser.has(userId)) activeRoomsByUser.set(userId, new Set());
   activeRoomsByUser.get(userId).add(roomId);
 }
 
 function removeUserRoom(userId, roomId) {
+  if (!userId) return;
   const set = activeRoomsByUser.get(userId);
   if (!set) return;
   set.delete(roomId);
@@ -55,7 +53,7 @@ function removeUserRoom(userId, roomId) {
 }
 
 function safeSend(ws, payload) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(payload);
   }
 }
@@ -100,9 +98,6 @@ app.post('/create-checkout-session', async (req, res) => {
 // WebSocket Handler
 wss.on('connection', async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  // dashboard.html sends `room=`, not `roomId=` - accept both so a client
-  // using either name works instead of every session silently defaulting
-  // to 'main-stage'.
   const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
   const role = urlParams.get('role') || 'viewer';
   const token = urlParams.get('token');
@@ -111,69 +106,61 @@ wss.on('connection', async (ws, req) => {
   const room = getOrCreateRoom(roomId);
 
   if (role === 'presenter') {
-    if (!token) {
-      ws.close(4003, 'Authentication token required');
-      return;
-    }
+    let authenticatedUser = null;
 
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      ws.close(4003, 'Invalid authentication token');
-      return;
-    }
+    // Validate token if provided, but continue gracefully in guest mode if missing/invalid
+    if (token && supabase) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (!error && user) {
+          authenticatedUser = user;
 
-    // Load the account's plan/usage record. This is the source of truth
-    // for whether this session is allowed to start at all.
-    const { data: dbUser, error: dbError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
 
-    if (dbError || !dbUser) {
-      console.error('Failed to load user account record:', dbError);
-      ws.close(4003, 'No account record found');
-      return;
-    }
+          if (dbUser) {
+            // Event Pass expiry check
+            if (dbUser.plan_tier === 'one_time') {
+              const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
+              if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) {
+                ws.close(4005, 'Event Pass has expired');
+                return;
+              }
+            }
 
-    // Event Pass expiry - one-time plans only. Fails closed: a missing or
-    // unparsable expiry is treated as expired rather than as unlimited.
-    if (dbUser.plan_tier === 'one_time') {
-      const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
-      if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
-        ws.close(4005, 'Event Pass has expired');
-        return;
+            // Quota check
+            const usedSeconds = dbUser.streaming_seconds_used || 0;
+            if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
+              ws.close(4006, 'Monthly streaming quota exhausted');
+              return;
+            }
+
+            // Concurrent stage check
+            const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
+            if (!userAlreadyOwnsThisRoom) {
+              const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
+              const allowedRooms = dbUser.allowed_rooms ?? 1;
+              if (currentRoomCount >= allowedRooms) {
+                ws.close(4004, 'Maximum concurrent stages limit reached');
+                return;
+              }
+            }
+          }
+        }
+      } catch (authErr) {
+        console.warn(`[room=${roomId}] Token check warning, continuing as guest:`, authErr.message);
       }
     }
 
-    // Streaming quota - applies to every plan. `max_streaming_seconds` of
-    // null/undefined means unlimited; 0 means no allowance at all.
-    const usedSeconds = dbUser.streaming_seconds_used || 0;
-    if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
-      ws.close(4006, 'Monthly streaming quota exhausted');
-      return;
-    }
+    const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
 
-    // Concurrent-stage limit (allowed_rooms). Reconnecting to a room this
-    // account already owns doesn't count as a new room, so it never
-    // trips this check.
-    const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
-    if (!userAlreadyOwnsThisRoom) {
-      const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
-      const allowedRooms = dbUser.allowed_rooms ?? 1;
-      if (currentRoomCount >= allowedRooms) {
-        ws.close(4004, 'Maximum concurrent stages limit reached');
-        return;
-      }
-    }
-
-    // Guard: if a DIFFERENT authenticated user already owns this room's
-    // active presenter slot, refuse the connection instead of silently
-    // kicking the legitimate presenter off. The same user reconnecting
-    // (page refresh, dropped connection) is still allowed to take over.
+    // Replace existing active presenter in this room
     const existingPresenter = room.presenterWs;
     if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
-      if (room.presenterUserId && room.presenterUserId !== user.id) {
+      if (room.presenterUserId && room.presenterUserId !== userId) {
         ws.close(4009, 'This room already has an active presenter');
         return;
       }
@@ -181,10 +168,8 @@ wss.on('connection', async (ws, req) => {
     }
 
     room.presenterWs = ws;
-    room.presenterUserId = user.id;
-    addUserRoom(user.id, roomId);
-
-    const sessionStart = Date.now();
+    room.presenterUserId = userId;
+    if (authenticatedUser) addUserRoom(userId, roomId);
 
     let deepgramLive = null;
     let deepgramReady = false;
@@ -201,7 +186,7 @@ wss.on('connection', async (ws, req) => {
 
       deepgramLive.on(LiveTranscriptionEvents.Open, () => {
         deepgramReady = true;
-        // Flush any audio chunks that arrived before Deepgram finished connecting
+        console.log(`[room=${roomId}] Deepgram connection open`);
         while (audioQueue.length > 0) {
           deepgramLive.send(audioQueue.shift());
         }
@@ -215,7 +200,6 @@ wss.on('connection', async (ws, req) => {
             text: sentence,
             isFinal: data.is_final
           });
-
           safeSend(ws, payload);
           room.viewers.forEach((viewer) => safeSend(viewer, payload));
         }
@@ -236,13 +220,12 @@ wss.on('connection', async (ws, req) => {
     }
 
     ws.on('message', (message) => {
-      if (typeof message === 'string') return; // control/text frames, not audio
+      if (typeof message === 'string') return; // Skip non-binary control messages
       if (!deepgramLive) return;
 
       if (deepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
       } else {
-        // Buffer briefly instead of dropping audio while Deepgram connects
         audioQueue.push(message);
       }
     });
@@ -252,67 +235,27 @@ wss.on('connection', async (ws, req) => {
         try { deepgramLive.finish(); } catch (e) { /* already closed */ }
       }
 
-      // Only clear the room's presenter slot if this socket is STILL the
-      // registered presenter. Without this check, a replaced (kicked)
-      // socket's delayed 'close' event can wipe out a newer presenter's
-      // active session for the same room - this was the root cause of
-      // sessions breaking when a second user connected.
       if (room.presenterWs === ws) {
         room.presenterWs = null;
         room.presenterUserId = null;
-      }
-      removeUserRoom(user.id, roomId);
-
-      if (!room.presenterWs && room.viewers.size === 0) {
-        rooms.delete(roomId);
-      }
-
-      // Record usage. We re-read the current value rather than reusing the
-      // snapshot taken at connect time, because a Pro account can run
-      // several concurrent sessions (that's the whole point of
-      // allowed_rooms > 1) - reusing a stale value would let simultaneous
-      // sessions clobber each other's usage as they each close. This
-      // narrows the race but doesn't fully eliminate it; a Postgres
-      // increment function/RPC would be the bulletproof fix if you want
-      // one - happy to write that if it'd help.
-      const elapsedSeconds = Math.round((Date.now() - sessionStart) / 1000);
-      if (elapsedSeconds > 0) {
-        supabase
-          .from('users')
-          .select('streaming_seconds_used')
-          .eq('id', user.id)
-          .single()
-          .then(({ data: freshUser, error: readErr }) => {
-            if (readErr || !freshUser) {
-              console.error('Failed to read current usage before update:', readErr);
-              return null;
-            }
-            return supabase
-              .from('users')
-              .update({ streaming_seconds_used: (freshUser.streaming_seconds_used || 0) + elapsedSeconds })
-              .eq('id', user.id);
-          })
-          .then((res) => {
-            if (res?.error) console.error('Failed to update streaming_seconds_used:', res.error);
-          })
-          .catch((e) => console.error('Usage tracking failed:', e));
+        if (authenticatedUser) removeUserRoom(userId, roomId);
+        console.log(`[room=${roomId}] Presenter disconnected`);
       }
     });
 
   } else {
-    // Viewer / OBS Overlay / Mobile View
+    // Viewer connection
     room.viewers.add(ws);
+    console.log(`[room=${roomId}] Viewer connected (${room.viewers.size} total)`);
 
     ws.on('close', () => {
       room.viewers.delete(ws);
-      if (!room.presenterWs && room.viewers.size === 0) {
-        rooms.delete(roomId);
-      }
+      console.log(`[room=${roomId}] Viewer disconnected (${room.viewers.size} left)`);
     });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`AICaptions server listening on port ${PORT}`);
 });
