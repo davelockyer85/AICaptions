@@ -1,5 +1,5 @@
 {
-  "name": "stage-captions-saas",
+  "name": "aicaptions",
   "version": "1.0.0",
   "description": "Real-time stage captions SaaS backend",
   "main": "server.js",
