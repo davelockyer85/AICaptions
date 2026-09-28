@@ -1,46 +1,189 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Presenter Audio Ingest</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presenter Audio Ingest - AICaptions</title>
   <style>
-    body { font-family: sans-serif; background: #111; color: #fff; padding: 2rem; text-align: center; }
-    button { padding: 1rem 2rem; font-size: 1.2rem; background: #0070f3; color: white; border: none; border-radius: 8px; cursor: pointer; }
-    #status { margin-top: 1rem; color: #888; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111827;
+      color: #f3f4f6;
+      padding: 2rem;
+      text-align: center;
+      margin: 0;
+    }
+    .card {
+      max-width: 500px;
+      margin: 2rem auto;
+      background: #1f2937;
+      padding: 2rem;
+      border-radius: 12px;
+      border: 1px solid #374151;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    }
+    h1 { margin-top: 0; color: #60a5fa; font-size: 1.75rem; }
+    p { color: #9ca3af; }
+    .room-badge {
+      display: inline-block;
+      background: #374151;
+      color: #93c5fd;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-family: monospace;
+      font-weight: bold;
+      margin-bottom: 1.5rem;
+    }
+    .btn-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+    button {
+      padding: 0.85rem 1.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    #startBtn { background: #2563eb; color: white; }
+    #startBtn:hover { background: #1d4ed8; }
+    #startBtn:disabled { background: #4b5563; cursor: not-allowed; }
+    #stopBtn { background: #dc2626; color: white; }
+    #stopBtn:hover { background: #b91c1c; }
+    #stopBtn:disabled { background: #4b5563; cursor: not-allowed; }
+    #status {
+      margin-top: 1.5rem;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #9ca3af;
+    }
   </style>
 </head>
 <body>
-  <h1>Stage Audio Transmitter</h1>
-  <button id="startBtn">Start Streaming Audio</button>
-  <p id="status">Status: Disconnected</p>
+  <div class="card">
+    <h1>Stage Audio Transmitter</h1>
+    <p>Room Identifier:</p>
+    <div class="room-badge" id="roomDisplay">main-stage</div>
+
+    <div class="btn-group">
+      <button id="startBtn">Start Streaming</button>
+      <button id="stopBtn" disabled>Stop</button>
+    </div>
+
+    <p id="status">Status: Disconnected</p>
+  </div>
 
   <script>
-    const startBtn = document.getElementById("startBtn");
-    const status = document.getElementById("status");
-    let ws, mediaRecorder;
+    // Read room & token from URL parameters or storage
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    
+    // Attempt to locate Supabase session token if present
+    const urlToken = urlParams.get('token');
+    const localToken = localStorage.getItem('supabase.auth.token') 
+      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
+      : null;
+    const token = urlToken || localToken || '';
+
+    document.getElementById('roomDisplay').innerText = room;
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+
+    let ws = null;
+    let mediaRecorder = null;
+    let audioStream = null;
 
     startBtn.onclick = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
+      try {
+        status.innerText = "Status: Requesting Microphone Access...";
+        status.style.color = "#f59e0b";
 
-      ws.onopen = () => {
-        status.innerText = "Status: Live & Streaming Stage Audio";
-        status.style.color = "#00ff88";
-        
-        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(e.data);
+        audioStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+
+        // Build WebSocket connection string with room, role, and token
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter`;
+        if (token) {
+          wsUrl += `&token=${encodeURIComponent(token)}`;
+        }
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          status.innerText = "Status: Live & Streaming Stage Audio";
+          status.style.color = "#10b981";
+
+          // Select supported audio MIME type for MediaRecorder
+          let mimeType = 'audio/webm;codecs=opus';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
           }
-        };
-        mediaRecorder.start(250); // Send 250ms chunks
-      };
 
-      ws.onclose = () => {
-        status.innerText = "Status: Disconnected";
-        status.style.color = "#ff4444";
-      };
+          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
+            }
+          };
+
+          // Send 250ms chunks to Deepgram
+          mediaRecorder.start(250);
+
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        };
+
+        ws.onerror = (err) => {
+          console.error("WebSocket Error:", err);
+          status.innerText = "Status: Connection Error";
+          status.style.color = "#ef4444";
+        };
+
+        ws.onclose = (e) => {
+          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
+          status.style.color = "#ef4444";
+          cleanup();
+        };
+
+      } catch (err) {
+        console.error("Microphone Access Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+      }
     };
+
+    stopBtn.onclick = () => {
+      cleanup();
+      status.innerText = "Status: Stopped";
+      status.style.color = "#9ca3af";
+    };
+
+    function cleanup() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
   </script>
 </body>
 </html>
