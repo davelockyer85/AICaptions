@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Event Dashboard</title>
-  <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -50,10 +49,6 @@
       font-weight: 600;
       cursor: pointer;
     }
-    button.btn-primary:disabled {
-      background: #475569;
-      cursor: not-allowed;
-    }
     .rooms-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -93,35 +88,41 @@
   <header>
     <h2>AICaptions Dashboard</h2>
     <div class="header-info">
-      <span id="userEmail" class="badge">Loading user...</span>
-      <span id="quotaDisplay" class="badge">Usage: --/-- mins</span>
+      <span id="userEmail" class="badge">Loading...</span>
       <button onclick="logout()" style="background: transparent; border: 1px solid var(--border-color); color: white; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer;">Logout</button>
     </div>
   </header>
 
   <div class="container">
     <div class="action-bar">
-      <h2>Your Live Event Stages</h2>
-      <button id="createRoomBtn" class="btn-primary" onclick="createRoom()">+ Create New Event Stage</button>
+      <h2>Your Event Stages</h2>
+      <button class="btn-primary" onclick="createRoom()">+ Create New Event Stage</button>
     </div>
 
     <div id="roomsGrid" class="rooms-grid">
-      <div class="empty-state">Loading your stages...</div>
+      <div class="empty-state">Loading stages...</div>
     </div>
   </div>
 
   <script>
-    // Config: Ensure environment Supabase credentials are inserted
-    const SUPABASE_URL = "YOUR_SUPABASE_URL"; // Handled via Supabase environment or client config
-    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
-
-    let supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+    let supabase = null;
     let currentUser = null;
-    let userAllowedRooms = 1;
 
     async function initDashboard() {
+      // Connect to window-level Supabase client if configured
+      if (window.supabaseClient) {
+        supabase = window.supabaseClient;
+      } else if (typeof createClient !== 'undefined') {
+        // Fallback initialization
+        const supabaseUrl = window.location.hostname.includes('localhost') 
+          ? 'http://localhost:54321' 
+          : 'https://YOUR_SUPABASE_PROJECT.supabase.co';
+        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+        supabase = createClient(supabaseUrl, supabaseKey);
+      }
+
       if (!supabase) {
-        console.error("Supabase client initialized via window session.");
+        console.warn('Supabase client not initialized directly. Relying on auth session.');
       }
 
       const { data: { session }, error } = await supabase.auth.getSession();
@@ -131,25 +132,9 @@
       }
 
       currentUser = session.user;
-      const token = session.access_token;
-
-      // Fetch user profile and limits from Supabase
-      const { data: profile } = await supabase
-        .from('users')
-        .select('allowed_rooms, streaming_seconds_used, max_streaming_seconds')
-        .eq('id', currentUser.id)
-        .single();
-
-      userAllowedRooms = profile?.allowed_rooms ?? 1;
-
       document.getElementById('userEmail').innerText = currentUser.email;
-      if (profile) {
-        const usedMins = Math.round((profile.streaming_seconds_used || 0) / 60);
-        const maxMins = profile.max_streaming_seconds ? Math.round(profile.max_streaming_seconds / 60) : '∞';
-        document.getElementById('quotaDisplay').innerText = `Usage: ${usedMins} / ${maxMins} mins`;
-      }
 
-      loadUserRooms(token);
+      loadUserRooms(session.access_token);
     }
 
     async function loadUserRooms(token) {
@@ -164,15 +149,12 @@
 
       if (error) {
         console.error('Error fetching rooms:', error);
-        roomsContainer.innerHTML = `<div class="empty-state">Failed to load rooms.</div>`;
+        roomsContainer.innerHTML = `<div class="empty-state">Failed to load stages.</div>`;
         return;
       }
 
-      const currentRoomCount = rooms ? rooms.length : 0;
-      updateCreateRoomButton(currentRoomCount);
-
-      if (currentRoomCount === 0) {
-        roomsContainer.innerHTML = `<div class="empty-state"><p>No active stages found. Click "+ Create New Event Stage" to get started.</p></div>`;
+      if (!rooms || rooms.length === 0) {
+        roomsContainer.innerHTML = `<div class="empty-state"><p>No active stages. Click "+ Create New Event Stage" to get started.</p></div>`;
         return;
       }
 
@@ -210,19 +192,6 @@
       });
     }
 
-    function updateCreateRoomButton(currentRoomCount) {
-      const createBtn = document.getElementById('createRoomBtn');
-      if (!createBtn) return;
-
-      if (currentRoomCount >= userAllowedRooms) {
-        createBtn.disabled = true;
-        createBtn.innerText = `Stage Limit Reached (${currentRoomCount}/${userAllowedRooms})`;
-      } else {
-        createBtn.disabled = false;
-        createBtn.innerText = "+ Create New Event Stage";
-      }
-    }
-
     async function createRoom() {
       const roomName = prompt("Enter stage name:");
       if (!roomName) return;
@@ -232,7 +201,7 @@
         .insert([{ name: roomName, user_id: currentUser.id }]);
 
       if (error) {
-        alert("Error creating room: " + error.message);
+        alert("Error creating stage: " + error.message);
       } else {
         const session = (await supabase.auth.getSession())?.data?.session;
         loadUserRooms(session?.access_token || '');
@@ -248,7 +217,7 @@
         .eq('id', roomId);
 
       if (error) {
-        alert("Error deleting room: " + error.message);
+        alert("Error deleting stage: " + error.message);
       } else {
         const session = (await supabase.auth.getSession())?.data?.session;
         loadUserRooms(session?.access_token || '');
