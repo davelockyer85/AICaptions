@@ -436,6 +436,118 @@
       });
     }
 
+    // Global state variables
+var sbClient = null;
+var currentUser = null;
+var userLimits = { maxRooms: 3, maxSeconds: 3600, usedSeconds: 0, currentRoomCount: 0 };
+
+async function initDashboard() {
+  // Initialize Supabase Client safely
+  if (window.supabaseClient) {
+    sbClient = window.supabaseClient;
+  } else if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
+    sbClient = supabase;
+  }
+
+  if (!sbClient) return;
+
+  const { data: { session }, error } = await sbClient.auth.getSession();
+  if (error || !session) {
+    window.location.href = '/auth.html';
+    return;
+  }
+
+  currentUser = session.user;
+
+  // 1. Fetch User Data & Rooms
+  await fetchUserData();
+  await loadUserRooms(session.access_token);
+
+  // 2. Start Realtime Subscriptions
+  setupRealtimeListeners();
+}
+
+// Fetch limit and usage records from 'users' table
+async function fetchUserData() {
+  const { data, error } = await sbClient
+    .from('users')
+    .select('*')
+    .eq('id', currentUser.id)
+    .single();
+
+  if (!error && data) {
+    userLimits.usedSeconds = data.streaming_seconds_used || 0;
+    userLimits.maxSeconds = data.max_streaming_seconds || 3600;
+    userLimits.maxRooms = data.max_rooms || 3;
+    updateStatsUI();
+  }
+}
+
+// Subscribe to postgres_changes for live UI updates
+function setupRealtimeListeners() {
+  // Listen for room additions or deletions
+  sbClient
+    .channel(`rooms_user_${currentUser.id}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${currentUser.id}` },
+      async () => {
+        const { data: { session } } = await sbClient.auth.getSession();
+        loadUserRooms(session.access_token);
+      }
+    )
+    .subscribe();
+
+  // Listen for profile changes (updates to used seconds or max limits)
+  sbClient
+    .channel(`user_profile_${currentUser.id}`)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${currentUser.id}` },
+      (payload) => {
+        if (payload.new) {
+          userLimits.usedSeconds = payload.new.streaming_seconds_used || 0;
+          userLimits.maxSeconds = payload.new.max_streaming_seconds || 3600;
+          userLimits.maxRooms = payload.new.max_rooms || 3;
+          updateStatsUI();
+        }
+      }
+    )
+    .subscribe();
+}
+
+function updateStatsUI() {
+  const usedMins = Math.round(userLimits.usedSeconds / 60);
+  const maxMins = Math.round(userLimits.maxSeconds / 60);
+
+  const timeElem = document.getElementById('timeUsageDisplay');
+  const countElem = document.getElementById('roomCountDisplay');
+
+  if (timeElem) timeElem.innerText = `${usedMins} / ${maxMins} mins`;
+  if (countElem) countElem.innerText = `${userLimits.currentRoomCount} / ${userLimits.maxRooms} rooms`;
+}
+
+// Enforce room creation limit prior to API call
+async function createRoom() {
+  if (userLimits.currentRoomCount >= userLimits.maxRooms) {
+    alert(`Room limit reached (${userLimits.maxRooms} max). Upgrade your plan or delete an existing room.`);
+    return;
+  }
+
+  const roomName = prompt("Enter room name:");
+  if (!roomName) return;
+
+  const { error } = await sbClient
+    .from('rooms')
+    .insert([{ name: roomName, user_id: currentUser.id }]);
+
+  if (error) {
+    alert("Error creating room: " + error.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initDashboard);
+
     // Helper: Copy to Clipboard
     function copyLink(inputId) {
       const input = document.getElementById(inputId);
