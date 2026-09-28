@@ -66,8 +66,8 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// Stripe Checkout Endpoint
-app.post('/create-checkout-session', async (req, res) => {
+// Stripe Checkout Endpoint (Handles both /api/create-checkout-session and /create-checkout-session)
+app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
   try {
     const { priceId, userId } = req.body;
     if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
