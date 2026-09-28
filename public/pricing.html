@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AICaptions - Pricing</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
+    .container { max-width: 800px; margin: 0 auto; text-align: center; }
+    .cards { display: flex; gap: 1.5rem; margin-top: 2rem; justify-content: center; }
+    .card { background: #1e293b; padding: 2rem; border-radius: 8px; width: 250px; border: 1px solid #334155; }
+    button { background: #0284c7; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AICaptions Subscription Plans</h1>
+    <div class="cards">
+      <div class="card">
+        <h3>Pro Streamer</h3>
+        <p style="font-size: 1.5rem; font-weight: bold;">$15 / mo</p>
+        <p>Unlimited real-time streaming captions & OBS overlay access.</p>
+        <button onclick="checkout('price_12345')">Subscribe</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function checkout(priceId) {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceId })
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    }
+  </script>
+</body>
+</html>
