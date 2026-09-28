@@ -1,0 +1,60 @@
+import { useEffect, useState, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export interface CaptionPayload {
+  text: string;
+  isFinal: boolean;
+  fontSize?: number;
+  textColor?: string;
+  bgColor?: string;
+  position?: 'bottom' | 'top' | 'middle';
+}
+
+export function useCaptionStream(roomId: string, isOperator = false) {
+  const [captionData, setCaptionData] = useState<CaptionPayload>({
+    text: '',
+    isFinal: false,
+    fontSize: 32,
+    textColor: '#ffffff',
+    bgColor: 'rgba(0,0,0,0.7)',
+    position: 'bottom',
+  });
+
+  const channelRef = useRef<any>(null);
+
+  useEffect(() => {
+    const channel = supabase.channel(`room:${roomId}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'caption_update' }, ({ payload }) => {
+        setCaptionData((prev) => ({ ...prev, ...payload }));
+      })
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId]);
+
+  const sendCaptionUpdate = (payload: Partial<CaptionPayload>) => {
+    if (isOperator && channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'caption_update',
+        payload,
+      });
+      setCaptionData((prev) => ({ ...prev, ...payload }));
+    }
+  };
+
+  return { captionData, sendCaptionUpdate };
+}
