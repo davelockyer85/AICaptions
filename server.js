@@ -26,14 +26,14 @@ const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
 const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
 
 // --- Room state -------------------------------------------------------
-// roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
+// room= -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, { presenterWs: null, presenterUserId: null, viewers: new Set() });
+  if (!rooms.has(room=)) {
+    rooms.set(room=, { presenterWs: null, presenterUserId: null, viewers: new Set() });
   }
-  return rooms.get(roomId);
+  return rooms.get(room=);
 }
 
 // --- Per-account concurrent-room tracking ------------------------------
