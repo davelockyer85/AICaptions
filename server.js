@@ -13,13 +13,13 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // Initialize Clients
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("❌ CRITICAL: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+if (!DEEPGRAM_API_KEY) {
+  console.error("❌ CRITICAL: Missing DEEPGRAM_API_KEY environment variable.");
 }
 
 const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
@@ -68,6 +68,9 @@ app.get('/health', (req, res) => {
 
 // Stripe Checkout Endpoint (Handles both /api/create-checkout-session and /create-checkout-session)
 app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe API key not configured on server.' });
+  }
   try {
     const { priceId, userId } = req.body;
     if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
@@ -95,7 +98,7 @@ app.post(['/api/create-checkout-session', '/create-checkout-session'], async (re
   }
 });
 
-// WebSocket Handler
+// WebSocket Connection Handler
 wss.on('connection', async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
   const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
@@ -176,28 +179,30 @@ wss.on('connection', async (ws, req) => {
     const audioQueue = [];
 
     try {
+      // Stream details are auto-detected by Deepgram from the incoming WebM header
       deepgramLive = deepgram.listen.live({
         model: 'nova-2',
         language: lang,
         smart_format: true,
-        encoding: 'webm/opus',
-        sample_rate: 48000,
+        punctuate: true,
+        interim_results: true,
       });
 
       deepgramLive.on(LiveTranscriptionEvents.Open, () => {
         deepgramReady = true;
-        console.log(`[room=${roomId}] Deepgram connection open`);
+        console.log(`[room=${roomId}] Deepgram connection open and ready`);
         while (audioQueue.length > 0) {
           deepgramLive.send(audioQueue.shift());
         }
       });
 
       deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
-        const sentence = data.channel?.alternatives?.[0]?.transcript;
-        if (sentence && sentence.trim() !== '') {
+        const transcript = data.channel?.alternatives?.[0]?.transcript;
+        if (transcript && transcript.trim() !== '') {
+          console.log(`[room=${roomId}] Transcript: "${transcript}"`);
           const payload = JSON.stringify({
             type: 'caption',
-            text: sentence,
+            text: transcript,
             isFinal: data.is_final
           });
           safeSend(ws, payload);
@@ -220,7 +225,7 @@ wss.on('connection', async (ws, req) => {
     }
 
     ws.on('message', (message) => {
-      if (typeof message === 'string') return; // Skip non-binary control messages
+      if (typeof message === 'string') return; // Ignore non-binary control messages
       if (!deepgramLive) return;
 
       if (deepgramReady && deepgramLive.getReadyState() === 1) {
@@ -244,7 +249,7 @@ wss.on('connection', async (ws, req) => {
     });
 
   } else {
-    // Viewer connection
+    // Viewer connection (OBS Overlay / Mobile View)
     room.viewers.add(ws);
     console.log(`[room=${roomId}] Viewer connected (${room.viewers.size} total)`);
 
