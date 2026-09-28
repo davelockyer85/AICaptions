@@ -29,7 +29,7 @@ const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
 // room= -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
 const rooms = new Map();
 
-function getOrCreateRoom(roomId) {
+function getOrCreateRoom(room=) {
   if (!rooms.has(room=)) {
     rooms.set(room=, { presenterWs: null, presenterUserId: null, viewers: new Set() });
   }
