@@ -1,0 +1,39 @@
+'use client';
+
+import { useCaptionStream } from '@/hooks/useCaptionStream';
+import { useParams } from 'next/navigation';
+
+export default function OBSOverlayPage() {
+  const params = useParams();
+  const roomId = params.roomId as string;
+  const { captionData } = useCaptionStream(roomId, false);
+
+  if (!captionData.text) return <div className="w-screen h-screen bg-transparent" />;
+
+  const positionClasses = {
+    top: 'top-8 items-start',
+    middle: 'top-1/2 -translate-y-1/2 items-center',
+    bottom: 'bottom-8 items-end',
+  };
+
+  return (
+    <main className="w-screen h-screen bg-transparent overflow-hidden relative flex justify-center p-6">
+      <div
+        className={`absolute flex justify-center w-full max-w-5xl transition-all duration-200 ${
+          positionClasses[captionData.position || 'bottom']
+        }`}
+      >
+        <div
+          style={{
+            fontSize: `${captionData.fontSize || 32}px`,
+            color: captionData.textColor || '#ffffff',
+            backgroundColor: captionData.bgColor || 'rgba(0, 0, 0, 0.75)',
+          }}
+          className="px-6 py-4 rounded-xl font-sans font-bold text-center leading-snug backdrop-blur-md shadow-2xl max-w-full break-words"
+        >
+          {captionData.text}
+        </div>
+      </div>
+    </main>
+  );
+}
