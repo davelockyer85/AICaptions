@@ -377,6 +377,47 @@
     if (remainingRoomsDisplay) remainingRoomsDisplay.textContent = `${remainingRooms} remaining`;
     if (roomSubtext) roomSubtext.textContent = `${currentRooms} of ${maxRooms} stages created`;
     if (roomProgress) roomProgress.style.width = `${roomPercentage}%`;
+    }
+
+  // Realtime Supabase Subscription Setup
+  function initLiveQuotaTracker(userId) {
+    if (!supabaseClient || !userId) return;
+
+    // Fetch initial state on page load
+    supabaseClient
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (data && !error) {
+          renderSubscriptionUI(data);
+        }
+      });
+
+    // Subscribe to live database changes
+    supabaseClient
+      .channel(`live_quota_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'subscriptions',
+          filter: `user_id=eq.${userId}`
+        },
+        (payload) => {
+          if (payload.new) {
+            renderSubscriptionUI(payload.new);
+          }
+        }
+      )
+      .subscribe();
+  }
+
+  // Call this function once the user session is verified
+  // Example: initLiveQuotaTracker(currentUser.id);
+    });
 
     // 4. Room Creation Logic
     createEventBtn.addEventListener('click', async () => {
