@@ -345,17 +345,18 @@
 
       // Insert directly into Supabase 'rooms' table
       const { data, error } = await supabaseClient
-        .from('rooms')
-        .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
+  .from('rooms')
+  .insert([
+    { 
+      room_id: roomId, 
+      name: name, 
+      user_id: currentUser.id  // Must match auth.uid()
+    }
+  ]);
 
-      if (error) {
-        console.error("Supabase Room Creation Error:", error.message);
-        alert("Could not save room to database: " + error.message);
-      } else {
-        eventNameInput.value = '';
-        eventModal.style.display = 'none';
-        await loadUserEvents();
-      }
+if (error) {
+  console.error("Insert error:", error.message);
+}
     });
 
     // 5. Render Events directly from Supabase
