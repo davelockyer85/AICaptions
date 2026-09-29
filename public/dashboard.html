@@ -461,7 +461,7 @@
       }
 
       const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
-      const remainingMins = Math.floor(remainingSecs / 60);
+      const remainingMins = Math.floor(userSubscription.streamingSecondsUsed);
       const usedMins = Math.round(userSubscription.usedSeconds / 60);
       const maxMins = Math.round(userSubscription.maxSeconds / 60);
       const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
