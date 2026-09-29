@@ -343,6 +343,16 @@
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
+      const { data, error } = await supabaseClient
+  .from('rooms')
+  .insert([
+    {
+      user_id: currentUser.id,
+      name: roomName,
+      streaming_seconds_used: 0 // Explicitly set starting usage
+    }
+  ]);
+
       // Insert directly into Supabase 'rooms' table
       const { data, error } = await supabaseClient
         .from('rooms')
@@ -550,6 +560,8 @@ function subscribeToLiveUpdates(userId) {
       navigator.clipboard.writeText(input.value);
       alert("Link copied to clipboard!");
     }
+
+    
 
     // Initialize Page
     checkUserSession();
