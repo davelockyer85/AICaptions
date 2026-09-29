@@ -1,568 +1,293 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Stage Captions SaaS</title>
+import express from 'express';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
+import Stripe from 'stripe';
+import { createClient as createDeepgramClient, LiveTranscriptionEvents } from '@deepgram/sdk';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
 
-  <!-- Supabase JS SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- QRCode.js CDN for audience QR code generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+dotenv.config();
 
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
-      min-height: 100vh;
-      padding-bottom: 60px;
-    }
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-    /* Top Navigation Header */
-    header {
-      background-color: #1e293b;
-      border-bottom: 1px solid #334155;
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+// Initialize Clients
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
 
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #3b82f6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+if (!DEEPGRAM_API_KEY) {
+  console.error("❌ CRITICAL: Missing DEEPGRAM_API_KEY environment variable.");
+}
 
-    .user-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
+const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
+const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createSupabaseClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-    .user-email {
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
+// Room state: roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
+const rooms = new Map();
 
-    .btn-secondary {
-      background-color: #334155;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
+function getOrCreateRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, { presenterWs: null, presenterUserId: null, viewers: new Set() });
+  }
+  return rooms.get(roomId);
+}
 
-    .btn-secondary:hover { background-color: #475569; }
+// Per-account concurrent-room tracking
+const activeRoomsByUser = new Map();
 
-    /* Main Container */
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
+function addUserRoom(userId, roomId) {
+  if (!userId) return;
+  if (!activeRoomsByUser.has(userId)) activeRoomsByUser.set(userId, new Set());
+  activeRoomsByUser.get(userId).add(roomId);
+}
 
-    .btn-primary {
-      background-color: #3b82f6;
-      color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
+function removeUserRoom(userId, roomId) {
+  if (!userId) return;
+  const set = activeRoomsByUser.get(userId);
+  if (!set) return;
+  set.delete(roomId);
+  if (set.size === 0) activeRoomsByUser.delete(userId);
+}
 
-    .btn-primary:hover { background-color: #2563eb; }
-    .btn-primary:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.6; }
+function safeSend(ws, payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(payload);
+  }
+}
 
-    /* Events Section */
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
+app.use(express.json());
+app.use(express.static('public'));
 
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
+// Render Health Check
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
-    .event-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
+// Stripe Checkout Endpoint (Handles both /api/create-checkout-session and /create-checkout-session)
+app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe API key not configured on server.' });
+  }
+  try {
+    const { priceId, userId } = req.body;
+    if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
 
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #334155;
-    }
+    const oneTimePrices = [
+      process.env.EVENT_PASS_PRICE_ID,
+      process.env.PRO_EVENT_PASS_PRICE_ID
+    ].filter(Boolean);
 
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
+    const isOneTime = oneTimePrices.includes(priceId);
 
-    .links-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-    }
-
-    .link-box {
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-
-    .link-box label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .link-action {
-      display: flex;
-      gap: 8px;
-    }
-
-    .link-action input {
-      flex: 1;
-      background: none;
-      border: none;
-      color: #cbd5e1;
-      font-size: 0.85rem;
-      outline: none;
-      font-family: monospace;
-    }
-
-    .btn-copy {
-      background-color: #334155;
-      color: #3b82f6;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
-    /* Modal for Event Creation */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 28px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .modal-card h3 { margin-bottom: 16px; }
-
-    .modal-card input {
-      width: 100%;
-      padding: 10px 14px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #f8fafc;
-      font-size: 0.95rem;
-      margin-bottom: 20px;
-      outline: none;
-    }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-    }
-  </style>
-</head>
-<body>
-
-  <header>
-    <div class="logo">🎙️ Stage Captions</div>
-    <div class="user-controls">
-      <span class="user-email" id="userEmail">Loading...</span>
-      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
-    </div>
-  </header>
-
-  <div class="container">
-
-    <!-- Live Subscription & Usage Quota Cards -->
-    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
-      
-      <!-- Subscription Tier Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Subscription</span>
-          <span id="subStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background-color: #15803d; color: #f0fdf4; font-weight: 600;">ACTIVE</span>
-        </div>
-        <div id="subTierName" style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin: 8px 0 4px 0;">Free Starter</div>
-        <div id="subExpiryText" style="font-size: 0.85rem; color: #64748b;">Plan Active</div>
-      </div>
-
-      <!-- Remaining Streaming Time Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Remaining Streaming Time</div>
-        <div id="remainingTimeDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- mins</div>
-        <div id="timeSubtext" style="font-size: 0.85rem; color: #64748b;">Used 0 of 60 mins</div>
-        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
-          <div id="timeProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
-        </div>
-      </div>
-
-      <!-- Available Stage Slots Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Available Stage Slots</div>
-        <div id="remainingRoomsDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- remaining</div>
-        <div id="roomSubtext" style="font-size: 0.85rem; color: #64748b;">0 of 3 stages created</div>
-        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
-          <div id="roomProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Events Management Header -->
-    <div class="section-header">
-      <h3>Active Event Rooms</h3>
-      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
-    </div>
-
-    <!-- Events List Container -->
-    <div id="eventsContainer">
-      <!-- Event cards will be dynamically injected here -->
-    </div>
-
-  </div>
-
-  <!-- Create Event Modal -->
-  <div class="modal-overlay" id="eventModal">
-    <div class="modal-card">
-      <h3>Create Event Room</h3>
-      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
-      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    const userEmailSpan = document.getElementById('userEmail');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const eventsContainer = document.getElementById('eventsContainer');
-    
-    const eventModal = document.getElementById('eventModal');
-    const openModalBtn = document.getElementById('openModalBtn');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const createEventBtn = document.getElementById('createEventBtn');
-    const eventNameInput = document.getElementById('eventNameInput');
-
-    let currentUser = null;
-    let realtimeChannel = null;
-
-    // Global Subscription State
-    let userSubscription = {
-      tierName: 'Free Starter',
-      status: 'active',
-      maxSeconds: 3600,
-      usedSeconds: 0,
-      maxRooms: 3,
-      currentRoomCount: 0
-    };
-
-    // 2. Auth Session Protection & Sync Initialization
-    async function checkUserSession() {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      
-      if (error || !session) {
-        window.location.href = '/auth.html';
-        return;
-      }
-
-      currentUser = session.user;
-      userEmailSpan.innerText = currentUser.email;
-
-      // Initial data fetch
-      await loadUserSubscription(currentUser.id);
-      await loadUserEvents();
-
-      // Initiate multi-table Realtime listener
-      subscribeToLiveUpdates(currentUser.id);
-    }
-
-    // Sign Out Handler
-    logoutBtn.addEventListener('click', async () => {
-      if (realtimeChannel) {
-        supabaseClient.removeChannel(realtimeChannel);
-      }
-      await supabaseClient.auth.signOut();
-      window.location.href = '/auth.html';
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: isOneTime ? 'payment' : 'subscription',
+      client_reference_id: userId || null,
+      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
+      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
     });
 
-    // 3. Modal Controls
-    openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
-    closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe Checkout Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    // 4. Room Creation Logic
-    createEventBtn.addEventListener('click', async () => {
-      const name = eventNameInput.value.trim();
-      if (!name) return;
+// WebSocket Connection Handler
+wss.on('connection', async (ws, req) => {
+  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
+  const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+  const role = urlParams.get('role') || 'viewer';
+  const token = urlParams.get('token');
+  const lang = urlParams.get('lang') || 'en-US';
 
-      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+  const room = getOrCreateRoom(roomId);
 
-      const { data, error } = await supabaseClient
-        .from('rooms')
-        .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
+  if (role === 'presenter') {
+    let authenticatedUser = null;
 
-      if (error) {
-        console.error("Supabase Room Creation Error:", error.message);
-        alert("Could not save room to database: " + error.message);
-      } else {
-        eventNameInput.value = '';
-        eventModal.style.display = 'none';
-        // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
-      }
-    });
+    // Validate token if provided, but continue gracefully in guest mode if missing/invalid
+    if (token && supabase) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (!error && user) {
+          authenticatedUser = user;
 
-    // 5. Render Events directly from Supabase
-    async function loadUserEvents() {
-      const origin = window.location.origin;
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
 
-      const { data: rooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
+          if (dbUser) {
+            // Event Pass expiry check
+            if (dbUser.plan_tier === 'one_time') {
+              const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
+              if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) {
+                ws.close(4005, 'Event Pass has expired');
+                return;
+              }
+            }
 
-      if (error) {
-        console.error("Error fetching rooms:", error.message);
-        return;
-      }
+            // Quota check
+            const usedSeconds = dbUser.streaming_seconds_used || 0;
+            if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
+              ws.close(4006, 'Monthly streaming quota exhausted');
+              return;
+            }
 
-      const activeRooms = rooms || [];
-      userSubscription.currentRoomCount = activeRooms.length;
-      renderSubscriptionUI();
-
-      eventsContainer.innerHTML = '';
-
-      if (activeRooms.length === 0) {
-        eventsContainer.innerHTML = '<p style="color: #64748b; text-align: center; margin-top: 20px;">No event rooms found. Click "+ Create New Event" to get started.</p>';
-        return;
-      }
-
-      activeRooms.forEach((room) => {
-        const id = room.room_id || room.id;
-        const presenterUrl = `${origin}/presenter.html?room=${id}`;
-        const overlayUrl = `${origin}/overlay.html?room=${id}`;
-        const audienceUrl = `${origin}/index.html?room=${id}`;
-
-        const card = document.createElement('div');
-        card.className = 'event-card';
-        card.innerHTML = `
-          <div class="event-card-header">
-            <div>
-              <div class="event-title">${room.name}</div>
-              <div class="event-id">Room ID: ${id}</div>
-            </div>
-            <button class="btn-secondary" onclick="deleteRoom('${id}')">Delete</button>
-          </div>
-
-          <div class="links-grid">
-            <div class="link-box">
-              <label>Presenter Microphones Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${presenterUrl}" id="p_${id}">
-                <button class="btn-copy" onclick="copyLink('p_${id}')">Copy</button>
-              </div>
-            </div>
-
-            <div class="link-box">
-              <label>OBS Transparent Overlay Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${overlayUrl}" id="o_${id}">
-                <button class="btn-copy" onclick="copyLink('o_${id}')">Copy</button>
-              </div>
-            </div>
-
-            <div class="link-box">
-              <label>Mobile Audience View Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${audienceUrl}" id="a_${id}">
-                <button class="btn-copy" onclick="copyLink('a_${id}')">Copy</button>
-              </div>
-            </div>
-          </div>
-        `;
-
-        eventsContainer.appendChild(card);
-      });
-    }
-
-    // 6. Delete Room from Supabase
-    async function deleteRoom(roomId) {
-      if (!confirm("Are you sure you want to delete this event room?")) return;
-
-      const { error } = await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
-
-      if (error) {
-        console.error("Error deleting room:", error.message);
-        alert("Failed to delete room: " + error.message);
-      }
-      // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
-    }
-
-    // 7. Render Subscription UI State
-    function renderSubscriptionUI() {
-      const tierElem = document.getElementById('subTierName');
-      const badgeElem = document.getElementById('subStatusBadge');
-      if (tierElem) tierElem.innerText = userSubscription.tierName;
-      if (badgeElem) {
-        badgeElem.innerText = userSubscription.status.toUpperCase();
-        badgeElem.style.backgroundColor = userSubscription.status === 'active' ? '#15803d' : '#b91c1c';
-      }
-
-      const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
-      const remainingMins = Math.floor(remainingSecs / 60);
-      const usedMins = Math.round(userSubscription.usedSeconds / 60);
-      const maxMins = Math.round(userSubscription.maxSeconds / 60);
-      const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
-
-      document.getElementById('remainingTimeDisplay').innerText = `${remainingMins} mins`;
-      document.getElementById('timeSubtext').innerText = `Used ${usedMins} of ${maxMins} mins`;
-      document.getElementById('timeProgress').style.width = `${timePercent}%`;
-
-      const remainingRooms = Math.max(0, userSubscription.maxRooms - userSubscription.currentRoomCount);
-      const roomPercent = Math.min(100, (userSubscription.currentRoomCount / userSubscription.maxRooms) * 100);
-
-      document.getElementById('remainingRoomsDisplay').innerText = `${remainingRooms} slots`;
-      document.getElementById('roomSubtext').innerText = `${userSubscription.currentRoomCount} of ${userSubscription.maxRooms} stages created`;
-      document.getElementById('roomProgress').style.width = `${roomPercent}%`;
-
-      if (openModalBtn) {
-        if (userSubscription.currentRoomCount >= userSubscription.maxRooms || userSubscription.status !== 'active') {
-          openModalBtn.disabled = true;
-          openModalBtn.innerText = userSubscription.status !== 'active' ? 'Subscription Inactive' : 'Stage Limit Reached';
-        } else {
-          openModalBtn.disabled = false;
-          openModalBtn.innerText = '+ Create New Event';
-        }
-      }
-    }
-
-    // 8. Fetch Subscription Quotas from Supabase
-    async function loadUserSubscription(userId) {
-      const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
-      }
-      renderSubscriptionUI();
-    }
-
-    // 9. Realtime Subscription Channel Listener
-    function subscribeToLiveUpdates(userId) {
-      if (realtimeChannel) {
-        supabaseClient.removeChannel(realtimeChannel);
-      }
-
-      realtimeChannel = supabaseClient
-        .channel(`dashboard_realtime_${userId}`)
-        
-        // Listen to live quota updates on subscriptions table
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
-          (payload) => {
-            if (payload.new) {
-              userSubscription.tierName = payload.new.tier_name || 'Free Starter';
-              userSubscription.status = payload.new.status || 'active';
-              userSubscription.maxSeconds = payload.new.max_streaming_seconds || 3600;
-              userSubscription.usedSeconds = payload.new.streaming_seconds_used || 0;
-              userSubscription.maxRooms = payload.new.max_rooms || 3;
-              renderSubscriptionUI();
+            // Concurrent stage check
+            const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
+            if (!userAlreadyOwnsThisRoom) {
+              const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
+              const allowedRooms = dbUser.allowed_rooms ?? 1;
+              if (currentRoomCount >= allowedRooms) {
+                ws.close(4004, 'Maximum concurrent stages limit reached');
+                return;
+              }
             }
           }
-        )
-
-        // Listen to INSERT, UPDATE, DELETE events on rooms table
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
-          async (payload) => {
-            await loadUserEvents();
-          }
-        )
-
-        .subscribe((status, err) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('Supabase Realtime connected successfully.');
-          } else if (err || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.error('Supabase Realtime connection error:', status, err);
-          }
-        });
+        }
+      } catch (authErr) {
+        console.warn(`[room=${roomId}] Token check warning, continuing as guest:`, authErr.message);
+      }
     }
 
-    // Helper: Copy to Clipboard
-    function copyLink(inputId) {
-      const input = document.getElementById(inputId);
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      alert("Link copied to clipboard!");
+    // Start tracking active streaming time when WebSocket connects/streams
+const usageTimer = setInterval(async () => {
+  if (!authenticatedUser) return;
+
+  // RPC call to increment usage by 10 seconds atomically
+  const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
+    user_id_param: authenticatedUser.id,
+    seconds_param: 10
+  });
+
+  if (error) {
+    console.error('Error incrementing usage:', error);
+    return;
+  }
+
+  // Enforce limit if quota was reached during stream
+  if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
+    ws.close(4006, 'Monthly streaming quota exhausted');
+    clearInterval(usageTimer);
+  }
+}, 10000); // Pulse every 10 seconds
+
+// Ensure timer is cleaned up on disconnect
+ws.on('close', () => {
+  clearInterval(usageTimer);
+});
+
+    const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
+
+    // Replace existing active presenter in this room
+    const existingPresenter = room.presenterWs;
+    if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
+      if (room.presenterUserId && room.presenterUserId !== userId) {
+        ws.close(4009, 'This room already has an active presenter');
+        return;
+      }
+      existingPresenter.close(4000, 'Replaced by your new session');
     }
 
-    // Initialize Page
-    checkUserSession();
-  </script>
-</body>
-</html>
+    room.presenterWs = ws;
+    room.presenterUserId = userId;
+    if (authenticatedUser) addUserRoom(userId, roomId);
+
+    let deepgramLive = null;
+    let deepgramReady = false;
+    const audioQueue = [];
+
+    try {
+      // Stream details are auto-detected by Deepgram from the incoming WebM header
+      deepgramLive = deepgram.listen.live({
+        model: 'nova-2',
+        language: lang,
+        smart_format: true,
+        punctuate: true,
+        interim_results: true,
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Open, () => {
+        deepgramReady = true;
+        console.log(`[room=${roomId}] Deepgram connection open and ready`);
+        while (audioQueue.length > 0) {
+          deepgramLive.send(audioQueue.shift());
+        }
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
+        const transcript = data.channel?.alternatives?.[0]?.transcript;
+        if (transcript && transcript.trim() !== '') {
+          console.log(`[room=${roomId}] Transcript: "${transcript}"`);
+          const payload = JSON.stringify({
+            type: 'caption',
+            text: transcript,
+            isFinal: data.is_final
+          });
+          safeSend(ws, payload);
+          room.viewers.forEach((viewer) => safeSend(viewer, payload));
+        }
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
+        console.error(`Deepgram Error [room=${roomId}]:`, err);
+        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+        deepgramReady = false;
+        console.warn(`Deepgram connection closed [room=${roomId}]`);
+      });
+    } catch (err) {
+      console.error('Failed to initialize Deepgram:', err);
+      safeSend(ws, JSON.stringify({ type: 'error', message: 'Failed to start captioning session.' }));
+    }
+
+    ws.on('message', (message) => {
+      if (typeof message === 'string') return; // Ignore non-binary control messages
+      if (!deepgramLive) return;
+
+      if (deepgramReady && deepgramLive.getReadyState() === 1) {
+        deepgramLive.send(message);
+      } else {
+        audioQueue.push(message);
+      }
+    });
+
+    ws.on('close', () => {
+      if (deepgramLive) {
+        try { deepgramLive.finish(); } catch (e) { /* already closed */ }
+      }
+
+      if (room.presenterWs === ws) {
+        room.presenterWs = null;
+        room.presenterUserId = null;
+        if (authenticatedUser) removeUserRoom(userId, roomId);
+        console.log(`[room=${roomId}] Presenter disconnected`);
+      }
+    });
+
+  } else {
+    // Viewer connection (OBS Overlay / Mobile View)
+    room.viewers.add(ws);
+    console.log(`[room=${roomId}] Viewer connected (${room.viewers.size} total)`);
+
+    ws.on('close', () => {
+      room.viewers.delete(ws);
+      console.log(`[room=${roomId}] Viewer disconnected (${room.viewers.size} left)`);
+    });
+  }
+});
+
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`AICaptions server listening on port ${PORT}`);
+});
