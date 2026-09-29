@@ -210,7 +210,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ Stage Captions</div>
+    <div class="logo">🎙️ AICaptions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -500,7 +500,7 @@
         userSubscription.tierName = sub.tier_name || 'Free Starter';
         userSubscription.status = sub.status || 'active';
         userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
+        userSubscription.remainingSeconds = sub.streaming_seconds_used || 0;
         userSubscription.maxRooms = sub.max_rooms || 3;
       }
       renderSubscriptionUI();
