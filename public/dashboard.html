@@ -491,7 +491,7 @@
     // 8. Fetch Subscription Quotas from Supabase
     async function loadUserSubscription(userId) {
       const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
+        .from('users')
         .select('*')
         .eq('user_id', userId)
         .single();
