@@ -535,10 +535,10 @@
           }
         )
 
-        // Listen to INSERT, UPDATE, DELETE events on rooms table
+        // Listen to INSERT, UPDATE, DELETE events on users table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
+          { event: '*', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
           async (payload) => {
             await loadUserEvents();
           }
