@@ -66,7 +66,7 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// Stripe Checkout Endpoint (Handles both /api/create-checkout-session and /create-checkout-session)
+// Stripe Checkout Endpoint
 app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
   if (!stripe) {
     return res.status(500).json({ error: 'Stripe API key not configured on server.' });
@@ -111,7 +111,7 @@ wss.on('connection', async (ws, req) => {
   if (role === 'presenter') {
     let authenticatedUser = null;
 
-    // Validate token if provided, but continue gracefully in guest mode if missing/invalid
+    // Validate token if provided
     if (token && supabase) {
       try {
         const { data: { user }, error } = await supabase.auth.getUser(token);
@@ -135,7 +135,7 @@ wss.on('connection', async (ws, req) => {
             }
 
             // Quota check
-            const usedSeconds = dbUser.streaming_seconds_used || 0;
+            const usedSeconds = parseInt(dbUser.streaming_seconds_used || '0', 10);
             if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
               ws.close(4006, 'Monthly streaming quota exhausted');
               return;
@@ -158,33 +158,6 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
-    // Start tracking active streaming time when WebSocket connects/streams
-const usageTimer = setInterval(async () => {
-  if (!authenticatedUser) return;
-
-  // RPC call to increment usage by 10 seconds atomically
-  const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
-    user_id_param: authenticatedUser.id,
-    seconds_param: 10
-  });
-
-  if (error) {
-    console.error('Error incrementing usage:', error);
-    return;
-  }
-
-  // Enforce limit if quota was reached during stream
-  if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
-    ws.close(4006, 'Monthly streaming quota exhausted');
-    clearInterval(usageTimer);
-  }
-}, 10000); // Pulse every 10 seconds
-
-// Ensure timer is cleaned up on disconnect
-ws.on('close', () => {
-  clearInterval(usageTimer);
-});
-
     const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
 
     // Replace existing active presenter in this room
@@ -201,12 +174,58 @@ ws.on('close', () => {
     room.presenterUserId = userId;
     if (authenticatedUser) addUserRoom(userId, roomId);
 
+    // --- Stream Usage Tracking Setup ---
+    let lastSyncTime = Date.now();
+
+    const syncStreamTime = async () => {
+      if (!authenticatedUser || !supabase) return;
+
+      const now = Date.now();
+      const elapsedSec = Math.floor((now - lastSyncTime) / 1000);
+      if (elapsedSec <= 0) return;
+
+      lastSyncTime = now; // Reset anchor timestamp
+
+      try {
+        // Atomic RPC call matching Supabase increment_stream_time function
+        const { error: rpcErr } = await supabase.rpc('increment_stream_time', {
+          target_user_id: authenticatedUser.id,
+          added_seconds: elapsedSec
+        });
+
+        if (rpcErr) {
+          console.error(`[room=${roomId}] Sync error:`, rpcErr.message);
+          return;
+        }
+
+        // Check if user hit their limit while streaming
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('streaming_seconds_used, max_streaming_seconds')
+          .eq('id', authenticatedUser.id)
+          .single();
+
+        if (dbUser && dbUser.max_streaming_seconds != null) {
+          const currentUsed = parseInt(dbUser.streaming_seconds_used || '0', 10);
+          if (currentUsed >= dbUser.max_streaming_seconds) {
+            console.warn(`[room=${roomId}] Quota exhausted mid-stream for user ${authenticatedUser.id}`);
+            safeSend(ws, JSON.stringify({ type: 'error', message: 'Monthly streaming quota exhausted.' }));
+            ws.close(4006, 'Monthly streaming quota exhausted');
+          }
+        }
+      } catch (err) {
+        console.error(`[room=${roomId}] Exception syncing usage:`, err);
+      }
+    };
+
+    // Heartbeat pulse every 10 seconds to update database
+    const usageTimer = setInterval(syncStreamTime, 10000);
+
     let deepgramLive = null;
     let deepgramReady = false;
     const audioQueue = [];
 
     try {
-      // Stream details are auto-detected by Deepgram from the incoming WebM header
       deepgramLive = deepgram.listen.live({
         model: 'nova-2',
         language: lang,
@@ -252,7 +271,7 @@ ws.on('close', () => {
     }
 
     ws.on('message', (message) => {
-      if (typeof message === 'string') return; // Ignore non-binary control messages
+      if (typeof message === 'string') return;
       if (!deepgramLive) return;
 
       if (deepgramReady && deepgramLive.getReadyState() === 1) {
@@ -262,11 +281,17 @@ ws.on('close', () => {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
+      // 1. Clear timer and perform final flush for leftover seconds
+      clearInterval(usageTimer);
+      await syncStreamTime();
+
+      // 2. Clean up Deepgram connection
       if (deepgramLive) {
         try { deepgramLive.finish(); } catch (e) { /* already closed */ }
       }
 
+      // 3. Clean up room state
       if (room.presenterWs === ws) {
         room.presenterWs = null;
         room.presenterUserId = null;
