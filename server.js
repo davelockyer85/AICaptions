@@ -66,7 +66,7 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// Stripe Checkout Endpoint (Handles both /api/create-checkout-session and /create-checkout-session)
+// Stripe Checkout Endpoint
 app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
   if (!stripe) {
     return res.status(500).json({ error: 'Stripe API key not configured on server.' });
@@ -110,6 +110,7 @@ wss.on('connection', async (ws, req) => {
 
   if (role === 'presenter') {
     let authenticatedUser = null;
+    let usageTimer = null;
 
     // Validate token if provided, but continue gracefully in guest mode if missing/invalid
     if (token && supabase) {
@@ -158,40 +159,40 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
-    // Start tracking active streaming time when WebSocket connects/streams
-const usageTimer = setInterval(async () => {
-  if (!authenticatedUser) return;
-
-  // RPC call to increment usage by 10 seconds atomically
-  const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
-    user_id_param: authenticatedUser.id,
-    seconds_param: 10
-  });
-
-  if (error) {
-    console.error('Error incrementing usage:', error);
-    return;
-  }
-
-  // Enforce limit if quota was reached during stream
-  if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
-    ws.close(4006, 'Monthly streaming quota exhausted');
-    clearInterval(usageTimer);
-  }
-}, 10000); // Pulse every 10 seconds
-
-// Ensure timer is cleaned up on disconnect
-ws.on('close', () => {
-  clearInterval(usageTimer);
-});
-
     const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
+
+    // Start tracking active streaming time for authenticated users
+    if (authenticatedUser && supabase) {
+      usageTimer = setInterval(async () => {
+        try {
+          // RPC call to increment user usage by 10 seconds atomically
+          const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
+            user_id_param: authenticatedUser.id,
+            seconds_param: 10
+          });
+
+          if (error) {
+            console.error('Error incrementing usage:', error);
+            return;
+          }
+
+          // Enforce limit if quota was reached during active stream
+          if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
+            ws.close(4006, 'Monthly streaming quota exhausted');
+            if (usageTimer) clearInterval(usageTimer);
+          }
+        } catch (err) {
+          console.error('Usage timer error:', err);
+        }
+      }, 10000); // Pulse every 10 seconds
+    }
 
     // Replace existing active presenter in this room
     const existingPresenter = room.presenterWs;
     if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
       if (room.presenterUserId && room.presenterUserId !== userId) {
         ws.close(4009, 'This room already has an active presenter');
+        if (usageTimer) clearInterval(usageTimer);
         return;
       }
       existingPresenter.close(4000, 'Replaced by your new session');
@@ -263,6 +264,8 @@ ws.on('close', () => {
     });
 
     ws.on('close', () => {
+      if (usageTimer) clearInterval(usageTimer);
+
       if (deepgramLive) {
         try { deepgramLive.finish(); } catch (e) { /* already closed */ }
       }
