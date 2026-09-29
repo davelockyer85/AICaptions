@@ -298,16 +298,6 @@
 
     let currentUser = null;
 
-    // Global Subscription State
-    let userSubscription = {
-      tierName: 'Free Starter',
-      status: 'active',
-      maxSeconds: 7200,
-      usedSeconds: 0,
-      maxRooms: 3,
-      currentRoomCount: 0
-    };
-
     // 2. Auth Session Protection & Sync Initialization
     async function checkUserSession() {
       const { data: { session }, error } = await supabaseClient.auth.getSession();
