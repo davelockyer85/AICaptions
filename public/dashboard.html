@@ -361,23 +361,37 @@
       loadUserEvents();
     });
 
-    // 5. Render Events to UI
-    function loadUserEvents() {
+    // 5. Render Events directly from Supabase
+    async function loadUserEvents() {
       const origin = window.location.origin;
-      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
 
-      // Default demo room if none exist yet
-      if (rooms.length === 0) {
-        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
-        localStorage.setItem('user_rooms', JSON.stringify(rooms));
+      // Query rooms directly from Supabase
+      const { data: rooms, error } = await supabaseClient
+        .from('rooms')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching rooms:", error.message);
       }
+
+      const activeRooms = rooms || [];
+      userSubscription.currentRoomCount = activeRooms.length;
+      renderSubscriptionUI();
 
       eventsContainer.innerHTML = '';
 
-      rooms.forEach((room) => {
-        const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-        const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-        const audienceUrl = `${origin}/index.html?room=${room.id}`;
+      if (activeRooms.length === 0) {
+        eventsContainer.innerHTML = '<p style="color: #64748b; text-align: center; margin-top: 20px;">No event rooms found. Click "+ Create New Event" to get started.</p>';
+        return;
+      }
+
+      activeRooms.forEach((room) => {
+        const id = room.room_id || room.id;
+        const presenterUrl = `${origin}/presenter.html?room=${id}`;
+        const overlayUrl = `${origin}/overlay.html?room=${id}`;
+        const audienceUrl = `${origin}/index.html?room=${id}`;
 
         const card = document.createElement('div');
         card.className = 'event-card';
@@ -385,36 +399,33 @@
           <div class="event-card-header">
             <div>
               <div class="event-title">${room.name}</div>
-              <div class="event-id">Room ID: ${room.id}</div>
+              <div class="event-id">Room ID: ${id}</div>
             </div>
-            <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
+            <button class="btn-secondary" onclick="deleteRoom('${id}')">Delete</button>
           </div>
 
           <div class="links-grid">
-            <!-- Presenter Panel Link -->
             <div class="link-box">
               <label>Presenter Microphones Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-                <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
+                <input type="text" readonly value="${presenterUrl}" id="p_${id}">
+                <button class="btn-copy" onclick="copyLink('p_${id}')">Copy</button>
               </div>
             </div>
 
-            <!-- OBS Overlay Link -->
             <div class="link-box">
               <label>OBS Transparent Overlay Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-                <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
+                <input type="text" readonly value="${overlayUrl}" id="o_${id}">
+                <button class="btn-copy" onclick="copyLink('o_${id}')">Copy</button>
               </div>
             </div>
 
-            <!-- Mobile Audience View Link -->
             <div class="link-box">
               <label>Mobile Audience View Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-                <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
+                <input type="text" readonly value="${audienceUrl}" id="a_${id}">
+                <button class="btn-copy" onclick="copyLink('a_${id}')">Copy</button>
               </div>
             </div>
           </div>
@@ -422,6 +433,101 @@
 
         eventsContainer.appendChild(card);
       });
+    }
+
+    // 6. Delete Room from Supabase
+    async function deleteRoom(roomId) {
+      if (!confirm("Are you sure you want to delete this event room?")) return;
+
+      const { error } = await supabaseClient
+        .from('rooms')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.id);
+
+      if (error) {
+        console.error("Error deleting room:", error.message);
+        alert("Failed to delete room: " + error.message);
+      } else {
+        await loadUserEvents();
+      }
+    }
+
+    // 7. Render Subscription UI State
+    function renderSubscriptionUI() {
+      const tierElem = document.getElementById('subTierName');
+      const badgeElem = document.getElementById('subStatusBadge');
+      if (tierElem) tierElem.innerText = userSubscription.tierName;
+      if (badgeElem) {
+        badgeElem.innerText = userSubscription.status.toUpperCase();
+        badgeElem.style.backgroundColor = userSubscription.status === 'active' ? '#15803d' : '#b91c1c';
+      }
+
+      const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
+      const remainingMins = Math.floor(remainingSecs / 60);
+      const usedMins = Math.round(userSubscription.usedSeconds / 60);
+      const maxMins = Math.round(userSubscription.maxSeconds / 60);
+      const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
+
+      document.getElementById('remainingTimeDisplay').innerText = `${remainingMins} mins`;
+      document.getElementById('timeSubtext').innerText = `Used ${usedMins} of ${maxMins} mins`;
+      document.getElementById('timeProgress').style.width = `${timePercent}%`;
+
+      const remainingRooms = Math.max(0, userSubscription.maxRooms - userSubscription.currentRoomCount);
+      const roomPercent = Math.min(100, (userSubscription.currentRoomCount / userSubscription.maxRooms) * 100);
+
+      document.getElementById('remainingRoomsDisplay').innerText = `${remainingRooms} slots`;
+      document.getElementById('roomSubtext').innerText = `${userSubscription.currentRoomCount} of ${userSubscription.maxRooms} stages created`;
+      document.getElementById('roomProgress').style.width = `${roomPercent}%`;
+
+      if (openModalBtn) {
+        if (userSubscription.currentRoomCount >= userSubscription.maxRooms || userSubscription.status !== 'active') {
+          openModalBtn.disabled = true;
+          openModalBtn.innerText = userSubscription.status !== 'active' ? 'Subscription Inactive' : 'Stage Limit Reached';
+        } else {
+          openModalBtn.disabled = false;
+          openModalBtn.innerText = '+ Create New Event';
+        }
+      }
+    }
+
+    // 8. Fetch Subscription Quotas from Supabase
+    async function loadUserSubscription(userId) {
+      const { data: sub, error } = await supabaseClient
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (!error && sub) {
+        userSubscription.tierName = sub.tier_name || 'Free Starter';
+        userSubscription.status = sub.status || 'active';
+        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
+        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
+        userSubscription.maxRooms = sub.max_rooms || 3;
+      }
+      renderSubscriptionUI();
+    }
+
+    // 9. Realtime Subscription Channel Listener
+    function subscribeToLiveUpdates(userId) {
+      supabaseClient
+        .channel(`live_sub_${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+          (payload) => {
+            if (payload.new) {
+              userSubscription.tierName = payload.new.tier_name;
+              userSubscription.status = payload.new.status;
+              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
+              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
+              userSubscription.maxRooms = payload.new.max_rooms;
+              renderSubscriptionUI();
+            }
+          }
+        )
+        .subscribe();
     }
 
     // Helper: Copy to Clipboard
@@ -432,16 +538,11 @@
       alert("Link copied to clipboard!");
     }
 
-    // Helper: Delete Room
-    function deleteRoom(roomId) {
-      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      rooms = rooms.filter(r => r.id !== roomId);
-      localStorage.setItem('user_rooms', JSON.stringify(rooms));
-      loadUserEvents();
-    }
-
     // Initialize Page
     checkUserSession();
+  </script>
+</body>
+</html>
   </script>
 </body>
 </html>
