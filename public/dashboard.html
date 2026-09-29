@@ -251,6 +251,41 @@
   </header>
 
   <div class="container">
+
+    <!-- Live Subscription & Usage Quota Cards -->
+    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
+      
+      <!-- Subscription Tier Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Subscription</span>
+          <span id="subStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background-color: #15803d; color: #f0fdf4; font-weight: 600;">ACTIVE</span>
+        </div>
+        <div id="subTierName" style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin: 8px 0 4px 0;">Free Starter</div>
+        <div id="subExpiryText" style="font-size: 0.85rem; color: #64748b;">Plan Active</div>
+      </div>
+
+      <!-- Remaining Streaming Time Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Remaining Streaming Time</div>
+        <div id="remainingTimeDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- mins</div>
+        <div id="timeSubtext" style="font-size: 0.85rem; color: #64748b;">Used 0 of 60 mins</div>
+        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
+          <div id="timeProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
+      </div>
+
+      <!-- Available Stage Slots Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Available Stage Slots</div>
+        <div id="remainingRoomsDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- remaining</div>
+        <div id="roomSubtext" style="font-size: 0.85rem; color: #64748b;">0 of 3 stages created</div>
+        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
+          <div id="roomProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
+      </div>
+
+    </div>
     
     <!-- Subscription Status Card -->
     <div class="status-card">
