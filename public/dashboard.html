@@ -210,7 +210,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ Stage Captions</div>
+    <div class="logo">🎙️ AICaptions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -306,6 +306,20 @@
       usedSeconds: 0,
       maxRooms: 3,
       currentRoomCount: 0
+
+    // Function to update the card DOM elements from state
+  function renderSubscriptionUI(data) {
+    // 1. Subscription Card Elements
+    const subStatusBadge = document.getElementById('subStatusBadge');
+    const subTierName = document.getElementById('subTierName');
+    
+    if (subStatusBadge) {
+      subStatusBadge.textContent = (data.status || 'ACTIVE').toUpperCase();
+      subStatusBadge.style.backgroundColor = data.status === 'active' ? '#15803d' : '#b91c1c';
+    }
+    if (subTierName) {
+      subTierName.textContent = data.tier_name || 'Free Starter';
+    }
     };
 
     // 2. Auth Session Protection & Sync Initialization
@@ -330,11 +344,39 @@
     logoutBtn.addEventListener('click', async () => {
       await supabaseClient.auth.signOut();
       window.location.href = '/auth.html';
+      
+    // Remaining Streaming Time Card Elements
+    const remainingTimeDisplay = document.getElementById('remainingTimeDisplay');
+    const timeSubtext = document.getElementById('timeSubtext');
+    const timeProgress = document.getElementById('timeProgress');
+
+    const maxMins = Math.floor((data.max_streaming_seconds || 3600) / 60);
+    const usedMins = Math.floor((data.streaming_seconds_used || 0) / 60);
+    const remainingMins = Math.max(0, maxMins - usedMins);
+    const timePercentage = Math.min(100, (usedMins / maxMins) * 100);
+
+    if (remainingTimeDisplay) remainingTimeDisplay.textContent = `${remainingMins} mins`;
+    if (timeSubtext) timeSubtext.textContent = `Used ${usedMins} of ${maxMins} mins`;
+    if (timeProgress) timeProgress.style.width = `${timePercentage}%`;
     });
 
     // 3. Modal Controls
     openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
     closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+    
+    // Available Stage Slots Card Elements
+    const remainingRoomsDisplay = document.getElementById('remainingRoomsDisplay');
+    const roomSubtext = document.getElementById('roomSubtext');
+    const roomProgress = document.getElementById('roomProgress');
+
+    const maxRooms = data.max_rooms || 3;
+    const currentRooms = data.current_room_count || 0;
+    const remainingRooms = Math.max(0, maxRooms - currentRooms);
+    const roomPercentage = Math.min(100, (currentRooms / maxRooms) * 100);
+
+    if (remainingRoomsDisplay) remainingRoomsDisplay.textContent = `${remainingRooms} remaining`;
+    if (roomSubtext) roomSubtext.textContent = `${currentRooms} of ${maxRooms} stages created`;
+    if (roomProgress) roomProgress.style.width = `${roomPercentage}%`;
 
     // 4. Room Creation Logic
     createEventBtn.addEventListener('click', async () => {
