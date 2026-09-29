@@ -343,43 +343,6 @@
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
-      // Insert directly into Supabase 'rooms' table
-      const { data, error } = await supabaseClient
-        .from('rooms')
-        .insert([
-          {
-            room_id: roomId,
-            name: name,
-            user_id: currentUser.id,
-            streaming_seconds_used: 0 // Explicitly set starting usage
-          }
-        ]);
-
-      if (error) {
-        console.error("Supabase Room Creation Error:", error.message);
-        alert("Could not save room to database: " + error.message);
-      } else {
-        eventNameInput.value = '';
-        eventModal.style.display = 'none';
-        await loadUserEvents();
-      }
-    });
-
-      // Insert directly into Supabase 'rooms' table
-      const { data, error } = await supabaseClient
-        .from('rooms')
-        .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
-
-      if (error) {
-        console.error("Supabase Room Creation Error:", error.message);
-        alert("Could not save room to database: " + error.message);
-      } else {
-        eventNameInput.value = '';
-        eventModal.style.display = 'none';
-        await loadUserEvents();
-      }
-    });
-
     // 5. Render Events directly from Supabase
     async function loadUserEvents() {
       const origin = window.location.origin;
