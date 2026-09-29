@@ -158,6 +158,33 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
+    // Start tracking active streaming time when WebSocket connects/streams
+const usageTimer = setInterval(async () => {
+  if (!authenticatedUser) return;
+
+  // RPC call to increment usage by 10 seconds atomically
+  const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
+    user_id_param: authenticatedUser.id,
+    seconds_param: 10
+  });
+
+  if (error) {
+    console.error('Error incrementing usage:', error);
+    return;
+  }
+
+  // Enforce limit if quota was reached during stream
+  if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
+    ws.close(4006, 'Monthly streaming quota exhausted');
+    clearInterval(usageTimer);
+  }
+}, 10000); // Pulse every 10 seconds
+
+// Ensure timer is cleaned up on disconnect
+ws.on('close', () => {
+  clearInterval(usageTimer);
+});
+
     const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
 
     // Replace existing active presenter in this room
