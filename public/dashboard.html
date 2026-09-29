@@ -328,6 +328,37 @@
       renderSubscriptionUI();
     }
 
+    // 3. Listen for Live Supabase Realtime Changes
+    function subscribeToLiveUpdates(userId) {
+      if (!supabaseClient || !userId) return;
+
+      supabaseClient
+        .channel(`realtime_subscription_${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'subscriptions',
+            filter: `user_id=eq.${userId}`
+          },
+          (payload) => {
+            if (payload.new) {
+              // Update in-memory state on database change
+              userSubscription.tierName = payload.new.tier_name;
+              userSubscription.status = payload.new.status;
+              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
+              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
+              userSubscription.maxRooms = payload.new.max_rooms;
+
+              // Re-render UI elements in real time
+              renderSubscriptionUI();
+            }
+          }
+        )
+        .subscribe();
+    }
+
     // Sign Out Handler
     logoutBtn.addEventListener('click', async () => {
       await supabaseClient.auth.signOut();
