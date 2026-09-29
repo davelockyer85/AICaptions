@@ -454,7 +454,7 @@
       // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
     }
 
-    // 7. Render Subscription UI State
+   // 7. Render Subscription UI State
     function renderSubscriptionUI() {
       const tierElem = document.getElementById('subTierName');
       const badgeElem = document.getElementById('subStatusBadge');
@@ -495,7 +495,7 @@
     // 8. Fetch Subscription Quotas from Supabase
     async function loadUserSubscription(userId) {
       const { data: sub, error } = await supabaseClient
-        .from('users')
+        .from('subscriptions')
         .select('*')
         .eq('user_id', userId)
         .single();
@@ -522,7 +522,7 @@
         // Listen to live quota updates on subscriptions table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
+          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
           (payload) => {
             if (payload.new) {
               userSubscription.tierName = payload.new.tier_name || 'Free Starter';
@@ -535,10 +535,10 @@
           }
         )
 
-        // Listen to INSERT, UPDATE, DELETE events on users table
+        // Listen to INSERT, UPDATE, DELETE events on rooms table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
+          { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
           async (payload) => {
             await loadUserEvents();
           }
