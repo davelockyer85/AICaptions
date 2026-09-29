@@ -501,11 +501,11 @@ async function loadUserSubscription(userId) {
   }
 
   if (!error && sub) {
-    userSubscription.tierName = sub.tier_name || sub.plan_tier || 'Free Starter';
+    userSubscription.tierName = sub.tier_name || sub.plan_tier || 'Select Tier';
     userSubscription.status = sub.status || 'active';
-    userSubscription.maxSeconds = sub.max_streaming_seconds ?? 3600;
+    userSubscription.maxSeconds = sub.max_streaming_seconds ?? 300;
     userSubscription.usedSeconds = sub.streaming_seconds_used ?? 0; // Fixed key assignment
-    userSubscription.maxRooms = sub.max_rooms ?? 3;
+    userSubscription.maxRooms = sub.max_rooms ?? 1;
   }
   renderSubscriptionUI();
 }
