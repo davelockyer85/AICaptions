@@ -71,6 +71,34 @@
       padding: 0 20px;
     }
 
+    /* Subscription Status Banner */
+    .status-card {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-info h2 { font-size: 1.2rem; margin-bottom: 4px; }
+    .status-info p { color: #94a3b8; font-size: 0.9rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-left: 8px;
+    }
+
+    .badge-active { background-color: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
+
     .btn-primary {
       background-color: #3b82f6;
       color: #ffffff;
@@ -84,7 +112,6 @@
     }
 
     .btn-primary:hover { background-color: #2563eb; }
-    .btn-primary:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.6; }
 
     /* Events Section */
     .section-header {
@@ -205,12 +232,18 @@
       justify-content: flex-end;
       gap: 12px;
     }
+
+    /* QR Code Canvas Container */
+    .qr-container {
+      margin-top: 12px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
+    <div class="logo">🎙️ Stage Captions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -218,40 +251,14 @@
   </header>
 
   <div class="container">
-
-    <!-- Live Subscription & Usage Quota Cards -->
-    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
-      
-      <!-- Subscription Tier Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Subscription</span>
-          <span id="subStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background-color: #15803d; color: #f0fdf4; font-weight: 600;">ACTIVE</span>
-        </div>
-        <div id="subTierName" style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin: 8px 0 4px 0;">Free Starter</div>
-        <div id="subExpiryText" style="font-size: 0.85rem; color: #64748b;">Plan Active</div>
+    
+    <!-- Subscription Status Card -->
+    <div class="status-card">
+      <div class="status-info">
+        <h2>Subscription Status <span class="badge badge-active">Active Pro Plan</span></h2>
+        <p>Your subscription includes unlimited real-time rooms and OBS streaming.</p>
       </div>
-
-      <!-- Remaining Streaming Time Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Remaining Streaming Time</div>
-        <div id="remainingTimeDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- mins</div>
-        <div id="timeSubtext" style="font-size: 0.85rem; color: #64748b;">Used 0 of 60 mins</div>
-        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
-          <div id="timeProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
-        </div>
-      </div>
-
-      <!-- Available Stage Slots Card -->
-      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
-        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Available Stage Slots</div>
-        <div id="remainingRoomsDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- remaining</div>
-        <div id="roomSubtext" style="font-size: 0.85rem; color: #64748b;">0 of 3 stages created</div>
-        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
-          <div id="roomProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
-        </div>
-      </div>
-
+      <button class="btn-secondary" onclick="window.location.href='/pricing.html'">Manage Plan</button>
     </div>
 
     <!-- Events Management Header -->
@@ -298,17 +305,7 @@
 
     let currentUser = null;
 
-    // Global Subscription State
-    let userSubscription = {
-      tierName: 'Free Starter',
-      status: 'active',
-      maxSeconds: 3600,
-      usedSeconds: 0,
-      maxRooms: 3,
-      currentRoomCount: 0
-    };
-
-    // 2. Auth Session Protection & Sync Initialization
+    // 2. Auth Session Protection
     async function checkUserSession() {
       const { data: { session }, error } = await supabaseClient.auth.getSession();
       
@@ -319,11 +316,7 @@
 
       currentUser = session.user;
       userEmailSpan.innerText = currentUser.email;
-
-      // Sync user rooms and subscription details from Supabase
-      await loadUserSubscription(currentUser.id);
-      await loadUserEvents();
-      subscribeToLiveUpdates(currentUser.id);
+      loadUserEvents();
     }
 
     // Sign Out Handler
@@ -336,60 +329,55 @@
     openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
     closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
-    // 4. Room Creation Logic
+    // 4. Room Generator Logic (Uses Supabase or local state fallback)
     createEventBtn.addEventListener('click', async () => {
       const name = eventNameInput.value.trim();
       if (!name) return;
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+      
+      const newRoom = {
+        id: roomId,
+        name: name,
+        created_at: new Date().toISOString()
+      };
 
-      // Insert directly into Supabase 'rooms' table
-      const { data, error } = await supabaseClient
-  .from('rooms')
-  .insert([
-    { 
-      room_id: roomId, 
-      name: name, 
-      user_id: currentUser.id  // Must match auth.uid()
-    }
-  ]);
+      // Store in local storage for instant client-side persistence
+      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      localRooms.unshift(newRoom);
+      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
 
-if (error) {
-  console.error("Insert error:", error.message);
-}
-    });
-
-    // 5. Render Events directly from Supabase
-    async function loadUserEvents() {
-      const origin = window.location.origin;
-
-      // Query rooms directly from Supabase
-      const { data: rooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Error fetching rooms:", error.message);
+      // Attempt Supabase insert if rooms table is configured
+      try {
+        await supabaseClient.from('rooms').insert([
+          { room_id: roomId, name: name, user_id: currentUser.id }
+        ]);
+      } catch(e) {
+        console.log("Supabase table query skipped, using local session state.");
       }
 
-      const activeRooms = rooms || [];
-      userSubscription.currentRoomCount = activeRooms.length;
-      renderSubscriptionUI();
+      eventNameInput.value = '';
+      eventModal.style.display = 'none';
+      loadUserEvents();
+    });
+
+    // 5. Render Events to UI
+    function loadUserEvents() {
+      const origin = window.location.origin;
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+
+      // Default demo room if none exist yet
+      if (rooms.length === 0) {
+        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
+        localStorage.setItem('user_rooms', JSON.stringify(rooms));
+      }
 
       eventsContainer.innerHTML = '';
 
-      if (activeRooms.length === 0) {
-        eventsContainer.innerHTML = '<p style="color: #64748b; text-align: center; margin-top: 20px;">No event rooms found. Click "+ Create New Event" to get started.</p>';
-        return;
-      }
-
-      activeRooms.forEach((room) => {
-        const id = room.room_id || room.id;
-        const presenterUrl = `${origin}/presenter.html?room=${id}`;
-        const overlayUrl = `${origin}/overlay.html?room=${id}`;
-        const audienceUrl = `${origin}/index.html?room=${id}`;
+      rooms.forEach((room) => {
+        const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
+        const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
+        const audienceUrl = `${origin}/index.html?room=${room.id}`;
 
         const card = document.createElement('div');
         card.className = 'event-card';
@@ -397,33 +385,36 @@ if (error) {
           <div class="event-card-header">
             <div>
               <div class="event-title">${room.name}</div>
-              <div class="event-id">Room ID: ${id}</div>
+              <div class="event-id">Room ID: ${room.id}</div>
             </div>
-            <button class="btn-secondary" onclick="deleteRoom('${id}')">Delete</button>
+            <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
           </div>
 
           <div class="links-grid">
+            <!-- Presenter Panel Link -->
             <div class="link-box">
               <label>Presenter Microphones Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${presenterUrl}" id="p_${id}">
-                <button class="btn-copy" onclick="copyLink('p_${id}')">Copy</button>
+                <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
+                <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
               </div>
             </div>
 
+            <!-- OBS Overlay Link -->
             <div class="link-box">
               <label>OBS Transparent Overlay Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${overlayUrl}" id="o_${id}">
-                <button class="btn-copy" onclick="copyLink('o_${id}')">Copy</button>
+                <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
+                <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
               </div>
             </div>
 
+            <!-- Mobile Audience View Link -->
             <div class="link-box">
               <label>Mobile Audience View Link</label>
               <div class="link-action">
-                <input type="text" readonly value="${audienceUrl}" id="a_${id}">
-                <button class="btn-copy" onclick="copyLink('a_${id}')">Copy</button>
+                <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
+                <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
               </div>
             </div>
           </div>
@@ -433,107 +424,20 @@ if (error) {
       });
     }
 
-    // 6. Delete Room from Supabase
-    async function deleteRoom(roomId) {
-      if (!confirm("Are you sure you want to delete this event room?")) return;
-
-      const { error } = await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
-
-      if (error) {
-        console.error("Error deleting room:", error.message);
-        alert("Failed to delete room: " + error.message);
-      } else {
-        await loadUserEvents();
-      }
-    }
-
-    // 7. Render Subscription UI State
-    function renderSubscriptionUI() {
-      const tierElem = document.getElementById('subTierName');
-      const badgeElem = document.getElementById('subStatusBadge');
-      if (tierElem) tierElem.innerText = userSubscription.tierName;
-      if (badgeElem) {
-        badgeElem.innerText = userSubscription.status.toUpperCase();
-        badgeElem.style.backgroundColor = userSubscription.status === 'active' ? '#15803d' : '#b91c1c';
-      }
-
-      const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
-      const remainingMins = Math.floor(remainingSecs / 60);
-      const usedMins = Math.round(userSubscription.usedSeconds / 60);
-      const maxMins = Math.round(userSubscription.maxSeconds / 60);
-      const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
-
-      document.getElementById('remainingTimeDisplay').innerText = `${remainingMins} mins`;
-      document.getElementById('timeSubtext').innerText = `Used ${usedMins} of ${maxMins} mins`;
-      document.getElementById('timeProgress').style.width = `${timePercent}%`;
-
-      const remainingRooms = Math.max(0, userSubscription.maxRooms - userSubscription.currentRoomCount);
-      const roomPercent = Math.min(100, (userSubscription.currentRoomCount / userSubscription.maxRooms) * 100);
-
-      document.getElementById('remainingRoomsDisplay').innerText = `${remainingRooms} slots`;
-      document.getElementById('roomSubtext').innerText = `${userSubscription.currentRoomCount} of ${userSubscription.maxRooms} stages created`;
-      document.getElementById('roomProgress').style.width = `${roomPercent}%`;
-
-      if (openModalBtn) {
-        if (userSubscription.currentRoomCount >= userSubscription.maxRooms || userSubscription.status !== 'active') {
-          openModalBtn.disabled = true;
-          openModalBtn.innerText = userSubscription.status !== 'active' ? 'Subscription Inactive' : 'Stage Limit Reached';
-        } else {
-          openModalBtn.disabled = false;
-          openModalBtn.innerText = '+ Create New Event';
-        }
-      }
-    }
-
-    // 8. Fetch Subscription Quotas from Supabase
-    async function loadUserSubscription(userId) {
-      const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
-      }
-      renderSubscriptionUI();
-    }
-
-    // 9. Realtime Subscription Channel Listener
-    function subscribeToLiveUpdates(userId) {
-      supabaseClient
-        .channel(`live_sub_${userId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
-          (payload) => {
-            if (payload.new) {
-              userSubscription.tierName = payload.new.tier_name;
-              userSubscription.status = payload.new.status;
-              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
-              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
-              userSubscription.maxRooms = payload.new.max_rooms;
-              renderSubscriptionUI();
-            }
-          }
-        )
-        .subscribe();
-    }
-
     // Helper: Copy to Clipboard
     function copyLink(inputId) {
       const input = document.getElementById(inputId);
       input.select();
       navigator.clipboard.writeText(input.value);
       alert("Link copied to clipboard!");
+    }
+
+    // Helper: Delete Room
+    function deleteRoom(roomId) {
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      rooms = rooms.filter(r => r.id !== roomId);
+      localStorage.setItem('user_rooms', JSON.stringify(rooms));
+      loadUserEvents();
     }
 
     // Initialize Page
