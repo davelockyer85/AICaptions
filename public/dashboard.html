@@ -491,15 +491,15 @@
     // 8. Fetch Subscription Quotas from Supabase
     async function loadUserSubscription(userId) {
       const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
+        .from('user_id')
         .select('*')
         .eq('user_id', userId)
         .single();
 
       if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
+        supabaseClient.tierName = sub.tier_name || 'Pending';
+        userSubscription.status = sub.status || 'pending';
+        userSubscription.maxSeconds = sub.max_streaming_seconds || 0;
         userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
         userSubscription.maxRooms = sub.max_rooms || 3;
       }
