@@ -252,14 +252,29 @@
 
   <div class="container">
     
-    <!-- Subscription Status Card -->
-    <div class="status-card">
-      <div class="status-info">
-        <h2>Subscription Status <span class="badge badge-active">Active Pro Plan</span></h2>
-        <p>Your subscription includes unlimited real-time rooms and OBS streaming.</p>
-      </div>
-      <button class="btn-secondary" onclick="window.location.href='/pricing.html'">Manage Plan</button>
+    <!-- Status & Usage Bar -->
+<div class="status-bar" id="statusBar">
+  <div class="status-item">
+    <span class="status-label">Current Plan</span>
+    <span class="status-value" id="statusPlan">Loading...</span>
+  </div>
+
+  <div class="status-item">
+    <span class="status-label">Remaining Time</span>
+    <span class="status-value" id="statusMins">-- mins</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="minsProgress" style="width: 0%;"></div>
     </div>
+  </div>
+
+  <div class="status-item">
+    <span class="status-label">Room Allocation</span>
+    <span class="status-value" id="statusRooms">0 / 0 Rooms</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="roomsProgress" style="width: 0%;"></div>
+    </div>
+  </div>
+</div>
 
     <!-- Events Management Header -->
     <div class="section-header">
