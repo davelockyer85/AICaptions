@@ -308,22 +308,24 @@
       currentRoomCount: 0
     };
 
-    // 2. Auth Session Protection & Sync Initialization
-    async function checkUserSession() {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      
-      if (error || !session) {
-        window.location.href = '/auth.html';
-        return;
+    // 2. Fetch Initial Data from Supabase Database
+    async function loadUserSubscription(userId) {
+      if (!supabaseClient || !userId) return;
+
+      const { data: sub, error } = await supabaseClient
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (sub && !error) {
+        userSubscription.tierName = sub.tier_name || 'Free Starter';
+        userSubscription.status = sub.status || 'active';
+        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
+        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
+        userSubscription.maxRooms = sub.max_rooms || 3;
       }
-
-      currentUser = session.user;
-      userEmailSpan.innerText = currentUser.email;
-
-      // Sync user rooms and subscription details from Supabase
-      await loadUserSubscription(currentUser.id);
-      await loadUserEvents();
-      subscribeToLiveUpdates(currentUser.id);
+      renderSubscriptionUI();
     }
 
     // Sign Out Handler
