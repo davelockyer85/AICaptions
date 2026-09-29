@@ -336,22 +336,34 @@
     openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
     closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
-    // 4. Room Creation Logic
+ // 4. Room Creation Logic
     createEventBtn.addEventListener('click', async () => {
       const name = eventNameInput.value.trim();
       if (!name) return;
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
+      // Insert directly into Supabase 'rooms' table
       const { data, error } = await supabaseClient
-  .from('rooms')
-  .insert([
-    {
-      user_id: currentUser.id,
-      name: roomName,
-      streaming_seconds_used: 0 // Explicitly set starting usage
-    }
-  ]);
+        .from('rooms')
+        .insert([
+          {
+            room_id: roomId,
+            name: name,
+            user_id: currentUser.id,
+            streaming_seconds_used: 0 // Explicitly set starting usage
+          }
+        ]);
+
+      if (error) {
+        console.error("Supabase Room Creation Error:", error.message);
+        alert("Could not save room to database: " + error.message);
+      } else {
+        eventNameInput.value = '';
+        eventModal.style.display = 'none';
+        await loadUserEvents();
+      }
+    });
 
       // Insert directly into Supabase 'rooms' table
       const { data, error } = await supabaseClient
