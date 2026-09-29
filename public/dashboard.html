@@ -3,445 +3,448 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Stage Captions SaaS</title>
-
-  <!-- Supabase JS SDK -->
+  <title>AICaptions - Event Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- QRCode.js CDN for audience QR code generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #0284c7;
+      --accent-hover: #0369a1;
+      --accent-green: #22c55e;
+      --danger: #ef4444;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
-      min-height: 100vh;
-      padding-bottom: 60px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
     }
-
-    /* Top Navigation Header */
     header {
-      background-color: #1e293b;
-      border-bottom: 1px solid #334155;
-      padding: 16px 32px;
+      background: #182234;
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #3b82f6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .user-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .user-email {
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .btn-secondary {
-      background-color: #334155;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-secondary:hover { background-color: #475569; }
-
-    /* Main Container */
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
-
-    /* Subscription Status Banner */
-    .status-card {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    }
-
-    .status-info h2 { font-size: 1.2rem; margin-bottom: 4px; }
-    .status-info p { color: #94a3b8; font-size: 0.9rem; }
-
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      margin-left: 8px;
-    }
-
-    .badge-active { background-color: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
-
-    .btn-primary {
-      background-color: #3b82f6;
-      color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-primary:hover { background-color: #2563eb; }
-
-    /* Events Section */
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
-
-    .event-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #334155;
-    }
-
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
-
-    .links-grid {
+    .header-info { display: flex; gap: 1rem; align-items: center; }
+    .badge { background: #334155; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; }
+    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+    
+    /* Usage Summary Cards */
+    .stats-bar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
     }
-
-    .link-box {
-      background-color: #0f172a;
-      border: 1px solid #334155;
+    .stat-card {
+      background: var(--card-bg);
+      padding: 1.25rem 1.5rem;
       border-radius: 8px;
-      padding: 12px 16px;
+      border: 1px solid var(--border-color);
+    }
+    .stat-label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+    .stat-value { font-size: 1.5rem; font-weight: bold; color: #38bdf8; margin: 0.5rem 0; }
+    .stat-subtext { font-size: 0.85rem; color: var(--text-muted); }
+    
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent-blue);
+      width: 0%;
+      transition: width 0.3s ease;
     }
 
-    .link-box label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .link-action {
+    .action-bar {
       display: flex;
-      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    button.btn-primary {
+      background: var(--accent-blue);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.btn-primary:disabled {
+      background: #475569;
+      cursor: not-allowed;
     }
 
+    /* Grid & Cards */
+    .rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .room-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .room-header { display: flex; justify-content: space-between; align-items: center; }
+    .room-header h3 { margin: 0; font-size: 1.25rem; color: #38bdf8; }
+    .link-box { margin-top: 0.5rem; }
+    .link-box label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 0.25rem; }
+    .link-action { display: flex; gap: 0.5rem; }
     .link-action input {
       flex: 1;
-      background: none;
-      border: none;
-      color: #cbd5e1;
-      font-size: 0.85rem;
-      outline: none;
-      font-family: monospace;
-    }
-
-    .btn-copy {
-      background-color: #334155;
-      color: #3b82f6;
-      border: none;
-      padding: 6px 12px;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      color: #38bdf8;
+      padding: 0.5rem;
       border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.85rem;
     }
-
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
-    /* Modal for Event Creation */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
+    .btn-copy { background: #334155; color: white; border: none; padding: 0.5rem 0.75rem; border-radius: 4px; cursor: pointer; }
+    .btn-delete { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 0.5rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
+    
+    /* Sessions Table */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 3rem;
     }
-
-    .modal-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 28px;
+    table {
       width: 100%;
-      max-width: 400px;
+      border-collapse: collapse;
+      text-align: left;
     }
-
-    .modal-card h3 { margin-bottom: 16px; }
-
-    .modal-card input {
-      width: 100%;
-      padding: 10px 14px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #f8fafc;
-      font-size: 0.95rem;
-      margin-bottom: 20px;
-      outline: none;
+    th, td {
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.9rem;
     }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
+    th {
+      background: #182234;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 0.75rem;
     }
+    tr:last-child td { border-bottom: none; }
+    .status-active { color: var(--accent-green); font-weight: 600; }
+    .status-completed { color: var(--text-muted); }
 
-    /* QR Code Canvas Container */
-    .qr-container {
-      margin-top: 12px;
-      text-align: center;
-    }
+    .empty-state { text-align: center; color: var(--text-muted); padding: 3rem; background: var(--card-bg); border-radius: 8px; border: 1px dashed var(--border-color); }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">🎙️ Stage Captions</div>
-    <div class="user-controls">
-      <span class="user-email" id="userEmail">Loading...</span>
-      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
+    <h2>AICaptions Dashboard</h2>
+    <div class="header-info">
+      <span id="userEmail" class="badge">Loading...</span>
+      <button onclick="logout()" style="background: transparent; border: 1px solid var(--border-color); color: white; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer;">Logout</button>
     </div>
   </header>
 
   <div class="container">
-    
-    <!-- Subscription Status Card -->
-    <div class="status-card">
-      <div class="status-info">
-        <h2>Subscription Status <span class="badge badge-active">Active Pro Plan</span></h2>
-        <p>Your subscription includes unlimited real-time rooms and OBS streaming.</p>
+    <!-- Remaining Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-label">Remaining Streaming Time</div>
+        <div class="stat-value" id="remainingTimeDisplay">-- mins</div>
+        <div class="stat-subtext" id="timeSubtext">Used 0 of 60 mins</div>
+        <div class="progress-bar"><div class="progress-fill" id="timeProgress"></div></div>
       </div>
-      <button class="btn-secondary" onclick="window.location.href='/pricing.html'">Manage Plan</button>
-    </div>
 
-    <!-- Events Management Header -->
-    <div class="section-header">
-      <h3>Active Event Rooms</h3>
-      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
-    </div>
-
-    <!-- Events List Container -->
-    <div id="eventsContainer">
-      <!-- Event cards will be dynamically injected here -->
-    </div>
-
-  </div>
-
-  <!-- Create Event Modal -->
-  <div class="modal-overlay" id="eventModal">
-    <div class="modal-card">
-      <h3>Create Event Room</h3>
-      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
-      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create</button>
+      <div class="stat-card">
+        <div class="stat-label">Available Stages</div>
+        <div class="stat-value" id="remainingRoomsDisplay">-- remaining</div>
+        <div class="stat-subtext" id="roomSubtext">0 of 3 stages created</div>
+        <div class="progress-bar"><div class="progress-fill" id="roomProgress"></div></div>
       </div>
+    </div>
+
+    <!-- Active Stages Section -->
+    <div class="action-bar">
+      <h2>Your Event Stages</h2>
+      <button class="btn-primary" id="createRoomBtn" onclick="createRoom()">+ Create New Event Stage</button>
+    </div>
+
+    <div id="roomsGrid" class="rooms-grid">
+      <div class="empty-state">Loading stages...</div>
+    </div>
+
+    <!-- Streaming Session History Table -->
+    <div class="action-bar">
+      <h2>Recent Streaming Sessions</h2>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Stage Name</th>
+            <th>Started At</th>
+            <th>Duration</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsTableBody">
+          <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Loading sessions...</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
   <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    var sbClient = null;
+    var currentUser = null;
+    var userLimits = { maxRooms: 3, maxSeconds: 3600, usedSeconds: 0, currentRoomCount: 0 };
+    var activeToken = '';
 
-    const userEmailSpan = document.getElementById('userEmail');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const eventsContainer = document.getElementById('eventsContainer');
-    
-    const eventModal = document.getElementById('eventModal');
-    const openModalBtn = document.getElementById('openModalBtn');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const createEventBtn = document.getElementById('createEventBtn');
-    const eventNameInput = document.getElementById('eventNameInput');
+    async function initDashboard() {
+      if (window.supabaseClient) {
+        sbClient = window.supabaseClient;
+      } else if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
+        sbClient = supabase;
+      } else if (typeof createClient !== 'undefined') {
+        const supabaseUrl = 'https://YOUR_SUPABASE_PROJECT.supabase.co';
+        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+        sbClient = createClient(supabaseUrl, supabaseKey);
+      }
 
-    let currentUser = null;
+      if (!sbClient) return;
 
-    // 2. Auth Session Protection
-    async function checkUserSession() {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      
+      const { data: { session }, error } = await sbClient.auth.getSession();
       if (error || !session) {
-        window.location.href = '/auth.html';
+        window.location.href = '/index.html';
         return;
       }
 
       currentUser = session.user;
-      userEmailSpan.innerText = currentUser.email;
-      loadUserEvents();
+      activeToken = session.access_token;
+      document.getElementById('userEmail').innerText = currentUser.email;
+
+      await fetchUserData();
+      await loadUserRooms(activeToken);
+      await loadSessions();
+      setupRealtimeListeners();
     }
 
-    // Sign Out Handler
-    logoutBtn.addEventListener('click', async () => {
-      await supabaseClient.auth.signOut();
-      window.location.href = '/auth.html';
-    });
+    async function fetchUserData() {
+      const { data, error } = await sbClient
+        .from('users')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
 
-    // 3. Modal Controls
-    openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
-    closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+      if (!error && data) {
+        userLimits.usedSeconds = data.streaming_seconds_used || 0;
+        userLimits.maxSeconds = data.max_streaming_seconds || 3600;
+        userLimits.maxRooms = data.max_rooms || 3;
+      }
+      updateStatsUI();
+    }
 
-    // 4. Room Generator Logic (Uses Supabase or local state fallback)
-    createEventBtn.addEventListener('click', async () => {
-      const name = eventNameInput.value.trim();
-      if (!name) return;
+    function updateStatsUI() {
+      // 1. Calculate Time Remaining
+      const remainingSecs = Math.max(0, userLimits.maxSeconds - userLimits.usedSeconds);
+      const remainingMins = Math.floor(remainingSecs / 60);
+      const usedMins = Math.round(userLimits.usedSeconds / 60);
+      const maxMins = Math.round(userLimits.maxSeconds / 60);
+      const timePercent = Math.min(100, (userLimits.usedSeconds / userLimits.maxSeconds) * 100);
 
-      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
-      
-      const newRoom = {
-        id: roomId,
-        name: name,
-        created_at: new Date().toISOString()
-      };
+      document.getElementById('remainingTimeDisplay').innerText = `${remainingMins} mins`;
+      document.getElementById('timeSubtext').innerText = `Used ${usedMins} of ${maxMins} mins`;
+      document.getElementById('timeProgress').style.width = `${timePercent}%`;
 
-      // Store in local storage for instant client-side persistence
-      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms.unshift(newRoom);
-      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+      // 2. Calculate Rooms Remaining
+      const remainingRooms = Math.max(0, userLimits.maxRooms - userLimits.currentRoomCount);
+      const roomPercent = Math.min(100, (userLimits.currentRoomCount / userLimits.maxRooms) * 100);
 
-      // Attempt Supabase insert if rooms table is configured
-      try {
-        await supabaseClient.from('rooms').insert([
-          { room_id: roomId, name: name, user_id: currentUser.id }
-        ]);
-      } catch(e) {
-        console.log("Supabase table query skipped, using local session state.");
+      document.getElementById('remainingRoomsDisplay').innerText = `${remainingRooms} slots`;
+      document.getElementById('roomSubtext').innerText = `${userLimits.currentRoomCount} of ${userLimits.maxRooms} stages created`;
+      document.getElementById('roomProgress').style.width = `${roomPercent}%`;
+
+      const createBtn = document.getElementById('createRoomBtn');
+      if (userLimits.currentRoomCount >= userLimits.maxRooms) {
+        createBtn.disabled = true;
+        createBtn.innerText = 'Stage Limit Reached';
+      } else {
+        createBtn.disabled = false;
+        createBtn.innerText = '+ Create New Event Stage';
+      }
+    }
+
+    async function loadUserRooms(token) {
+      const roomsContainer = document.getElementById('roomsGrid');
+
+      const { data: rooms, error } = await sbClient
+        .from('rooms')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        roomsContainer.innerHTML = `<div class="empty-state">Failed to load stages.</div>`;
+        return;
       }
 
-      eventNameInput.value = '';
-      eventModal.style.display = 'none';
-      loadUserEvents();
-    });
+      userLimits.currentRoomCount = rooms ? rooms.length : 0;
+      updateStatsUI();
 
-    // 5. Render Events to UI
-    function loadUserEvents() {
-      const origin = window.location.origin;
-      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-
-      // Default demo room if none exist yet
-      if (rooms.length === 0) {
-        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
-        localStorage.setItem('user_rooms', JSON.stringify(rooms));
+      if (!rooms || rooms.length === 0) {
+        roomsContainer.innerHTML = `<div class="empty-state"><p>No active stages. Click "+ Create New Event Stage" to get started.</p></div>`;
+        return;
       }
 
-      eventsContainer.innerHTML = '';
-
-      rooms.forEach((room) => {
-        const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-        const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-        const audienceUrl = `${origin}/index.html?room=${room.id}`;
+      roomsContainer.innerHTML = '';
+      rooms.forEach(room => {
+        const presenterUrl = `${window.location.origin}/presenter.html?room=${encodeURIComponent(room.id)}&token=${encodeURIComponent(token)}`;
+        const overlayUrl = `${window.location.origin}/overlay.html?room=${encodeURIComponent(room.id)}`;
 
         const card = document.createElement('div');
-        card.className = 'event-card';
+        card.className = 'room-card';
         card.innerHTML = `
-          <div class="event-card-header">
-            <div>
-              <div class="event-title">${room.name}</div>
-              <div class="event-id">Room ID: ${room.id}</div>
-            </div>
-            <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
+          <div class="room-header">
+            <h3>${room.name || 'Untitled Stage'}</h3>
+            <span class="badge">ID: ${room.id.slice(0, 8)}...</span>
           </div>
 
-          <div class="links-grid">
-            <!-- Presenter Panel Link -->
-            <div class="link-box">
-              <label>Presenter Microphones Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-                <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
-              </div>
-            </div>
-
-            <!-- OBS Overlay Link -->
-            <div class="link-box">
-              <label>OBS Transparent Overlay Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-                <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
-              </div>
-            </div>
-
-            <!-- Mobile Audience View Link -->
-            <div class="link-box">
-              <label>Mobile Audience View Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-                <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
-              </div>
+          <div class="link-box">
+            <label>Presenter Panel</label>
+            <div class="link-action">
+              <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
+              <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
             </div>
           </div>
+
+          <div class="link-box">
+            <label>OBS Overlay Link</label>
+            <div class="link-action">
+              <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
+              <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
+            </div>
+          </div>
+
+          <button class="btn-delete" onclick="deleteRoom('${room.id}')">Delete Stage</button>
         `;
-
-        eventsContainer.appendChild(card);
+        roomsContainer.appendChild(card);
       });
     }
 
-    // Helper: Copy to Clipboard
+    async function loadSessions() {
+      const tableBody = document.getElementById('sessionsTableBody');
+
+      const { data: sessions, error } = await sbClient
+        .from('sessions')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('started_at', { ascending: false })
+        .limit(10);
+
+      if (error || !sessions || sessions.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No active or recent streaming sessions found.</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = '';
+      sessions.forEach(session => {
+        const row = document.createElement('tr');
+        const startDate = new Date(session.started_at).toLocaleString();
+        const durationMins = Math.round((session.duration_seconds || 0) / 60);
+
+        row.innerHTML = `
+          <td><strong>${session.room_name || 'Main Stage'}</strong></td>
+          <td>${startDate}</td>
+          <td>${durationMins} mins</td>
+          <td><span class="${session.status === 'active' ? 'status-active' : 'status-completed'}">${session.status.toUpperCase()}</span></td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function setupRealtimeListeners() {
+      // 1. Rooms Live Sync
+      sbClient.channel(`rooms_${currentUser.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${currentUser.id}` }, () => loadUserRooms(activeToken))
+        .subscribe();
+
+      // 2. Profile Usage Live Sync
+      sbClient.channel(`profile_${currentUser.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${currentUser.id}` }, (payload) => {
+          if (payload.new) {
+            userLimits.usedSeconds = payload.new.streaming_seconds_used || 0;
+            userLimits.maxSeconds = payload.new.max_streaming_seconds || 3600;
+            userLimits.maxRooms = payload.new.max_rooms || 3;
+            updateStatsUI();
+          }
+        })
+        .subscribe();
+
+      // 3. Sessions Live Table Sync
+      sbClient.channel(`sessions_${currentUser.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `user_id=eq.${currentUser.id}` }, () => loadSessions())
+        .subscribe();
+    }
+
+    async function createRoom() {
+      if (userLimits.currentRoomCount >= userLimits.maxRooms) {
+        alert(`Stage limit reached (${userLimits.maxRooms} max). Delete a stage or upgrade your plan.`);
+        return;
+      }
+
+      const roomName = prompt("Enter stage name:");
+      if (!roomName) return;
+
+      const { error } = await sbClient
+        .from('rooms')
+        .insert([{ name: roomName, user_id: currentUser.id }]);
+
+      if (error) alert("Error creating stage: " + error.message);
+    }
+
+    async function deleteRoom(roomId) {
+      if (!confirm("Are you sure you want to delete this stage?")) return;
+
+      const { error } = await sbClient
+        .from('rooms')
+        .delete()
+        .eq('id', roomId);
+
+      if (error) alert("Error deleting stage: " + error.message);
+    }
+
     function copyLink(inputId) {
-      const input = document.getElementById(inputId);
-      input.select();
-      navigator.clipboard.writeText(input.value);
+      const copyText = document.getElementById(inputId);
+      copyText.select();
+      navigator.clipboard.writeText(copyText.value);
       alert("Link copied to clipboard!");
     }
 
-    // Helper: Delete Room
-    function deleteRoom(roomId) {
-      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      rooms = rooms.filter(r => r.id !== roomId);
-      localStorage.setItem('user_rooms', JSON.stringify(rooms));
-      loadUserEvents();
+    async function logout() {
+      if (sbClient) await sbClient.auth.signOut();
+      window.location.href = '/index.html';
     }
 
-    // Initialize Page
-    checkUserSession();
+    document.addEventListener('DOMContentLoaded', initDashboard);
   </script>
 </body>
 </html>
