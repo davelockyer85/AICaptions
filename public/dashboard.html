@@ -522,7 +522,7 @@
         // Listen to live quota updates on subscriptions table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+          { event: '*', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
           (payload) => {
             if (payload.new) {
               userSubscription.tierName = payload.new.tier_name || 'Free Starter';
