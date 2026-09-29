@@ -2,338 +2,155 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presenter Audio Ingest - AICaptions</title>
+  <title>Stage Presenter Control Panel</title>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #111827;
-      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
       padding: 2rem;
+      max-width: 800px;
+      margin: 0 auto;
       text-align: center;
-      margin: 0;
     }
-    .card {
-      max-width: 500px;
-      margin: 2rem auto;
-      background: #1f2937;
-      padding: 2rem;
-      border-radius: 12px;
-      border: 1px solid #374151;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-    }
-    h1 { margin-top: 0; color: #60a5fa; font-size: 1.75rem; }
-    p { color: #9ca3af; }
-    .room-badge {
-      display: inline-block;
-      background: #374151;
-      color: #93c5fd;
-      padding: 0.25rem 0.75rem;
-      border-radius: 9999px;
-      font-family: monospace;
-      font-weight: bold;
-      margin-bottom: 1.5rem;
-    }
-    .btn-group {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      margin-top: 1.5rem;
-    }
-    button {
-      padding: 0.85rem 1.75rem;
-      font-size: 1rem;
+    h1 { margin-bottom: 0.5rem; }
+    p.sub { color: #94a3b8; margin-bottom: 2rem; }
+    .btn-start {
+      padding: 1rem 2.5rem;
+      font-size: 1.25rem;
       font-weight: 600;
+      background: #2563eb;
+      color: white;
       border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    .btn-start:hover { background: #1d4ed8; }
+    #status { margin-top: 1.5rem; font-weight: 500; color: #64748b; }
+    
+    .lang-section {
+      margin-top: 2.5rem;
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 16px;
+      border: 1px solid #334155;
+    }
+    .lang-section h3 { margin-top: 0; color: #cbd5e1; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .lang-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+    .tab {
+      padding: 0.6rem 1.2rem;
+      background: #0f172a;
+      color: #94a3b8;
+      border: 1px solid #334155;
       border-radius: 8px;
       cursor: pointer;
-      transition: background-color 0.2s;
+      font-weight: 500;
+      transition: all 0.2s;
     }
-    #startBtn { background: #2563eb; color: white; }
-    #startBtn:hover { background: #1d4ed8; }
-    #startBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #stopBtn { background: #dc2626; color: white; }
-    #stopBtn:hover { background: #b91c1c; }
-    #stopBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #status {
-      margin-top: 1.5rem;
+    .tab:hover { background: #334155; color: #fff; }
+    .tab.active {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #10b981;
       font-weight: 600;
-      font-size: 1.1rem;
-      color: #9ca3af;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Stage Audio Transmitter</h1>
-    <p>Room Identifier:</p>
-    <div class="room-badge" id="roomDisplay">main-stage</div>
+  <h1>Stage Presenter Panel</h1>
+  <p class="sub">Live Speech-to-Text & Real-time Overlay Translator</p>
 
-    <!-- Spoken / Ingest Language Selector -->
-    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
-      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
-        Spoken Language
-      </label>
-      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
-        <!-- Populated dynamically by JS -->
-      </select>
+  <button id="startBtn">Start Streaming Audio</button>
+  <p id="status">Status: Disconnected</p>
+
+  <div class="lang-section">
+    <h3>Stage Overlay Target Language</h3>
+    <div class="lang-tabs">
+      <button class="tab active" onclick="setLanguage('en', this)">🇺🇸 English</button>
+      <button class="tab" onclick="setLanguage('es', this)">🇪🇸 Spanish</button>
+      <button class="tab" onclick="setLanguage('fr', this)">🇫🇷 French</button>
+      <button class="tab" onclick="setLanguage('de', this)">🇩🇪 German</button>
+      <button class="tab" onclick="setLanguage('zh', this)">🇨🇳 Chinese</button>
+      <button class="tab" onclick="setLanguage('ja', this)">🇯🇵 Japanese</button>
+      <button class="tab" onclick="setLanguage('it', this)">🇮🇹 Italian</button>
+      <button class="tab" onclick="setLanguage('pt', this)">🇵🇹 Portuguese</button>
     </div>
-
-    <div class="btn-group">
-      <button id="startBtn">Start Streaming</button>
-      <button id="stopBtn" disabled>Stop</button>
-    </div>
-
-    <p id="status">Status: Disconnected</p>
   </div>
 
   <script>
-    // Array of 83 Supported Spoken Languages (BCP-47 Standard)
-    const SUPPORTED_LANGUAGES = [
-      { code: 'af-ZA', name: 'Afrikaans' },
-      { code: 'sq-AL', name: 'Albanian' },
-      { code: 'am-ET', name: 'Amharic' },
-      { code: 'ar-SA', name: 'Arabic' },
-      { code: 'hy-AM', name: 'Armenian' },
-      { code: 'az-AZ', name: 'Azerbaijani' },
-      { code: 'eu-ES', name: 'Basque' },
-      { code: 'be-BY', name: 'Belarusian' },
-      { code: 'bn-IN', name: 'Bengali' },
-      { code: 'bs-BA', name: 'Bosnian' },
-      { code: 'bg-BG', name: 'Bulgarian' },
-      { code: 'ca-ES', name: 'Catalan' },
-      { code: 'zh-CN', name: 'Chinese (Simplified)' },
-      { code: 'zh-TW', name: 'Chinese (Traditional)' },
-      { code: 'hr-HR', name: 'Croatian' },
-      { code: 'cs-CZ', name: 'Czech' },
-      { code: 'da-DK', name: 'Danish' },
-      { code: 'nl-NL', name: 'Dutch' },
-      { code: 'en-AU', name: 'English (Australia)' },
-      { code: 'en-GB', name: 'English (United Kingdom)' },
-      { code: 'en-US', name: 'English (United States)' },
-      { code: 'eo',    name: 'Esperanto' },
-      { code: 'et-EE', name: 'Estonian' },
-      { code: 'fil-PH', name: 'Filipino' },
-      { code: 'fi-FI', name: 'Finnish' },
-      { code: 'fr-CA', name: 'French (Canada)' },
-      { code: 'fr-FR', name: 'French (France)' },
-      { code: 'gl-ES', name: 'Galician' },
-      { code: 'ka-GE', name: 'Georgian' },
-      { code: 'de-DE', name: 'German' },
-      { code: 'el-GR', name: 'Greek' },
-      { code: 'gu-IN', name: 'Gujarati' },
-      { code: 'ht',    name: 'Haitian Creole' },
-      { code: 'ha-NG', name: 'Hausa' },
-      { code: 'he-IL', name: 'Hebrew' },
-      { code: 'hi-IN', name: 'Hindi' },
-      { code: 'hu-HU', name: 'Hungarian' },
-      { code: 'is-IS', name: 'Icelandic' },
-      { code: 'id-ID', name: 'Indonesian' },
-      { code: 'ga-IE', name: 'Irish' },
-      { code: 'it-IT', name: 'Italian' },
-      { code: 'ja-JP', name: 'Japanese' },
-      { code: 'jv-ID', name: 'Javanese' },
-      { code: 'kn-IN', name: 'Kannada' },
-      { code: 'kk-KZ', name: 'Kazakh' },
-      { code: 'km-KH', name: 'Khmer' },
-      { code: 'ko-KR', name: 'Korean' },
-      { code: 'lo-LA', name: 'Lao' },
-      { code: 'lv-LV', name: 'Latvian' },
-      { code: 'lt-LT', name: 'Lithuanian' },
-      { code: 'mk-MK', name: 'Macedonian' },
-      { code: 'ms-MY', name: 'Malay' },
-      { code: 'ml-IN', name: 'Malayalam' },
-      { code: 'mt-MT', name: 'Maltese' },
-      { code: 'mr-IN', name: 'Marathi' },
-      { code: 'mn-MN', name: 'Mongolian' },
-      { code: 'ne-NP', name: 'Nepali' },
-      { code: 'nb-NO', name: 'Norwegian' },
-      { code: 'fa-IR', name: 'Persian' },
-      { code: 'pl-PL', name: 'Polish' },
-      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
-      { code: 'pa-IN', name: 'Punjabi' },
-      { code: 'ro-RO', name: 'Romanian' },
-      { code: 'ru-RU', name: 'Russian' },
-      { code: 'sr-RS', name: 'Serbian' },
-      { code: 'si-LK', name: 'Sinhala' },
-      { code: 'sk-SK', name: 'Slovak' },
-      { code: 'sl-SI', name: 'Slovenian' },
-      { code: 'so-SO', name: 'Somali' },
-      { code: 'es-419', name: 'Spanish (Latin America)' },
-      { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'su-ID', name: 'Sundanese' },
-      { code: 'sw-KE', name: 'Swahili' },
-      { code: 'sv-SE', name: 'Swedish' },
-      { code: 'ta-IN', name: 'Tamil' },
-      { code: 'te-IN', name: 'Telugu' },
-      { code: 'th-TH', name: 'Thai' },
-      { code: 'tr-TR', name: 'Turkish' },
-      { code: 'uk-UA', name: 'Ukrainian' },
-      { code: 'ur-PK', name: 'Urdu' },
-      { code: 'uz-UZ', name: 'Uzbek' },
-      { code: 'vi-VN', name: 'Vietnamese' }
-    ];
+    const startBtn = document.getElementById("startBtn");
+    const status = document.getElementById("status");
+    let ws, mediaRecorder;
+    let selectedLang = "en";
 
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
+    function setLanguage(langCode, btnElement) {
+      selectedLang = langCode;
+      
+      // Update UI tab selection styles
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+      btnElement.classList.add("active");
 
-      selectElem.innerHTML = '';
-
-      SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) {
-          opt.selected = true;
-        }
-        selectElem.appendChild(opt);
-      });
-
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
+      // Send language switch event over WebSocket if connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
+        console.log(`[Presenter] Switched overlay target language to: ${selectedLang}`);
+      }
     }
-
-    // Read room & token from URL parameters or storage
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    
-    // Attempt to locate Supabase session token if present
-    const urlToken = urlParams.get('token');
-    const localToken = localStorage.getItem('supabase.auth.token') 
-      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
-      : null;
-    const token = urlToken || localToken || '';
-
-    document.getElementById('roomDisplay').innerText = room;
-
-    // Initialize Language Dropdown
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
-
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
 
     startBtn.onclick = async () => {
       try {
-        status.innerText = "Status: Requesting Microphone Access...";
-        status.style.color = "#f59e0b";
-
-        audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
-        });
-
-        // Get selected language code
-        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
-
-        // Build WebSocket connection string with room, role, token, and selected language
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
-        if (token) {
-          wsUrl += `&token=${encodeURIComponent(token)}`;
-        }
-
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(`${protocol}//${location.host}/ws/ingest`);
 
         ws.onopen = () => {
           status.innerText = "Status: Live & Streaming Stage Audio";
           status.style.color = "#10b981";
+          
+          // Send initial language preference
+          ws.send(JSON.stringify({ type: "set_language", lang: selectedLang }));
 
-          // Select supported audio MIME type for MediaRecorder
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+          let options = {};
+          if (MediaRecorder.isTypeSupported("audio/webm")) {
+            options = { mimeType: "audio/webm" };
+          } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+            options = { mimeType: "audio/mp4" };
           }
 
-          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
+          mediaRecorder = new MediaRecorder(stream, options);
+          
           mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
             }
           };
-
-          // Send 250ms chunks to Deepgram
+          
           mediaRecorder.start(250);
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
         };
 
-        // Broadcast room presence/tick over WebSockets
-        const channel = supabase.channel(`room_${roomId}`, {
-          config: { broadcast: { self: true } }
-        });
-
-        channel.subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            // Send a tick event over WebSockets every second
-            setInterval(() => {
-              channel.send({
-                type: 'broadcast',
-                event: 'timer_tick',
-                payload: { elapsed: 1 }
-              });
-            }, 1000);
-          }
-        });
-
-        // Listen for broadcasted ticks
-        channel.on('broadcast', { event: 'timer_tick' }, (response) => {
-          localElapsedCounter += response.payload.elapsed;
-          if (localElapsedCounter >= maxLimit) {
-            stopStream();
-          }
-        });
+        ws.onclose = () => {
+          status.innerText = "Status: Disconnected";
+          status.style.color = "#ef4444";
+        };
 
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
-          status.innerText = "Status: Connection Error";
-          status.style.color = "#ef4444";
-        };
-
-        ws.onclose = (e) => {
-          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-          status.style.color = "#ef4444";
-          cleanup();
         };
 
       } catch (err) {
-        console.error("Microphone Access Error:", err);
+        console.error("Mic Error:", err);
         status.innerText = "Status: Microphone Access Denied";
         status.style.color = "#ef4444";
       }
     };
-
-    stopBtn.onclick = () => {
-      cleanup();
-      status.innerText = "Status: Stopped";
-      status.style.color = "#9ca3af";
-    };
-
-    function cleanup() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }
   </script>
 </body>
 </html>
