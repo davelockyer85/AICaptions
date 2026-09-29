@@ -492,20 +492,20 @@
       }
     }
 
-    // 8. Fetch Subscription Quotas from Supabase
+   // 8. Fetch Subscription Quotas from Supabase
     async function loadUserSubscription(userId) {
       const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
+        .from('users')
         .select('*')
-        .eq('user_id', userId)
+        .eq('id', userId) // Fixed: Column is 'id', not 'user_id'
         .single();
 
       if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
+        userSubscription.tierName = sub.plan_tier || sub.tier_name || 'Free Starter';
         userSubscription.status = sub.status || 'active';
         userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
         userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
+        userSubscription.maxRooms = sub.allowed_rooms || sub.max_rooms || 1;
       }
       renderSubscriptionUI();
     }
@@ -519,28 +519,30 @@
       realtimeChannel = supabaseClient
         .channel(`dashboard_realtime_${userId}`)
         
-        // Listen to live quota updates on subscriptions table
+        // Listen to live quota updates on users table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+          { event: '*', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, // Fixed: 'id=eq.' instead of 'user_id=eq.'
           (payload) => {
             if (payload.new) {
-              userSubscription.tierName = payload.new.tier_name || 'Free Starter';
+              userSubscription.tierName = payload.new.plan_tier || payload.new.tier_name || 'Free Starter';
               userSubscription.status = payload.new.status || 'active';
               userSubscription.maxSeconds = payload.new.max_streaming_seconds || 3600;
               userSubscription.usedSeconds = payload.new.streaming_seconds_used || 0;
-              userSubscription.maxRooms = payload.new.max_rooms || 3;
+              userSubscription.maxRooms = payload.new.allowed_rooms || payload.new.max_rooms || 1;
               renderSubscriptionUI();
             }
           }
         )
 
-        // Listen to INSERT, UPDATE, DELETE events on rooms table
+        // Listen to live updates on rooms table
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
           async (payload) => {
-            await loadUserEvents();
+            if (typeof loadUserEvents === 'function') {
+              await loadUserEvents();
+            }
           }
         )
 
@@ -548,7 +550,7 @@
           if (status === 'SUBSCRIBED') {
             console.log('Supabase Realtime connected successfully.');
           } else if (err || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.error('Supabase Realtime connection error:', status, err);
+            console.warn('Supabase Realtime status:', status, err);
           }
         });
     }
