@@ -489,44 +489,53 @@
     }
 
     // 8. Fetch Subscription Quotas from Supabase
-    async function loadUserSubscription(userId) {
-      const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+async function loadUserSubscription(userId) {
+  const { data: sub, error } = await supabaseClient
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
 
-      if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
+  if (error) {
+    console.warn("Could not fetch subscription details:", error.message);
+  }
+
+  if (sub) {
+    // Maps plan_tier or tier_name to userSubscription
+    userSubscription.tierName = sub.plan_tier || sub.tier_name || 'Free Starter';
+    userSubscription.status = sub.status || 'active';
+    userSubscription.maxSeconds = sub.max_streaming_seconds ?? 3600;
+    userSubscription.usedSeconds = sub.streaming_seconds_used ?? 0;
+    userSubscription.maxRooms = sub.max_rooms ?? 3;
+  }
+
+  renderSubscriptionUI();
+}
+
+// 9. Realtime Subscription Channel Listener
+function subscribeToLiveUpdates(userId) {
+  if (!userId) return;
+
+  supabaseClient
+    .channel(`live_sub_${userId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+      (payload) => {
+        if (payload.new) {
+          const updated = payload.new;
+          userSubscription.tierName = updated.plan_tier || updated.tier_name || userSubscription.tierName;
+          userSubscription.status = updated.status || userSubscription.status;
+          userSubscription.maxSeconds = updated.max_streaming_seconds ?? userSubscription.maxSeconds;
+          userSubscription.usedSeconds = updated.streaming_seconds_used ?? userSubscription.usedSeconds;
+          userSubscription.maxRooms = updated.max_rooms ?? userSubscription.maxRooms;
+          
+          renderSubscriptionUI();
+        }
       }
-      renderSubscriptionUI();
-    }
-
-    // 9. Realtime Subscription Channel Listener
-    function subscribeToLiveUpdates(userId) {
-      supabaseClient
-        .channel(`live_sub_${userId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
-          (payload) => {
-            if (payload.new) {
-              userSubscription.tierName = payload.new.tier_name;
-              userSubscription.status = payload.new.status;
-              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
-              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
-              userSubscription.maxRooms = payload.new.max_rooms;
-              renderSubscriptionUI();
-            }
-          }
-        )
-        .subscribe();
-    }
-
+    )
+    .subscribe();
+}
     // Helper: Copy to Clipboard
     function copyLink(inputId) {
       const input = document.getElementById(inputId);
