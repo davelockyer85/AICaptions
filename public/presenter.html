@@ -75,89 +75,7 @@
         Spoken Language
       </label>
       <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
-        <option value="af-ZA">Afrikaans (af-ZA)</option>
-        <option value="sq-AL">Albanian (sq-AL)</option>
-        <option value="am-ET">Amharic (am-ET)</option>
-        <option value="ar-SA">Arabic (ar-SA)</option>
-        <option value="hy-AM">Armenian (hy-AM)</option>
-        <option value="az-AZ">Azerbaijani (az-AZ)</option>
-        <option value="eu-ES">Basque (eu-ES)</option>
-        <option value="be-BY">Belarusian (be-BY)</option>
-        <option value="bn-IN">Bengali (bn-IN)</option>
-        <option value="bs-BA">Bosnian (bs-BA)</option>
-        <option value="bg-BG">Bulgarian (bg-BG)</option>
-        <option value="ca-ES">Catalan (ca-ES)</option>
-        <option value="zh-CN">Chinese (Simplified) (zh-CN)</option>
-        <option value="zh-TW">Chinese (Traditional) (zh-TW)</option>
-        <option value="hr-HR">Croatian (hr-HR)</option>
-        <option value="cs-CZ">Czech (cs-CZ)</option>
-        <option value="da-DK">Danish (da-DK)</option>
-        <option value="nl-NL">Dutch (nl-NL)</option>
-        <option value="en-AU">English (Australia) (en-AU)</option>
-        <option value="en-GB">English (United Kingdom) (en-GB)</option>
-        <option value="en-US" selected>English (United States) (en-US)</option>
-        <option value="eo">Esperanto (eo)</option>
-        <option value="et-EE">Estonian (et-EE)</option>
-        <option value="fil-PH">Filipino (fil-PH)</option>
-        <option value="fi-FI">Finnish (fi-FI)</option>
-        <option value="fr-CA">French (Canada) (fr-CA)</option>
-        <option value="fr-FR">French (France) (fr-FR)</option>
-        <option value="gl-ES">Galician (gl-ES)</option>
-        <option value="ka-GE">Georgian (ka-GE)</option>
-        <option value="de-DE">German (de-DE)</option>
-        <option value="el-GR">Greek (el-GR)</option>
-        <option value="gu-IN">Gujarati (gu-IN)</option>
-        <option value="ht">Haitian Creole (ht)</option>
-        <option value="ha-NG">Hausa (ha-NG)</option>
-        <option value="he-IL">Hebrew (he-IL)</option>
-        <option value="hi-IN">Hindi (hi-IN)</option>
-        <option value="hu-HU">Hungarian (hu-HU)</option>
-        <option value="is-IS">Icelandic (is-IS)</option>
-        <option value="id-ID">Indonesian (id-ID)</option>
-        <option value="ga-IE">Irish (ga-IE)</option>
-        <option value="it-IT">Italian (it-IT)</option>
-        <option value="ja-JP">Japanese (ja-JP)</option>
-        <option value="jv-ID">Javanese (jv-ID)</option>
-        <option value="kn-IN">Kannada (kn-IN)</option>
-        <option value="kk-KZ">Kazakh (kk-KZ)</option>
-        <option value="km-KH">Khmer (km-KH)</option>
-        <option value="ko-KR">Korean (ko-KR)</option>
-        <option value="lo-LA">Lao (lo-LA)</option>
-        <option value="lv-LV">Latvian (lv-LV)</option>
-        <option value="lt-LT">Lithuanian (lt-LT)</option>
-        <option value="mk-MK">Macedonian (mk-MK)</option>
-        <option value="ms-MY">Malay (ms-MY)</option>
-        <option value="ml-IN">Malayalam (ml-IN)</option>
-        <option value="mt-MT">Maltese (mt-MT)</option>
-        <option value="mr-IN">Marathi (mr-IN)</option>
-        <option value="mn-MN">Mongolian (mn-MN)</option>
-        <option value="ne-NP">Nepali (ne-NP)</option>
-        <option value="nb-NO">Norwegian (nb-NO)</option>
-        <option value="fa-IR">Persian (fa-IR)</option>
-        <option value="pl-PL">Polish (pl-PL)</option>
-        <option value="pt-BR">Portuguese (Brazil) (pt-BR)</option>
-        <option value="pt-PT">Portuguese (Portugal) (pt-PT)</option>
-        <option value="pa-IN">Punjabi (pa-IN)</option>
-        <option value="ro-RO">Romanian (ro-RO)</option>
-        <option value="ru-RU">Russian (ru-RU)</option>
-        <option value="sr-RS">Serbian (sr-RS)</option>
-        <option value="si-LK">Sinhala (si-LK)</option>
-        <option value="sk-SK">Slovak (sk-SK)</option>
-        <option value="sl-SI">Slovenian (sl-SI)</option>
-        <option value="so-SO">Somali (so-SO)</option>
-        <option value="es-419">Spanish (Latin America) (es-419)</option>
-        <option value="es-ES">Spanish (Spain) (es-ES)</option>
-        <option value="su-ID">Sundanese (su-ID)</option>
-        <option value="sw-KE">Swahili (sw-KE)</option>
-        <option value="sv-SE">Swedish (sv-SE)</option>
-        <option value="ta-IN">Tamil (ta-IN)</option>
-        <option value="te-IN">Telugu (te-IN)</option>
-        <option value="th-TH">Thai (th-TH)</option>
-        <option value="tr-TR">Turkish (tr-TR)</option>
-        <option value="uk-UA">Ukrainian (uk-UA)</option>
-        <option value="ur-PK">Urdu (ur-PK)</option>
-        <option value="uz-UZ">Uzbek (uz-UZ)</option>
-        <option value="vi-VN">Vietnamese (vi-VN)</option>
+        <!-- Populated dynamically by JS -->
       </select>
     </div>
 
@@ -170,6 +88,114 @@
   </div>
 
   <script>
+    // Array of 83 Supported Spoken Languages (BCP-47 Standard)
+    const SUPPORTED_LANGUAGES = [
+      { code: 'af-ZA', name: 'Afrikaans' },
+      { code: 'sq-AL', name: 'Albanian' },
+      { code: 'am-ET', name: 'Amharic' },
+      { code: 'ar-SA', name: 'Arabic' },
+      { code: 'hy-AM', name: 'Armenian' },
+      { code: 'az-AZ', name: 'Azerbaijani' },
+      { code: 'eu-ES', name: 'Basque' },
+      { code: 'be-BY', name: 'Belarusian' },
+      { code: 'bn-IN', name: 'Bengali' },
+      { code: 'bs-BA', name: 'Bosnian' },
+      { code: 'bg-BG', name: 'Bulgarian' },
+      { code: 'ca-ES', name: 'Catalan' },
+      { code: 'zh-CN', name: 'Chinese (Simplified)' },
+      { code: 'zh-TW', name: 'Chinese (Traditional)' },
+      { code: 'hr-HR', name: 'Croatian' },
+      { code: 'cs-CZ', name: 'Czech' },
+      { code: 'da-DK', name: 'Danish' },
+      { code: 'nl-NL', name: 'Dutch' },
+      { code: 'en-AU', name: 'English (Australia)' },
+      { code: 'en-GB', name: 'English (United Kingdom)' },
+      { code: 'en-US', name: 'English (United States)' },
+      { code: 'eo',    name: 'Esperanto' },
+      { code: 'et-EE', name: 'Estonian' },
+      { code: 'fil-PH', name: 'Filipino' },
+      { code: 'fi-FI', name: 'Finnish' },
+      { code: 'fr-CA', name: 'French (Canada)' },
+      { code: 'fr-FR', name: 'French (France)' },
+      { code: 'gl-ES', name: 'Galician' },
+      { code: 'ka-GE', name: 'Georgian' },
+      { code: 'de-DE', name: 'German' },
+      { code: 'el-GR', name: 'Greek' },
+      { code: 'gu-IN', name: 'Gujarati' },
+      { code: 'ht',    name: 'Haitian Creole' },
+      { code: 'ha-NG', name: 'Hausa' },
+      { code: 'he-IL', name: 'Hebrew' },
+      { code: 'hi-IN', name: 'Hindi' },
+      { code: 'hu-HU', name: 'Hungarian' },
+      { code: 'is-IS', name: 'Icelandic' },
+      { code: 'id-ID', name: 'Indonesian' },
+      { code: 'ga-IE', name: 'Irish' },
+      { code: 'it-IT', name: 'Italian' },
+      { code: 'ja-JP', name: 'Japanese' },
+      { code: 'jv-ID', name: 'Javanese' },
+      { code: 'kn-IN', name: 'Kannada' },
+      { code: 'kk-KZ', name: 'Kazakh' },
+      { code: 'km-KH', name: 'Khmer' },
+      { code: 'ko-KR', name: 'Korean' },
+      { code: 'lo-LA', name: 'Lao' },
+      { code: 'lv-LV', name: 'Latvian' },
+      { code: 'lt-LT', name: 'Lithuanian' },
+      { code: 'mk-MK', name: 'Macedonian' },
+      { code: 'ms-MY', name: 'Malay' },
+      { code: 'ml-IN', name: 'Malayalam' },
+      { code: 'mt-MT', name: 'Maltese' },
+      { code: 'mr-IN', name: 'Marathi' },
+      { code: 'mn-MN', name: 'Mongolian' },
+      { code: 'ne-NP', name: 'Nepali' },
+      { code: 'nb-NO', name: 'Norwegian' },
+      { code: 'fa-IR', name: 'Persian' },
+      { code: 'pl-PL', name: 'Polish' },
+      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
+      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
+      { code: 'pa-IN', name: 'Punjabi' },
+      { code: 'ro-RO', name: 'Romanian' },
+      { code: 'ru-RU', name: 'Russian' },
+      { code: 'sr-RS', name: 'Serbian' },
+      { code: 'si-LK', name: 'Sinhala' },
+      { code: 'sk-SK', name: 'Slovak' },
+      { code: 'sl-SI', name: 'Slovenian' },
+      { code: 'so-SO', name: 'Somali' },
+      { code: 'es-419', name: 'Spanish (Latin America)' },
+      { code: 'es-ES', name: 'Spanish (Spain)' },
+      { code: 'su-ID', name: 'Sundanese' },
+      { code: 'sw-KE', name: 'Swahili' },
+      { code: 'sv-SE', name: 'Swedish' },
+      { code: 'ta-IN', name: 'Tamil' },
+      { code: 'te-IN', name: 'Telugu' },
+      { code: 'th-TH', name: 'Thai' },
+      { code: 'tr-TR', name: 'Turkish' },
+      { code: 'uk-UA', name: 'Ukrainian' },
+      { code: 'ur-PK', name: 'Urdu' },
+      { code: 'uz-UZ', name: 'Uzbek' },
+      { code: 'vi-VN', name: 'Vietnamese' }
+    ];
+
+    function initLanguageSelector(defaultCode = 'en-US') {
+      const selectElem = document.getElementById('languageSelect');
+      if (!selectElem) return;
+
+      selectElem.innerHTML = '';
+
+      SUPPORTED_LANGUAGES.forEach((lang) => {
+        const opt = document.createElement('option');
+        opt.value = lang.code;
+        opt.textContent = `${lang.name} (${lang.code})`;
+        if (lang.code === defaultCode) {
+          opt.selected = true;
+        }
+        selectElem.appendChild(opt);
+      });
+
+      selectElem.addEventListener('change', (e) => {
+        localStorage.setItem('presenter_lang', e.target.value);
+      });
+    }
+
     // Read room & token from URL parameters or storage
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
@@ -183,17 +209,8 @@
 
     document.getElementById('roomDisplay').innerText = room;
 
-    // Restore saved language selection if present
-    const langSelect = document.getElementById('languageSelect');
-    const savedLang = localStorage.getItem('presenter_lang');
-    if (savedLang && langSelect) {
-      langSelect.value = savedLang;
-    }
-    if (langSelect) {
-      langSelect.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
-    }
+    // Initialize Language Dropdown
+    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -216,9 +233,10 @@
           } 
         });
 
-        const selectedLang = langSelect ? langSelect.value : 'en-US';
+        // Get selected language code
+        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
 
-        // Build WebSocket connection string with room, role, selected language, and token
+        // Build WebSocket connection string with room, role, token, and selected language
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
         let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
         if (token) {
@@ -253,30 +271,30 @@
         };
 
         // Broadcast room presence/tick over WebSockets
-        if (typeof supabase !== 'undefined') {
-          const channel = supabase.channel(`room_${room}`, {
-            config: { broadcast: { self: true } }
-          });
+        const channel = supabase.channel(`room_${roomId}`, {
+          config: { broadcast: { self: true } }
+        });
 
-          channel.subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-              setInterval(() => {
-                channel.send({
-                  type: 'broadcast',
-                  event: 'timer_tick',
-                  payload: { elapsed: 1 }
-                });
-              }, 1000);
-            }
-          });
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            // Send a tick event over WebSockets every second
+            setInterval(() => {
+              channel.send({
+                type: 'broadcast',
+                event: 'timer_tick',
+                payload: { elapsed: 1 }
+              });
+            }, 1000);
+          }
+        });
 
-          channel.on('broadcast', { event: 'timer_tick' }, (response) => {
-            localElapsedCounter += response.payload.elapsed;
-            if (localElapsedCounter >= maxLimit) {
-              stopStream();
-            }
-          });
-        }
+        // Listen for broadcasted ticks
+        channel.on('broadcast', { event: 'timer_tick' }, (response) => {
+          localElapsedCounter += response.payload.elapsed;
+          if (localElapsedCounter >= maxLimit) {
+            stopStream();
+          }
+        });
 
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
