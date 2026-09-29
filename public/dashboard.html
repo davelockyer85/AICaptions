@@ -489,24 +489,28 @@
     }
 
     // 8. Fetch Subscription Quotas from Supabase
-    async function loadUserSubscription(userId) {
-      const { data: sub, error } = await supabaseClient
-        .from('users')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+async function loadUserSubscription(userId) {
+  const { data: sub, error } = await supabaseClient
+    .from('users')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
 
-      if (!error && sub) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.remainingSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
-      }
-      renderSubscriptionUI();
-    }
+  if (error) {
+    console.error("Error fetching user subscription:", error.message);
+  }
 
-   // 9. Realtime Subscription Channel Listener
+  if (!error && sub) {
+    userSubscription.tierName = sub.tier_name || sub.plan_tier || 'Free Starter';
+    userSubscription.status = sub.status || 'active';
+    userSubscription.maxSeconds = sub.max_streaming_seconds ?? 3600;
+    userSubscription.usedSeconds = sub.streaming_seconds_used ?? 0; // Fixed key assignment
+    userSubscription.maxRooms = sub.max_rooms ?? 3;
+  }
+  renderSubscriptionUI();
+}
+
+// 9. Realtime Subscription Channel Listener
 function subscribeToLiveUpdates(userId) {
   if (!userId) return;
 
@@ -514,24 +518,29 @@ function subscribeToLiveUpdates(userId) {
     .channel(`live_sub_${userId}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'users', // Fixed table name (changed from 'subscriptions' to 'users')
+        filter: `user_id=eq.${userId}` 
+      },
       (payload) => {
         if (payload.new) {
           const updated = payload.new;
           
-          // EDIT HERE: Update subscription properties when Supabase sends changes
-          userSubscription.tierName = updated.plan_tier || updated.tier_name || userSubscription.tierName;
+          userSubscription.tierName = updated.tier_name || updated.plan_tier || userSubscription.tierName;
           userSubscription.status = updated.status || userSubscription.status;
           userSubscription.maxSeconds = updated.max_streaming_seconds ?? userSubscription.maxSeconds;
           userSubscription.usedSeconds = updated.streaming_seconds_used ?? userSubscription.usedSeconds;
           userSubscription.maxRooms = updated.max_rooms ?? userSubscription.maxRooms;
           
-          // Re-render the UI elements on the screen
           renderSubscriptionUI();
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Supabase Realtime Status:", status);
+    });
 }
 
     // Helper: Copy to Clipboard
