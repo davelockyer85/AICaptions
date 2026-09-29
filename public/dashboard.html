@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AICaptions</title>
+  <title>Dashboard - Stage Captions SaaS</title>
 
   <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -243,7 +243,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
+    <div class="logo">🎙️ Stage Captions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -255,8 +255,8 @@
     <!-- Subscription Status Card -->
     <div class="status-card">
       <div class="status-info">
-        <h2>Subscription Status <span class="badge badge-active"></span></h2>
-        <p></p>
+        <h2>Subscription Status <span class="badge badge-active">Active Pro Plan</span></h2>
+        <p>Your subscription includes unlimited real-time rooms and OBS streaming.</p>
       </div>
       <button class="btn-secondary" onclick="window.location.href='/pricing.html'">Manage Plan</button>
     </div>
@@ -364,17 +364,17 @@
     // 5. Render Events to UI
     function loadUserEvents() {
       const origin = window.location.origin;
-      let  = JSON.parse(localStorage.getItem('user_') || '[]');
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
 
       // Default demo room if none exist yet
-      if (.length === 0) {
-         = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
-        localStorage.setItem('user_', JSON.stringify());
+      if (rooms.length === 0) {
+        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
+        localStorage.setItem('user_rooms', JSON.stringify(rooms));
       }
 
       eventsContainer.innerHTML = '';
 
-      .forEach((room) => {
+      rooms.forEach((room) => {
         const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
         const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
         const audienceUrl = `${origin}/index.html?room=${room.id}`;
@@ -434,9 +434,9 @@
 
     // Helper: Delete Room
     function deleteRoom(roomId) {
-      let  = JSON.parse(localStorage.getItem('user_') || '[]');
-       = .filter(r => r.id !== roomId);
-      localStorage.setItem('user_', JSON.stringify());
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      rooms = rooms.filter(r => r.id !== roomId);
+      localStorage.setItem('user_rooms', JSON.stringify(rooms));
       loadUserEvents();
     }
 
