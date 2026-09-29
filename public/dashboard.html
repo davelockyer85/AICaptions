@@ -514,19 +514,7 @@
         if (!error && dbRooms && dbRooms.length > 0) {
           rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
         }
-      } catch (err) {
-        console.warn("Using local room state fallback:", err.message);
-      }
-
-      if (rooms.length === 0) {
-        rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      }
-
-      if (rooms.length === 0) {
-        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
-        localStorage.setItem('user_rooms', JSON.stringify(rooms));
-      }
-
+      
       // Keep active room count updated in status bar
       currentRoomCount = rooms.length;
       renderSubscriptionUI();
