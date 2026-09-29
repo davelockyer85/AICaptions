@@ -210,7 +210,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
+    <div class="logo">🎙️ Stage Captions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -298,7 +298,7 @@
 
     let currentUser = null;
 
-    // 1. Global Subscription State (Initial Default Fallback)
+    // Global Subscription State
     let userSubscription = {
       tierName: 'Free Starter',
       status: 'active',
@@ -308,55 +308,22 @@
       currentRoomCount: 0
     };
 
-    // 2. Fetch Initial Data from Supabase Database
-    async function loadUserSubscription(userId) {
-      if (!supabaseClient || !userId) return;
-
-      const { data: sub, error } = await supabaseClient
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (sub && !error) {
-        userSubscription.tierName = sub.tier_name || 'Free Starter';
-        userSubscription.status = sub.status || 'active';
-        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
-        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.max_rooms || 3;
+    // 2. Auth Session Protection & Sync Initialization
+    async function checkUserSession() {
+      const { data: { session }, error } = await supabaseClient.auth.getSession();
+      
+      if (error || !session) {
+        window.location.href = '/auth.html';
+        return;
       }
-      renderSubscriptionUI();
-    }
 
-    // 3. Listen for Live Supabase Realtime Changes
-    function subscribeToLiveUpdates(userId) {
-      if (!supabaseClient || !userId) return;
+      currentUser = session.user;
+      userEmailSpan.innerText = currentUser.email;
 
-      supabaseClient
-        .channel(`realtime_subscription_${userId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'subscriptions',
-            filter: `user_id=eq.${userId}`
-          },
-          (payload) => {
-            if (payload.new) {
-              // Update in-memory state on database change
-              userSubscription.tierName = payload.new.tier_name;
-              userSubscription.status = payload.new.status;
-              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
-              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
-              userSubscription.maxRooms = payload.new.max_rooms;
-
-              // Re-render UI elements in real time
-              renderSubscriptionUI();
-            }
-          }
-        )
-        .subscribe();
+      // Sync user rooms and subscription details from Supabase
+      await loadUserSubscription(currentUser.id);
+      await loadUserEvents();
+      subscribeToLiveUpdates(currentUser.id);
     }
 
     // Sign Out Handler
@@ -494,7 +461,7 @@
       }
 
       const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
-      const remainingMins = Math.floor(userSubscription.streamingSecondsUsed);
+      const remainingMins = Math.floor(remainingSecs / 60);
       const usedMins = Math.round(userSubscription.usedSeconds / 60);
       const maxMins = Math.round(userSubscription.maxSeconds / 60);
       const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
