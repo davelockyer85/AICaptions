@@ -146,6 +146,32 @@
           stopBtn.disabled = false;
         };
 
+        // Broadcast room presence/tick over WebSockets
+const channel = supabase.channel(`room_${roomId}`, {
+  config: { broadcast: { self: true } }
+});
+
+channel.subscribe((status) => {
+  if (status === 'SUBSCRIBED') {
+    // Send a tick event over WebSockets every second
+    setInterval(() => {
+      channel.send({
+        type: 'broadcast',
+        event: 'timer_tick',
+        payload: { elapsed: 1 }
+      });
+    }, 1000);
+  }
+});
+
+// Listen for broadcasted ticks
+channel.on('broadcast', { event: 'timer_tick' }, (response) => {
+  localElapsedCounter += response.payload.elapsed;
+  if (localElapsedCounter >= maxLimit) {
+    stopStream();
+  }
+});
+
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
           status.innerText = "Status: Connection Error";
