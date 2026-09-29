@@ -297,6 +297,17 @@
     const eventNameInput = document.getElementById('eventNameInput');
 
     let currentUser = null;
+    let realtimeChannel = null;
+
+    // Global Subscription State
+    let userSubscription = {
+      tierName: 'Free Starter',
+      status: 'active',
+      maxSeconds: 3600,
+      usedSeconds: 0,
+      maxRooms: 3,
+      currentRoomCount: 0
+    };
 
     // 2. Auth Session Protection & Sync Initialization
     async function checkUserSession() {
@@ -310,14 +321,19 @@
       currentUser = session.user;
       userEmailSpan.innerText = currentUser.email;
 
-      // Sync user rooms and subscription details from Supabase
+      // Initial data fetch
       await loadUserSubscription(currentUser.id);
       await loadUserEvents();
+
+      // Initiate multi-table Realtime listener
       subscribeToLiveUpdates(currentUser.id);
     }
 
     // Sign Out Handler
     logoutBtn.addEventListener('click', async () => {
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+      }
       await supabaseClient.auth.signOut();
       window.location.href = '/auth.html';
     });
@@ -333,7 +349,6 @@
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
-      // Insert directly into Supabase 'rooms' table
       const { data, error } = await supabaseClient
         .from('rooms')
         .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
@@ -344,7 +359,7 @@
       } else {
         eventNameInput.value = '';
         eventModal.style.display = 'none';
-        await loadUserEvents();
+        // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
       }
     });
 
@@ -352,7 +367,6 @@
     async function loadUserEvents() {
       const origin = window.location.origin;
 
-      // Query rooms directly from Supabase
       const { data: rooms, error } = await supabaseClient
         .from('rooms')
         .select('*')
@@ -361,6 +375,7 @@
 
       if (error) {
         console.error("Error fetching rooms:", error.message);
+        return;
       }
 
       const activeRooms = rooms || [];
@@ -435,9 +450,8 @@
       if (error) {
         console.error("Error deleting room:", error.message);
         alert("Failed to delete room: " + error.message);
-      } else {
-        await loadUserEvents();
       }
+      // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
     }
 
     // 7. Render Subscription UI State
@@ -498,23 +512,45 @@
 
     // 9. Realtime Subscription Channel Listener
     function subscribeToLiveUpdates(userId) {
-      supabaseClient
-        .channel(`live_sub_${userId}`)
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+      }
+
+      realtimeChannel = supabaseClient
+        .channel(`dashboard_realtime_${userId}`)
+        
+        // Listen to live quota updates on subscriptions table
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
           (payload) => {
             if (payload.new) {
-              userSubscription.tierName = payload.new.tier_name;
-              userSubscription.status = payload.new.status;
-              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
-              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
-              userSubscription.maxRooms = payload.new.max_rooms;
+              userSubscription.tierName = payload.new.tier_name || 'Free Starter';
+              userSubscription.status = payload.new.status || 'active';
+              userSubscription.maxSeconds = payload.new.max_streaming_seconds || 3600;
+              userSubscription.usedSeconds = payload.new.streaming_seconds_used || 0;
+              userSubscription.maxRooms = payload.new.max_rooms || 3;
               renderSubscriptionUI();
             }
           }
         )
-        .subscribe();
+
+        // Listen to INSERT, UPDATE, DELETE events on rooms table
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
+          async (payload) => {
+            await loadUserEvents();
+          }
+        )
+
+        .subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Supabase Realtime connected successfully.');
+          } else if (err || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.error('Supabase Realtime connection error:', status, err);
+          }
+        });
     }
 
     // Helper: Copy to Clipboard
