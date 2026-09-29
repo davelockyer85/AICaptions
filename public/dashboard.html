@@ -210,7 +210,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
+    <div class="logo">🎙️ Stage Captions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -350,7 +350,7 @@
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
       const { data, error } = await supabaseClient
-        .from('users')
+        .from('rooms')
         .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
 
       if (error) {
@@ -367,14 +367,14 @@
     async function loadUserEvents() {
       const origin = window.location.origin;
 
-      const { data: users, error } = await supabaseClient
-        .from('users')
+      const { data: rooms, error } = await supabaseClient
+        .from('rooms')
         .select('*')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error("Error fetching users:", error.message);
+        console.error("Error fetching rooms:", error.message);
         return;
       }
 
@@ -454,7 +454,7 @@
       // Note: loadUserEvents() will be triggered automatically by the Realtime subscriber
     }
 
-   // 7. Render Subscription UI State
+    // 7. Render Subscription UI State
     function renderSubscriptionUI() {
       const tierElem = document.getElementById('subTierName');
       const badgeElem = document.getElementById('subStatusBadge');
@@ -492,20 +492,20 @@
       }
     }
 
-   // 8. Fetch Subscription Quotas from Supabase
+    // 8. Fetch Subscription Quotas from Supabase
     async function loadUserSubscription(userId) {
       const { data: sub, error } = await supabaseClient
-        .from('users')
+        .from('subscriptions')
         .select('*')
-        .eq('id', userId) // Fixed: Column is 'id', not 'user_id'
+        .eq('user_id', userId)
         .single();
 
       if (!error && sub) {
-        userSubscription.tierName = sub.plan_tier || sub.tier_name || 'Free Starter';
+        userSubscription.tierName = sub.tier_name || 'Free Starter';
         userSubscription.status = sub.status || 'active';
         userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
         userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
-        userSubscription.maxRooms = sub.allowed_rooms || sub.max_rooms || 1;
+        userSubscription.maxRooms = sub.max_rooms || 3;
       }
       renderSubscriptionUI();
     }
@@ -519,30 +519,28 @@
       realtimeChannel = supabaseClient
         .channel(`dashboard_realtime_${userId}`)
         
-        // Listen to live quota updates on users table
+        // Listen to live quota updates on subscriptions table
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, // Fixed: 'id=eq.' instead of 'user_id=eq.'
+          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
           (payload) => {
             if (payload.new) {
-              userSubscription.tierName = payload.new.plan_tier || payload.new.tier_name || 'Free Starter';
+              userSubscription.tierName = payload.new.tier_name || 'Free Starter';
               userSubscription.status = payload.new.status || 'active';
               userSubscription.maxSeconds = payload.new.max_streaming_seconds || 3600;
               userSubscription.usedSeconds = payload.new.streaming_seconds_used || 0;
-              userSubscription.maxRooms = payload.new.allowed_rooms || payload.new.max_rooms || 1;
+              userSubscription.maxRooms = payload.new.max_rooms || 3;
               renderSubscriptionUI();
             }
           }
         )
 
-        // Listen to live updates on rooms table
+        // Listen to INSERT, UPDATE, DELETE events on rooms table
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'rooms', filter: `user_id=eq.${userId}` },
           async (payload) => {
-            if (typeof loadUserEvents === 'function') {
-              await loadUserEvents();
-            }
+            await loadUserEvents();
           }
         )
 
@@ -550,7 +548,7 @@
           if (status === 'SUBSCRIBED') {
             console.log('Supabase Realtime connected successfully.');
           } else if (err || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn('Supabase Realtime status:', status, err);
+            console.error('Supabase Realtime connection error:', status, err);
           }
         });
     }
