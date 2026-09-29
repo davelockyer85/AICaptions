@@ -210,7 +210,7 @@
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
+    <div class="logo">🎙️ Stage Captions</div>
     <div class="user-controls">
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
@@ -298,7 +298,7 @@
 
     let currentUser = null;
 
-     // Global Subscription State
+    // Global Subscription State
     let userSubscription = {
       tierName: 'Free Starter',
       status: 'active',
@@ -336,12 +336,27 @@
     openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
     closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
- // 4. Room Creation Logic
+    // 4. Room Creation Logic
     createEventBtn.addEventListener('click', async () => {
       const name = eventNameInput.value.trim();
       if (!name) return;
 
       const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+
+      // Insert directly into Supabase 'rooms' table
+      const { data, error } = await supabaseClient
+        .from('rooms')
+        .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
+
+      if (error) {
+        console.error("Supabase Room Creation Error:", error.message);
+        alert("Could not save room to database: " + error.message);
+      } else {
+        eventNameInput.value = '';
+        eventModal.style.display = 'none';
+        await loadUserEvents();
+      }
+    });
 
     // 5. Render Events directly from Supabase
     async function loadUserEvents() {
@@ -474,59 +489,43 @@
     }
 
     // 8. Fetch Subscription Quotas from Supabase
-async function loadUserSubscription(userId) {
-  const { data: sub, error } = await supabaseClient
-    .from('users')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+    async function loadUserSubscription(userId) {
+      const { data: sub, error } = await supabaseClient
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-  if (error) {
-    console.error("Error fetching user subscription:", error.message);
-  }
-
-  if (!error && sub) {
-    userSubscription.tierName = sub.tier_name || sub.plan_tier || 'Select Tier';
-    userSubscription.status = sub.status || 'active';
-    userSubscription.maxSeconds = sub.max_streaming_seconds ?? 300;
-    userSubscription.usedSeconds = sub.streaming_seconds_used ?? 0; // Fixed key assignment
-    userSubscription.maxRooms = sub.max_rooms ?? 1;
-  }
-  renderSubscriptionUI();
-}
-
-// 9. Realtime Subscription Channel Listener
-function subscribeToLiveUpdates(userId) {
-  if (!userId) return;
-
-  supabaseClient
-    .channel(`live_sub_${userId}`)
-    .on(
-      'postgres_changes',
-      { 
-        event: '*', 
-        schema: 'public', 
-        table: 'users', // Fixed table name (changed from 'subscriptions' to 'users')
-        filter: `user_id=eq.${userId}` 
-      },
-      (payload) => {
-        if (payload.new) {
-          const updated = payload.new;
-          
-          userSubscription.tierName = updated.tier_name || updated.plan_tier || userSubscription.tierName;
-          userSubscription.status = updated.status || userSubscription.status;
-          userSubscription.maxSeconds = updated.max_streaming_seconds ?? userSubscription.maxSeconds;
-          userSubscription.usedSeconds = updated.streaming_seconds_used ?? userSubscription.usedSeconds;
-          userSubscription.maxRooms = updated.max_rooms ?? userSubscription.maxRooms;
-          
-          renderSubscriptionUI();
-        }
+      if (!error && sub) {
+        userSubscription.tierName = sub.tier_name || 'Free Starter';
+        userSubscription.status = sub.status || 'active';
+        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
+        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
+        userSubscription.maxRooms = sub.max_rooms || 3;
       }
-    )
-    .subscribe((status) => {
-      console.log("Supabase Realtime Status:", status);
-    });
-}
+      renderSubscriptionUI();
+    }
+
+    // 9. Realtime Subscription Channel Listener
+    function subscribeToLiveUpdates(userId) {
+      supabaseClient
+        .channel(`live_sub_${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+          (payload) => {
+            if (payload.new) {
+              userSubscription.tierName = payload.new.tier_name;
+              userSubscription.status = payload.new.status;
+              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
+              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
+              userSubscription.maxRooms = payload.new.max_rooms;
+              renderSubscriptionUI();
+            }
+          }
+        )
+        .subscribe();
+    }
 
     // Helper: Copy to Clipboard
     function copyLink(inputId) {
@@ -535,8 +534,6 @@ function subscribeToLiveUpdates(userId) {
       navigator.clipboard.writeText(input.value);
       alert("Link copied to clipboard!");
     }
-
-    
 
     // Initialize Page
     checkUserSession();
