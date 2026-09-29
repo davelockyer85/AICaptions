@@ -4,133 +4,131 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - Stage Captions SaaS</title>
+
+  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- QRCode.js CDN for audience QR code generation -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       background-color: #0f172a;
       color: #f8fafc;
-      margin: 0;
-      padding: 0;
+      min-height: 100vh;
+      padding-bottom: 60px;
     }
-    .header {
+
+    /* Top Navigation Header */
+    header {
       background-color: #1e293b;
       border-bottom: 1px solid #334155;
-      padding: 1rem 2rem;
+      padding: 16px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .header h1 {
+
+    .logo {
       font-size: 1.25rem;
-      margin: 0;
-      color: #60a5fa;
-    }
-    .user-info {
+      font-weight: 700;
+      color: #3b82f6;
       display: flex;
       align-items: center;
-      gap: 1rem;
-    }
-    .btn-logout {
-      background: #334155;
-      color: #f8fafc;
-      border: none;
-      padding: 0.4rem 0.8rem;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .btn-logout:hover { background: #475569; }
-    
-    .container {
-      max-width: 1000px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-    }
-    
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-    .stat-card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 1.25rem;
-    }
-    .stat-title {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      text-transform: uppercase;
-      font-weight: 600;
-    }
-    .stat-value {
-      font-size: 1.75rem;
-      font-weight: 700;
-      margin-top: 0.5rem;
-      color: #f8fafc;
+      gap: 8px;
     }
 
+    .user-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-email {
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    .btn-secondary {
+      background-color: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-secondary:hover { background-color: #475569; }
+
+    /* Main Container */
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .btn-primary {
+      background-color: #3b82f6;
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover { background-color: #2563eb; }
+    .btn-primary:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.6; }
+
+    /* Events Section */
     .section-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1rem;
+      margin-bottom: 20px;
     }
-    .btn-primary {
-      background-color: #2563eb;
-      color: #ffffff;
-      border: none;
-      padding: 0.6rem 1.2rem;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-primary:hover { background-color: #1d4ed8; }
 
-    .room-card {
+    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
+
+    .event-card {
       background-color: #1e293b;
       border: 1px solid #334155;
       border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
+      padding: 24px;
+      margin-bottom: 20px;
     }
-    .room-card-header {
+
+    .event-card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1rem;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #334155;
     }
-    .room-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-    .room-id {
-      font-family: monospace;
-      color: #60a5fa;
-      background: #0f172a;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-    }
+
+    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
+    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
 
     .links-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-top: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
     }
-    @media(max-width: 640px) {
-      .links-grid { grid-template-columns: 1fr; }
-    }
+
     .link-box {
       background-color: #0f172a;
       border: 1px solid #334155;
       border-radius: 8px;
       padding: 12px 16px;
     }
+
     .link-box label {
       display: block;
       font-size: 0.75rem;
@@ -139,10 +137,12 @@
       text-transform: uppercase;
       margin-bottom: 8px;
     }
+
     .link-action {
       display: flex;
       gap: 8px;
     }
+
     .link-action input {
       flex: 1;
       background: none;
@@ -152,141 +152,217 @@
       outline: none;
       font-family: monospace;
     }
+
     .btn-copy {
       background-color: #334155;
       color: #3b82f6;
       border: none;
-      padding: 0.4rem 0.8rem;
-      border-radius: 6px;
+      padding: 6px 12px;
+      border-radius: 4px;
       font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
     }
-    .btn-copy:hover { background-color: #475569; }
 
-    /* Modal Styling */
+    .btn-copy:hover { background-color: #475569; color: #ffffff; }
+
+    /* Modal for Event Creation */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background-color: rgba(0, 0, 0, 0.75);
       display: none;
       justify-content: center;
       align-items: center;
       z-index: 1000;
     }
-    .modal {
-      background: #1e293b;
+
+    .modal-card {
+      background-color: #1e293b;
       border: 1px solid #334155;
       border-radius: 12px;
-      padding: 2rem;
+      padding: 28px;
       width: 100%;
       max-width: 400px;
     }
-    .modal h2 { margin-top: 0; font-size: 1.25rem; }
-    .form-group { margin-bottom: 1.25rem; }
-    .form-group label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; }
-    .form-group input {
+
+    .modal-card h3 { margin-bottom: 16px; }
+
+    .modal-card input {
       width: 100%;
-      padding: 0.6rem 0.8rem;
-      background: #0f172a;
+      padding: 10px 14px;
+      background-color: #0f172a;
       border: 1px solid #334155;
       border-radius: 6px;
       color: #f8fafc;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
       outline: none;
     }
-    .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-    .btn-cancel { background: #334155; color: #f8fafc; border: none; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
   </style>
 </head>
 <body>
 
-  <header class="header">
-    <h1>AICaptions Dashboard</h1>
-    <div class="user-info">
-      <span id="userEmail" style="color: #94a3af; font-size: 0.9rem;">Loading...</span>
-      <button class="btn-logout" id="logoutBtn">Log Out</button>
+  <header>
+    <div class="logo">🎙️ Stage Captions</div>
+    <div class="user-controls">
+      <span class="user-email" id="userEmail">Loading...</span>
+      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
     </div>
   </header>
 
   <div class="container">
-    <!-- Stats Banner -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-title">Active Rooms</div>
-        <div class="stat-value" id="roomCount">0</div>
+
+    <!-- Live Subscription & Usage Quota Cards -->
+    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
+      
+      <!-- Subscription Tier Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Subscription</span>
+          <span id="subStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background-color: #15803d; color: #f0fdf4; font-weight: 600;">ACTIVE</span>
+        </div>
+        <div id="subTierName" style="font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin: 8px 0 4px 0;">Free Starter</div>
+        <div id="subExpiryText" style="font-size: 0.85rem; color: #64748b;">Plan Active</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-title">Streaming Time Used</div>
-        <div class="stat-value" id="timeUsed">0m</div>
+
+      <!-- Remaining Streaming Time Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Remaining Streaming Time</div>
+        <div id="remainingTimeDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- mins</div>
+        <div id="timeSubtext" style="font-size: 0.85rem; color: #64748b;">Used 0 of 60 mins</div>
+        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
+          <div id="timeProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-title">Sync Status</div>
-        <div class="stat-value" id="syncStatus" style="font-size: 1rem; color: #10b981; margin-top: 0.8rem;">● Live Realtime</div>
+
+      <!-- Available Stage Slots Card -->
+      <div class="stat-card" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px;">
+        <div style="font-size: 0.875rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Available Stage Slots</div>
+        <div id="remainingRoomsDisplay" style="font-size: 1.75rem; font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">-- remaining</div>
+        <div id="roomSubtext" style="font-size: 0.85rem; color: #64748b;">0 of 3 stages created</div>
+        <div style="width: 100%; height: 6px; background-color: #334155; border-radius: 3px; overflow: hidden; margin-top: 10px;">
+          <div id="roomProgress" style="height: 100%; background-color: #0284c7; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
       </div>
+
     </div>
 
-    <!-- Rooms Section Header -->
+    <!-- Events Management Header -->
     <div class="section-header">
-      <h2 style="margin: 0; font-size: 1.25rem;">Your Stages & Rooms</h2>
-      <button class="btn-primary" id="openModalBtn">+ Create New Room</button>
+      <h3>Active Event Rooms</h3>
+      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
     </div>
 
-    <!-- Rooms Container -->
-    <div id="roomsContainer">
-      <p style="color: #94a3b8;">Loading stage rooms...</p>
+    <!-- Events List Container -->
+    <div id="eventsContainer">
+      <!-- Event cards will be dynamically injected here -->
     </div>
+
   </div>
 
-  <!-- Create Room Modal -->
+  <!-- Create Event Modal -->
   <div class="modal-overlay" id="eventModal">
-    <div class="modal">
-      <h2>Create Stage Room</h2>
-      <div class="form-group">
-        <label for="eventNameInput">Event or Room Name</label>
-        <input type="text" id="eventNameInput" placeholder="e.g., Main Auditorium Stage">
-      </div>
+    <div class="modal-card">
+      <h3>Create Event Room</h3>
+      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
+      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
       <div class="modal-actions">
-        <button class="btn-cancel" id="cancelModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create Room</button>
+        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
+        <button class="btn-primary" id="createEventBtn">Create</button>
       </div>
     </div>
   </div>
 
   <script>
-    // 1. Initialize Supabase Client
-    const SUPABASE_URL = window.location.origin.includes('localhost') 
-      ? 'http://localhost:54321' 
-      : (window.SUPABASE_URL || 'https://YOUR_SUPABASE_PROJECT.supabase.co');
-    const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const userEmailSpan = document.getElementById('userEmail');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const eventsContainer = document.getElementById('eventsContainer');
+    
+    const eventModal = document.getElementById('eventModal');
+    const openModalBtn = document.getElementById('openModalBtn');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const createEventBtn = document.getElementById('createEventBtn');
+    const eventNameInput = document.getElementById('eventNameInput');
 
     let currentUser = null;
-    let realtimeChannel = null;
 
-    // 2. Authentication Check & Setup
-    async function initAuth() {
+    // Global Subscription State
+    let userSubscription = {
+      tierName: 'Free Starter',
+      status: 'active',
+      maxSeconds: 3600,
+      usedSeconds: 0,
+      maxRooms: 3,
+      currentRoomCount: 0
+    };
+
+    // 2. Auth Session Protection & Sync Initialization
+    async function checkUserSession() {
       const { data: { session }, error } = await supabaseClient.auth.getSession();
       
       if (error || !session) {
-        window.location.href = '/login.html';
+        window.location.href = '/auth.html';
         return;
       }
 
       currentUser = session.user;
-      document.getElementById('userEmail').innerText = currentUser.email;
+      userEmailSpan.innerText = currentUser.email;
 
-      // Load initial data
-      await loadDashboardData();
-
-      // Subscribe to live database updates
-      setupRealtimeSubscriptions();
+      // Sync user rooms and subscription details from Supabase
+      await loadUserSubscription(currentUser.id);
+      await loadUserEvents();
+      subscribeToLiveUpdates(currentUser.id);
     }
 
-    // 3. Fetch Rooms & Stats from Supabase
-    async function loadDashboardData() {
-      if (!currentUser) return;
+    // Sign Out Handler
+    logoutBtn.addEventListener('click', async () => {
+      await supabaseClient.auth.signOut();
+      window.location.href = '/auth.html';
+    });
 
+    // 3. Modal Controls
+    openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
+    closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+
+    // 4. Room Creation Logic
+    createEventBtn.addEventListener('click', async () => {
+      const name = eventNameInput.value.trim();
+      if (!name) return;
+
+      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+
+      // Insert directly into Supabase 'rooms' table
+      const { data, error } = await supabaseClient
+        .from('rooms')
+        .insert([{ room_id: roomId, name: name, user_id: currentUser.id }]);
+
+      if (error) {
+        console.error("Supabase Room Creation Error:", error.message);
+        alert("Could not save room to database: " + error.message);
+      } else {
+        eventNameInput.value = '';
+        eventModal.style.display = 'none';
+        await loadUserEvents();
+      }
+    });
+
+    // 5. Render Events directly from Supabase
+    async function loadUserEvents() {
+      const origin = window.location.origin;
+
+      // Query rooms directly from Supabase
       const { data: rooms, error } = await supabaseClient
         .from('rooms')
         .select('*')
@@ -295,162 +371,172 @@
 
       if (error) {
         console.error("Error fetching rooms:", error.message);
-        document.getElementById('roomsContainer').innerHTML = `<p style="color: #ef4444;">Failed to load rooms: ${error.message}</p>`;
+      }
+
+      const activeRooms = rooms || [];
+      userSubscription.currentRoomCount = activeRooms.length;
+      renderSubscriptionUI();
+
+      eventsContainer.innerHTML = '';
+
+      if (activeRooms.length === 0) {
+        eventsContainer.innerHTML = '<p style="color: #64748b; text-align: center; margin-top: 20px;">No event rooms found. Click "+ Create New Event" to get started.</p>';
         return;
       }
 
-      renderRooms(rooms || []);
-      updateStats(rooms || []);
-    }
+      activeRooms.forEach((room) => {
+        const id = room.room_id || room.id;
+        const presenterUrl = `${origin}/presenter.html?room=${id}`;
+        const overlayUrl = `${origin}/overlay.html?room=${id}`;
+        const audienceUrl = `${origin}/index.html?room=${id}`;
 
-    // 4. Render Rooms & Share Links
-    function renderRooms(rooms) {
-      const container = document.getElementById('roomsContainer');
-      if (rooms.length === 0) {
-        container.innerHTML = `<p style="color: #94a3b8; text-align: center; padding: 2rem; background: #1e293b; border-radius: 8px;">No active rooms found. Click "+ Create New Room" to get started.</p>`;
-        return;
-      }
-
-      const baseUrl = window.location.origin;
-
-      container.innerHTML = rooms.map(room => {
-        const presenterUrl = `${baseUrl}/presenter.html?room=${encodeURIComponent(room.room_id)}`;
-        const captionsUrl = `${baseUrl}/captions.html?room=${encodeURIComponent(room.room_id)}`;
-
-        return `
-          <div class="room-card" data-room-id="${room.room_id}">
-            <div class="room-card-header">
-              <span class="room-title">${escapeHtml(room.name || 'Untitled Room')}</span>
-              <span class="room-id">${escapeHtml(room.room_id)}</span>
+        const card = document.createElement('div');
+        card.className = 'event-card';
+        card.innerHTML = `
+          <div class="event-card-header">
+            <div>
+              <div class="event-title">${room.name}</div>
+              <div class="event-id">Room ID: ${id}</div>
             </div>
-            
-            <div class="links-grid">
-              <div class="link-box">
-                <label>Presenter Ingest URL</label>
-                <div class="link-action">
-                  <input type="text" readonly value="${presenterUrl}">
-                  <button class="btn-copy" onclick="copyToClipboard('${presenterUrl}', this)">Copy</button>
-                </div>
-              </div>
+            <button class="btn-secondary" onclick="deleteRoom('${id}')">Delete</button>
+          </div>
 
-              <div class="link-box">
-                <label>Live Captions Display URL</label>
-                <div class="link-action">
-                  <input type="text" readonly value="${captionsUrl}">
-                  <button class="btn-copy" onclick="copyToClipboard('${captionsUrl}', this)">Copy</button>
-                </div>
+          <div class="links-grid">
+            <div class="link-box">
+              <label>Presenter Microphones Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${presenterUrl}" id="p_${id}">
+                <button class="btn-copy" onclick="copyLink('p_${id}')">Copy</button>
+              </div>
+            </div>
+
+            <div class="link-box">
+              <label>OBS Transparent Overlay Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${overlayUrl}" id="o_${id}">
+                <button class="btn-copy" onclick="copyLink('o_${id}')">Copy</button>
+              </div>
+            </div>
+
+            <div class="link-box">
+              <label>Mobile Audience View Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${audienceUrl}" id="a_${id}">
+                <button class="btn-copy" onclick="copyLink('a_${id}')">Copy</button>
               </div>
             </div>
           </div>
         `;
-      }).join('');
-    }
 
-    // 5. Update Usage & Stats Cards
-    function updateStats(rooms) {
-      document.getElementById('roomCount').innerText = rooms.length;
-      
-      const totalSeconds = rooms.reduce((acc, r) => acc + (r.streaming_seconds_used || 0), 0);
-      const totalMinutes = Math.floor(totalSeconds / 60);
-      document.getElementById('timeUsed').innerText = `${totalMinutes}m ${totalSeconds % 60}s`;
-    }
-
-    // 6. Supabase Realtime Subscription (Live Sync Engine)
-    function setupRealtimeSubscriptions() {
-      if (realtimeChannel) {
-        supabaseClient.removeChannel(realtimeChannel);
-      }
-
-      const syncStatus = document.getElementById('syncStatus');
-
-      realtimeChannel = supabaseClient
-        .channel(`dashboard-live-${currentUser.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'rooms',
-            filter: `user_id=eq.${currentUser.id}`
-          },
-          (payload) => {
-            console.log('Realtime change detected in rooms:', payload);
-            loadDashboardData();
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            syncStatus.innerHTML = '● Live Realtime Sync';
-            syncStatus.style.color = '#10b981';
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            syncStatus.innerHTML = '○ Reconnecting...';
-            syncStatus.style.color = '#f59e0b';
-          }
-        });
-    }
-
-    // 7. Create Room Logic
-    const openModalBtn = document.getElementById('openModalBtn');
-    const cancelModalBtn = document.getElementById('cancelModalBtn');
-    const createEventBtn = document.getElementById('createEventBtn');
-    const eventModal = document.getElementById('eventModal');
-    const eventNameInput = document.getElementById('eventNameInput');
-
-    openModalBtn.onclick = () => { eventModal.style.display = 'flex'; eventNameInput.focus(); };
-    cancelModalBtn.onclick = () => { eventModal.style.display = 'none'; eventNameInput.value = ''; };
-
-    createEventBtn.onclick = async () => {
-      const name = eventNameInput.value.trim();
-      if (!name) return;
-
-      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
-
-      const { data, error } = await supabaseClient
-        .from('rooms')
-        .insert([
-          {
-            room_id: roomId,
-            name: name,
-            user_id: currentUser.id,
-            streaming_seconds_used: 0
-          }
-        ]);
-
-      if (error) {
-        alert("Failed to create room: " + error.message);
-      } else {
-        eventNameInput.value = '';
-        eventModal.style.display = 'none';
-        await loadDashboardData();
-      }
-    };
-
-    // Helper Functions
-    function copyToClipboard(text, btn) {
-      navigator.clipboard.writeText(text).then(() => {
-        const origText = btn.innerText;
-        btn.innerText = 'Copied!';
-        btn.style.backgroundColor = '#10b981';
-        btn.style.color = '#ffffff';
-        setTimeout(() => {
-          btn.innerText = origText;
-          btn.style.backgroundColor = '#334155';
-          btn.style.color = '#3b82f6';
-        }, 1500);
+        eventsContainer.appendChild(card);
       });
     }
 
-    function escapeHtml(str) {
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // 6. Delete Room from Supabase
+    async function deleteRoom(roomId) {
+      if (!confirm("Are you sure you want to delete this event room?")) return;
+
+      const { error } = await supabaseClient
+        .from('rooms')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.id);
+
+      if (error) {
+        console.error("Error deleting room:", error.message);
+        alert("Failed to delete room: " + error.message);
+      } else {
+        await loadUserEvents();
+      }
     }
 
-    document.getElementById('logoutBtn').onclick = async () => {
-      await supabaseClient.auth.signOut();
-      window.location.href = '/login.html';
-    };
+    // 7. Render Subscription UI State
+    function renderSubscriptionUI() {
+      const tierElem = document.getElementById('subTierName');
+      const badgeElem = document.getElementById('subStatusBadge');
+      if (tierElem) tierElem.innerText = userSubscription.tierName;
+      if (badgeElem) {
+        badgeElem.innerText = userSubscription.status.toUpperCase();
+        badgeElem.style.backgroundColor = userSubscription.status === 'active' ? '#15803d' : '#b91c1c';
+      }
 
-    // Initialize Dashboard
-    document.addEventListener('DOMContentLoaded', initAuth);
+      const remainingSecs = Math.max(0, userSubscription.maxSeconds - userSubscription.usedSeconds);
+      const remainingMins = Math.floor(remainingSecs / 60);
+      const usedMins = Math.round(userSubscription.usedSeconds / 60);
+      const maxMins = Math.round(userSubscription.maxSeconds / 60);
+      const timePercent = Math.min(100, (userSubscription.usedSeconds / userSubscription.maxSeconds) * 100);
+
+      document.getElementById('remainingTimeDisplay').innerText = `${remainingMins} mins`;
+      document.getElementById('timeSubtext').innerText = `Used ${usedMins} of ${maxMins} mins`;
+      document.getElementById('timeProgress').style.width = `${timePercent}%`;
+
+      const remainingRooms = Math.max(0, userSubscription.maxRooms - userSubscription.currentRoomCount);
+      const roomPercent = Math.min(100, (userSubscription.currentRoomCount / userSubscription.maxRooms) * 100);
+
+      document.getElementById('remainingRoomsDisplay').innerText = `${remainingRooms} slots`;
+      document.getElementById('roomSubtext').innerText = `${userSubscription.currentRoomCount} of ${userSubscription.maxRooms} stages created`;
+      document.getElementById('roomProgress').style.width = `${roomPercent}%`;
+
+      if (openModalBtn) {
+        if (userSubscription.currentRoomCount >= userSubscription.maxRooms || userSubscription.status !== 'active') {
+          openModalBtn.disabled = true;
+          openModalBtn.innerText = userSubscription.status !== 'active' ? 'Subscription Inactive' : 'Stage Limit Reached';
+        } else {
+          openModalBtn.disabled = false;
+          openModalBtn.innerText = '+ Create New Event';
+        }
+      }
+    }
+
+    // 8. Fetch Subscription Quotas from Supabase
+    async function loadUserSubscription(userId) {
+      const { data: sub, error } = await supabaseClient
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (!error && sub) {
+        userSubscription.tierName = sub.tier_name || 'Free Starter';
+        userSubscription.status = sub.status || 'active';
+        userSubscription.maxSeconds = sub.max_streaming_seconds || 3600;
+        userSubscription.usedSeconds = sub.streaming_seconds_used || 0;
+        userSubscription.maxRooms = sub.max_rooms || 3;
+      }
+      renderSubscriptionUI();
+    }
+
+    // 9. Realtime Subscription Channel Listener
+    function subscribeToLiveUpdates(userId) {
+      supabaseClient
+        .channel(`live_sub_${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${userId}` },
+          (payload) => {
+            if (payload.new) {
+              userSubscription.tierName = payload.new.tier_name;
+              userSubscription.status = payload.new.status;
+              userSubscription.maxSeconds = payload.new.max_streaming_seconds;
+              userSubscription.usedSeconds = payload.new.streaming_seconds_used;
+              userSubscription.maxRooms = payload.new.max_rooms;
+              renderSubscriptionUI();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    // Helper: Copy to Clipboard
+    function copyLink(inputId) {
+      const input = document.getElementById(inputId);
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      alert("Link copied to clipboard!");
+    }
+
+    // Initialize Page
+    checkUserSession();
   </script>
 </body>
 </html>
