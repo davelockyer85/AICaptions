@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Presenter Audio Ingest - AICaptions</title>
+
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -88,6 +92,87 @@
   </div>
 
   <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // State Variables for Live Usage Tracking
+    let currentUser = null;
+    let usageTimer = null;
+    let pendingSeconds = 0;
+    const UPDATE_INTERVAL_SECONDS = 5;
+
+    // Authenticate Presenter Session
+    async function initPresenterAuth() {
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session && session.user) {
+          currentUser = session.user;
+        }
+      } catch (err) {
+        console.warn("Could not retrieve Supabase session:", err.message);
+      }
+    }
+    initPresenterAuth();
+
+    // Usage Tracking Functions
+    function startUsageTracking(userId, roomId) {
+      stopUsageTracking(); // Clear any existing interval
+
+      usageTimer = setInterval(async () => {
+        pendingSeconds += UPDATE_INTERVAL_SECONDS;
+        await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+      }, UPDATE_INTERVAL_SECONDS * 1000);
+    }
+
+    async function syncUsageToSupabase(userId, roomId, secondsToAdd) {
+      if (!userId) return;
+
+      try {
+        // Step A: Fetch & Update 'users' table usage
+        const { data: user, error: userErr } = await supabaseClient
+          .from('users')
+          .select('streaming_seconds_used')
+          .eq('user_id', userId)
+          .single();
+
+        if (!userErr && user) {
+          const currentSeconds = user.streaming_seconds_used || 0;
+          await supabaseClient
+            .from('users')
+            .update({ streaming_seconds_used: currentSeconds + secondsToAdd })
+            .eq('user_id', userId);
+        }
+
+        // Step B: Update 'rooms' table usage
+        if (roomId) {
+          const { data: room, error: roomErr } = await supabaseClient
+            .from('rooms')
+            .select('streaming_seconds_used')
+            .eq('room_id', roomId)
+            .single();
+
+          if (!roomErr && room) {
+            const roomSeconds = room.streaming_seconds_used || 0;
+            await supabaseClient
+              .from('rooms')
+              .update({ streaming_seconds_used: roomSeconds + secondsToAdd })
+              .eq('room_id', roomId);
+          }
+        }
+      } catch (err) {
+        console.warn("Usage sync error:", err.message);
+      }
+    }
+
+    function stopUsageTracking() {
+      if (usageTimer) {
+        clearInterval(usageTimer);
+        usageTimer = null;
+      }
+    }
+
     // Array of 83 Supported Spoken Languages (BCP-47 Standard)
     const SUPPORTED_LANGUAGES = [
       { code: 'af-ZA', name: 'Afrikaans' },
@@ -268,33 +353,12 @@
 
           startBtn.disabled = true;
           stopBtn.disabled = false;
+
+          // Start pushing live time updates to Supabase every 5 seconds
+          if (currentUser) {
+            startUsageTracking(currentUser.id, room);
+          }
         };
-
-        // Broadcast room presence/tick over WebSockets
-        const channel = supabase.channel(`room_${roomId}`, {
-          config: { broadcast: { self: true } }
-        });
-
-        channel.subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            // Send a tick event over WebSockets every second
-            setInterval(() => {
-              channel.send({
-                type: 'broadcast',
-                event: 'timer_tick',
-                payload: { elapsed: 1 }
-              });
-            }, 1000);
-          }
-        });
-
-        // Listen for broadcasted ticks
-        channel.on('broadcast', { event: 'timer_tick' }, (response) => {
-          localElapsedCounter += response.payload.elapsed;
-          if (localElapsedCounter >= maxLimit) {
-            stopStream();
-          }
-        });
 
         ws.onerror = (err) => {
           console.error("WebSocket Error:", err);
@@ -322,6 +386,9 @@
     };
 
     function cleanup() {
+      // Stop usage tracking timer
+      stopUsageTracking();
+
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
@@ -334,6 +401,11 @@
       startBtn.disabled = false;
       stopBtn.disabled = true;
     }
+
+    // Stop tracking timer if browser tab closes or navigates away
+    window.addEventListener('beforeunload', () => {
+      stopUsageTracking();
+    });
   </script>
 </body>
 </html>
