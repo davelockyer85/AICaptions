@@ -1,296 +1,181 @@
-import express from 'express';
-import http from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
-import Stripe from 'stripe';
-import { createClient as createDeepgramClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import 'dotenv/config';
 
-dotenv.config();
+import express from 'express';
+import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { WebSocket, WebSocketServer } from 'ws';
+import Stripe from 'stripe';
+import {
+  createClient as createDeepgramClient,
+  LiveTranscriptionEvents,
+} from '@deepgram/sdk';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
+const PORT = Number(process.env.PORT || 10000);
+const DEFAULT_ROOM_ID = 'main-stage';
+
+const MAX_WEBSOCKET_PAYLOAD_BYTES = 1024 * 1024;
+const MAX_AUDIO_QUEUE_BYTES = 2 * 1024 * 1024;
+const MAX_WEBSOCKET_BUFFERED_BYTES = 1024 * 1024;
+const USAGE_PULSE_MS = 10_000;
+const DEEPGRAM_CONNECT_TIMEOUT_MS = 15_000;
+const MAX_VIEWERS_PER_ROOM = Number(process.env.MAX_VIEWERS_PER_ROOM || 500);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
+});
 
-// Initialize Clients
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
+app.use(express.json({ limit: '16kb' }));
+app.use(express.static('public'));
 
-if (!DEEPGRAM_API_KEY) {
-  console.error("❌ CRITICAL: Missing DEEPGRAM_API_KEY environment variable.");
-}
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
-const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
-const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createSupabaseClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
+const deepgram = deepgramApiKey
+  ? createDeepgramClient(deepgramApiKey)
+  : null;
 
-// Room state: roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// This key must stay on the server. Do not use it in browser code.
+const supabase = supabaseUrl && supabaseServiceRoleKey
+  ? createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
+const allowGuestPresenters =
+  process.env.ALLOW_GUEST_PRESENTERS === 'true';
+
+const oneTimePriceIds = new Set(
+  [
+    process.env.EVENT_PASS_PRICE_ID,
+    process.env.PRO_EVENT_PASS_PRICE_ID,
+    ...(process.env.ONE_TIME_PRICE_IDS || '').split(','),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
+
+const allowedPriceIds = new Set(
+  [
+    ...oneTimePriceIds,
+    ...(process.env.ALLOWED_PRICE_IDS || '').split(','),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
+
+// In-memory state is suitable only for a single server process.
 const rooms = new Map();
-
-function getOrCreateRoom(roomId) {
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, { presenterWs: null, presenterUserId: null, viewers: new Set() });
-  }
-  return rooms.get(roomId);
-}
-
-// Per-account concurrent-room tracking
 const activeRoomsByUser = new Map();
 
+if (!deepgram) {
+  console.warn('DEEPGRAM_API_KEY is missing; presenter connections will be rejected.');
+}
+
+if (!supabase) {
+  console.warn(
+    'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing; authenticated features are unavailable.',
+  );
+}
+
+function getOrCreateRoom(roomId) {
+  let room = rooms.get(roomId);
+
+  if (!room) {
+    room = {
+      presenterWs: null,
+      presenterUserId: null,
+      viewers: new Set(),
+    };
+    rooms.set(roomId, room);
+  }
+
+  return room;
+}
+
+function deleteRoomIfEmpty(roomId, room) {
+  if (
+    room.presenterWs === null &&
+    room.viewers.size === 0 &&
+    rooms.get(roomId) === room
+  ) {
+    rooms.delete(roomId);
+  }
+}
+
 function addUserRoom(userId, roomId) {
-  if (!userId) return;
-  if (!activeRoomsByUser.has(userId)) activeRoomsByUser.set(userId, new Set());
-  activeRoomsByUser.get(userId).add(roomId);
+  let userRooms = activeRoomsByUser.get(userId);
+
+  if (!userRooms) {
+    userRooms = new Set();
+    activeRoomsByUser.set(userId, userRooms);
+  }
+
+  userRooms.add(roomId);
 }
 
 function removeUserRoom(userId, roomId) {
-  if (!userId) return;
-  const set = activeRoomsByUser.get(userId);
-  if (!set) return;
-  set.delete(roomId);
-  if (set.size === 0) activeRoomsByUser.delete(userId);
+  const userRooms = activeRoomsByUser.get(userId);
+  if (!userRooms) return;
+
+  userRooms.delete(roomId);
+
+  if (userRooms.size === 0) {
+    activeRoomsByUser.delete(userId);
+  }
+}
+
+function safeClose(ws, code, reason) {
+  if (
+    ws.readyState === WebSocket.OPEN ||
+    ws.readyState === WebSocket.CONNECTING
+  ) {
+    ws.close(code, reason);
+  }
 }
 
 function safeSend(ws, payload) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+
+  if (ws.bufferedAmount > MAX_WEBSOCKET_BUFFERED_BYTES) {
+    safeClose(ws, 1013, 'Connection is too slow');
+    return false;
+  }
+
+  try {
     ws.send(payload);
+    return true;
+  } catch (error) {
+    console.error('WebSocket send failed:', error);
+    safeClose(ws, 1011, 'Send failed');
+    return false;
   }
 }
 
-app.use(express.json());
-app.use(express.static('public'));
+function sendJson(ws, payload) {
+  safeSend(ws, JSON.stringify(payload));
+}
 
-// Render Health Check
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
+function getBearerToken(req) {
+  const authorization = req.headers.authorization;
 
-// Stripe Checkout Endpoint
-app.post(['/api/create-checkout-session', '/create-checkout-session'], async (req, res) => {
-  if (!stripe) {
-    return res.status(500).json({ error: 'Stripe API key not configured on server.' });
+  if (!authorization?.startsWith('Bearer ')) {
+    return null;
   }
-  try {
-    const { priceId, userId } = req.body;
-    if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
 
-    const oneTimePrices = [
-      process.env.EVENT_PASS_PRICE_ID,
-      process.env.PRO_EVENT_PASS_PRICE_ID
-    ].filter(Boolean);
+  return authorization.slice('Bearer '.length).trim() || null;
+}
 
-    const isOneTime = oneTimePrices.includes(priceId);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: isOneTime ? 'payment' : 'subscription',
-      client_reference_id: userId || null,
-      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
-      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
-    });
-
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error('Stripe Checkout Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// WebSocket Connection Handler
-wss.on('connection', async (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-  const role = urlParams.get('role') || 'viewer';
-  const token = urlParams.get('token');
-  const lang = urlParams.get('lang') || 'en-US';
-
-  const room = getOrCreateRoom(roomId);
-
-  if (role === 'presenter') {
-    let authenticatedUser = null;
-    let usageTimer = null;
-
-    // Validate token if provided, but continue gracefully in guest mode if missing/invalid
-    if (token && supabase) {
-      try {
-        const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (!error && user) {
-          authenticatedUser = user;
-
-          const { data: dbUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (dbUser) {
-            // Event Pass expiry check
-            if (dbUser.plan_tier === 'one_time') {
-              const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
-              if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) {
-                ws.close(4005, 'Event Pass has expired');
-                return;
-              }
-            }
-
-            // Quota check
-            const usedSeconds = dbUser.streaming_seconds_used || 0;
-            if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
-              ws.close(4006, 'Monthly streaming quota exhausted');
-              return;
-            }
-
-            // Concurrent stage check
-            const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
-            if (!userAlreadyOwnsThisRoom) {
-              const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
-              const allowedRooms = dbUser.allowed_rooms ?? 1;
-              if (currentRoomCount >= allowedRooms) {
-                ws.close(4004, 'Maximum concurrent stages limit reached');
-                return;
-              }
-            }
-          }
-        }
-      } catch (authErr) {
-        console.warn(`[room=${roomId}] Token check warning, continuing as guest:`, authErr.message);
-      }
-    }
-
-    const userId = authenticatedUser ? authenticatedUser.id : `guest-${Date.now()}`;
-
-    // Start tracking active streaming time for authenticated users
-    if (authenticatedUser && supabase) {
-      usageTimer = setInterval(async () => {
-        try {
-          // RPC call to increment user usage by 10 seconds atomically
-          const { data: dbUser, error } = await supabase.rpc('increment_user_usage', {
-            user_id_param: authenticatedUser.id,
-            seconds_param: 10
-          });
-
-          if (error) {
-            console.error('Error incrementing usage:', error);
-            return;
-          }
-
-          // Enforce limit if quota was reached during active stream
-          if (dbUser && dbUser.max_streaming_seconds != null && dbUser.streaming_seconds_used >= dbUser.max_streaming_seconds) {
-            ws.close(4006, 'Monthly streaming quota exhausted');
-            if (usageTimer) clearInterval(usageTimer);
-          }
-        } catch (err) {
-          console.error('Usage timer error:', err);
-        }
-      }, 10000); // Pulse every 10 seconds
-    }
-
-    // Replace existing active presenter in this room
-    const existingPresenter = room.presenterWs;
-    if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
-      if (room.presenterUserId && room.presenterUserId !== userId) {
-        ws.close(4009, 'This room already has an active presenter');
-        if (usageTimer) clearInterval(usageTimer);
-        return;
-      }
-      existingPresenter.close(4000, 'Replaced by your new session');
-    }
-
-    room.presenterWs = ws;
-    room.presenterUserId = userId;
-    if (authenticatedUser) addUserRoom(userId, roomId);
-
-    let deepgramLive = null;
-    let deepgramReady = false;
-    const audioQueue = [];
-
-    try {
-      // Stream details are auto-detected by Deepgram from the incoming WebM header
-      deepgramLive = deepgram.listen.live({
-        model: 'nova-2',
-        language: lang,
-        smart_format: true,
-        punctuate: true,
-        interim_results: true,
-      });
-
-      deepgramLive.on(LiveTranscriptionEvents.Open, () => {
-        deepgramReady = true;
-        console.log(`[room=${roomId}] Deepgram connection open and ready`);
-        while (audioQueue.length > 0) {
-          deepgramLive.send(audioQueue.shift());
-        }
-      });
-
-      deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
-        const transcript = data.channel?.alternatives?.[0]?.transcript;
-        if (transcript && transcript.trim() !== '') {
-          console.log(`[room=${roomId}] Transcript: "${transcript}"`);
-          const payload = JSON.stringify({
-            type: 'caption',
-            text: transcript,
-            isFinal: data.is_final
-          });
-          safeSend(ws, payload);
-          room.viewers.forEach((viewer) => safeSend(viewer, payload));
-        }
-      });
-
-      deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
-        console.error(`Deepgram Error [room=${roomId}]:`, err);
-        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
-      });
-
-      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
-        deepgramReady = false;
-        console.warn(`Deepgram connection closed [room=${roomId}]`);
-      });
-    } catch (err) {
-      console.error('Failed to initialize Deepgram:', err);
-      safeSend(ws, JSON.stringify({ type: 'error', message: 'Failed to start captioning session.' }));
-    }
-
-    ws.on('message', (message) => {
-      if (typeof message === 'string') return; // Ignore non-binary control messages
-      if (!deepgramLive) return;
-
-      if (deepgramReady && deepgramLive.getReadyState() === 1) {
-        deepgramLive.send(message);
-      } else {
-        audioQueue.push(message);
-      }
-    });
-
-    ws.on('close', () => {
-      if (usageTimer) clearInterval(usageTimer);
-
-      if (deepgramLive) {
-        try { deepgramLive.finish(); } catch (e) { /* already closed */ }
-      }
-
-      if (room.presenterWs === ws) {
-        room.presenterWs = null;
-        room.presenterUserId = null;
-        if (authenticatedUser) removeUserRoom(userId, roomId);
-        console.log(`[room=${roomId}] Presenter disconnected`);
-      }
-    });
-
-  } else {
-    // Viewer connection (OBS Overlay / Mobile View)
-    room.viewers.add(ws);
-    console.log(`[room=${roomId}] Viewer connected (${room.viewers.size} total)`);
-
-    ws.on('close', () => {
-      room.viewers.delete(ws);
-      console.log(`[room=${roomId}] Viewer disconnected (${room.viewers.size} left)`);
-    });
-  }
-});
-
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`AICaptions server listening on port ${PORT}`);
-});
+async function getAuthenticatedUser(token) {
