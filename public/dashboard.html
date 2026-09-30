@@ -1,731 +1,447 @@
-import 'dotenv/config';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Stage Captions SaaS</title>
 
-import express from 'express';
-import http from 'node:http';
-import { randomUUID } from 'node:crypto';
-import { WebSocket, WebSocketServer } from 'ws';
-import Stripe from 'stripe';
-import {
-  createClient as createDeepgramClient,
-  LiveTranscriptionEvents,
-} from '@deepgram/sdk';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- QRCode.js CDN for audience QR code generation -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
-const PORT = Number(process.env.PORT || 10000);
-const DEFAULT_ROOM_ID = 'main-stage';
-
-const MAX_WEBSOCKET_PAYLOAD_BYTES = 1024 * 1024;
-const MAX_AUDIO_QUEUE_BYTES = 2 * 1024 * 1024;
-const MAX_WEBSOCKET_BUFFERED_BYTES = 1024 * 1024;
-const USAGE_PULSE_MS = 10_000;
-const DEEPGRAM_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_VIEWERS_PER_ROOM = Number(process.env.MAX_VIEWERS_PER_ROOM || 500);
-
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({
-  server,
-  maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
-});
-
-app.use(express.json({ limit: '16kb' }));
-app.use(express.static('public'));
-
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
-
-const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-const deepgram = deepgramApiKey
-  ? createDeepgramClient(deepgramApiKey)
-  : null;
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// This key must stay on the server. Do not use it in browser code.
-const supabase = supabaseUrl && supabaseServiceRoleKey
-  ? createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    })
-  : null;
-
-const allowGuestPresenters =
-  process.env.ALLOW_GUEST_PRESENTERS === 'true';
-
-const oneTimePriceIds = new Set(
-  [
-    process.env.EVENT_PASS_PRICE_ID,
-    process.env.PRO_EVENT_PASS_PRICE_ID,
-    ...(process.env.ONE_TIME_PRICE_IDS || '').split(','),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean),
-);
-
-const allowedPriceIds = new Set(
-  [
-    ...oneTimePriceIds,
-    ...(process.env.ALLOWED_PRICE_IDS || '').split(','),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean),
-);
-
-// In-memory state is suitable only for a single server process.
-const rooms = new Map();
-const activeRoomsByUser = new Map();
-
-if (!deepgram) {
-  console.warn('DEEPGRAM_API_KEY is missing; presenter connections will be rejected.');
-}
-
-if (!supabase) {
-  console.warn(
-    'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing; authenticated features are unavailable.',
-  );
-}
-
-function getOrCreateRoom(roomId) {
-  let room = rooms.get(roomId);
-
-  if (!room) {
-    room = {
-      presenterWs: null,
-      presenterUserId: null,
-      viewers: new Set(),
-    };
-    rooms.set(roomId, room);
-  }
-
-  return room;
-}
-
-function deleteRoomIfEmpty(roomId, room) {
-  if (
-    room.presenterWs === null &&
-    room.viewers.size === 0 &&
-    rooms.get(roomId) === room
-  ) {
-    rooms.delete(roomId);
-  }
-}
-
-function addUserRoom(userId, roomId) {
-  let userRooms = activeRoomsByUser.get(userId);
-
-  if (!userRooms) {
-    userRooms = new Set();
-    activeRoomsByUser.set(userId, userRooms);
-  }
-
-  userRooms.add(roomId);
-}
-
-function removeUserRoom(userId, roomId) {
-  const userRooms = activeRoomsByUser.get(userId);
-  if (!userRooms) return;
-
-  userRooms.delete(roomId);
-
-  if (userRooms.size === 0) {
-    activeRoomsByUser.delete(userId);
-  }
-}
-
-function safeClose(ws, code, reason) {
-  if (
-    ws.readyState === WebSocket.OPEN ||
-    ws.readyState === WebSocket.CONNECTING
-  ) {
-    ws.close(code, reason);
-  }
-}
-
-function safeSend(ws, payload) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-
-  if (ws.bufferedAmount > MAX_WEBSOCKET_BUFFERED_BYTES) {
-    safeClose(ws, 1013, 'Connection is too slow');
-    return false;
-  }
-
-  try {
-    ws.send(payload);
-    return true;
-  } catch (error) {
-    console.error('WebSocket send failed:', error);
-    safeClose(ws, 1011, 'Send failed');
-    return false;
-  }
-}
-
-function sendJson(ws, payload) {
-  safeSend(ws, JSON.stringify(payload));
-}
-
-function getBearerToken(req) {
-  const authorization = req.headers.authorization;
-
-  if (!authorization?.startsWith('Bearer ')) {
-    return null;
-  }
-
-  return authorization.slice('Bearer '.length).trim() || null;
-}
-
-async function getAuthenticatedUser(token) {
-  if (!supabase || !token) return null;
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data?.user) return null;
-  return data.user;
-}
-
-async function getUserProfile(userId) {
-  const { data, error } = await supabase
-    .from('users')
-    .select(
-      'id, plan_tier, event_pass_expires_at, streaming_seconds_used, max_streaming_seconds, allowed_rooms',
-    )
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Could not load user profile: ${error.message}`);
-  }
-
-  return data;
-}
-
-function checkPresenterEntitlements(profile) {
-  if (!profile) {
-    return { allowed: false, code: 4003, reason: 'User profile not found' };
-  }
-
-  if (profile.plan_tier === 'one_time') {
-    const expiresAt = profile.event_pass_expires_at
-      ? Date.parse(profile.event_pass_expires_at)
-      : NaN;
-
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      return { allowed: false, code: 4005, reason: 'Event Pass has expired' };
-    }
-  }
-
-  const usedSeconds = Number(profile.streaming_seconds_used || 0);
-  const maxSeconds = profile.max_streaming_seconds;
-
-  if (maxSeconds != null && usedSeconds >= Number(maxSeconds)) {
-    return {
-      allowed: false,
-      code: 4006,
-      reason: 'Monthly streaming quota exhausted',
-    };
-  }
-
-  return { allowed: true };
-}
-
-async function authenticateHttpRequest(req, res) {
-  const token = getBearerToken(req);
-
-  if (!token || !supabase) {
-    res.status(401).json({ error: 'Authentication required.' });
-    return null;
-  }
-
-  const user = await getAuthenticatedUser(token);
-
-  if (!user) {
-    res.status(401).json({ error: 'Invalid or expired access token.' });
-    return null;
-  }
-
-  return user;
-}
-
-app.get('/health', (_req, res) => {
-  res.status(200).send('OK');
-});
-
-app.post(
-  ['/api/create-checkout-session', '/create-checkout-session'],
-  async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({ error: 'Checkout is unavailable.' });
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      padding-bottom: 60px;
     }
 
-    if (!process.env.CLIENT_URL) {
-      console.error('CLIENT_URL is required for Stripe Checkout.');
-      return res.status(503).json({ error: 'Checkout is unavailable.' });
+    /* Top Navigation Header */
+    header {
+      background-color: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
-    if (!allowedPriceIds.size) {
-      console.error('Configure ALLOWED_PRICE_IDS or one-time price IDs.');
-      return res.status(503).json({ error: 'Checkout is unavailable.' });
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #3b82f6;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    try {
-      const user = await authenticateHttpRequest(req, res);
-      if (!user) return;
+    .user-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
 
-      const priceId =
-        typeof req.body?.priceId === 'string' ? req.body.priceId : '';
+    .user-email {
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
 
-      if (!allowedPriceIds.has(priceId)) {
-        return res.status(400).json({ error: 'Invalid priceId.' });
+    .btn-secondary {
+      background-color: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-secondary:hover { background-color: #475569; }
+
+    /* Main Container */
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    /* Subscription Status Banner */
+    .status-card {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-info h2 { font-size: 1.2rem; margin-bottom: 4px; }
+    .status-info p { color: #94a3b8; font-size: 0.9rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-left: 8px;
+    }
+
+    .badge-active { background-color: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
+
+    .btn-primary {
+      background-color: #3b82f6;
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover { background-color: #2563eb; }
+
+    /* Events Section */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
+
+    .event-card {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .event-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
+    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
+
+    .links-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .link-box {
+      background-color: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    .link-box label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .link-action {
+      display: flex;
+      gap: 8px;
+    }
+
+    .link-action input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #cbd5e1;
+      font-size: 0.85rem;
+      outline: none;
+      font-family: monospace;
+    }
+
+    .btn-copy {
+      background-color: #334155;
+      color: #3b82f6;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-copy:hover { background-color: #475569; color: #ffffff; }
+
+    /* Modal for Event Creation */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0, 0, 0, 0.75);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal-card {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .modal-card h3 { margin-bottom: 16px; }
+
+    .modal-card input {
+      width: 100%;
+      padding: 10px 14px;
+      background-color: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      outline: none;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* QR Code Canvas Container */
+    .qr-container {
+      margin-top: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">🎙️ Stage Captions</div>
+    <div class="user-controls">
+      <span class="user-email" id="userEmail">Loading...</span>
+      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="container">
+    
+    <!-- Subscription Status Card -->
+    <div class="status-card">
+      <div class="status-info">
+        <h2>Subscription Status <span class="badge badge-active">Active Pro Plan</span></h2>
+        <p>Your subscription includes unlimited real-time rooms and OBS streaming.</p>
+      </div>
+      <button class="btn-secondary" onclick="window.location.href='/pricing.html'">Manage Plan</button>
+    </div>
+
+    <!-- Events Management Header -->
+    <div class="section-header">
+      <h3>Active Event Rooms</h3>
+      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
+    </div>
+
+    <!-- Events List Container -->
+    <div id="eventsContainer">
+      <!-- Event cards will be dynamically injected here -->
+    </div>
+
+  </div>
+
+  <!-- Create Event Modal -->
+  <div class="modal-overlay" id="eventModal">
+    <div class="modal-card">
+      <h3>Create Event Room</h3>
+      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
+      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
+        <button class="btn-primary" id="createEventBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const userEmailSpan = document.getElementById('userEmail');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const eventsContainer = document.getElementById('eventsContainer');
+    
+    const eventModal = document.getElementById('eventModal');
+    const openModalBtn = document.getElementById('openModalBtn');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const createEventBtn = document.getElementById('createEventBtn');
+    const eventNameInput = document.getElementById('eventNameInput');
+
+    let currentUser = null;
+
+    // 2. Auth Session Protection
+    async function checkUserSession() {
+      const { data: { session }, error } = await supabaseClient.auth.getSession();
+      
+      if (error || !session) {
+        window.location.href = '/auth.html';
+        return;
       }
 
-      const clientUrl = new URL(process.env.CLIENT_URL);
-      const successUrl = new URL('/dashboard.html?success=true', clientUrl);
-      const cancelUrl = new URL('/pricing.html?canceled=true', clientUrl);
-
-      const session = await stripe.checkout.sessions.create({
-        line_items: [{ price: priceId, quantity: 1 }],
-        mode: oneTimePriceIds.has(priceId) ? 'payment' : 'subscription',
-        client_reference_id: user.id,
-        success_url: successUrl.toString(),
-        cancel_url: cancelUrl.toString(),
-      });
-
-      return res.json({ url: session.url });
-    } catch (error) {
-      console.error('Stripe Checkout Error:', error);
-      return res.status(500).json({ error: 'Could not create checkout session.' });
-    }
-  },
-);
-
-function parseRoomRequest(req) {
-  const url = new URL(req.url || '/', 'http://localhost');
-  const roomId =
-    url.searchParams.get('room') ||
-    url.searchParams.get('roomId') ||
-    DEFAULT_ROOM_ID;
-  const role = url.searchParams.get('role') || 'viewer';
-  const token = url.searchParams.get('token');
-  const lang = url.searchParams.get('lang') || 'en-US';
-
-  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(roomId)) {
-    throw new Error('Invalid room');
-  }
-
-  if (!['presenter', 'viewer'].includes(role)) {
-    throw new Error('Invalid role');
-  }
-
-  if (!/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8}){0,3}$/.test(lang)) {
-    throw new Error('Invalid language');
-  }
-
-  return { roomId, role, token, lang };
-}
-
-function toBuffer(data) {
-  if (Buffer.isBuffer(data)) return data;
-  if (Array.isArray(data)) return Buffer.concat(data);
-  return Buffer.from(data);
-}
-
-function getUsageRow(data) {
-  if (Array.isArray(data)) return data[0] || null;
-  return data && typeof data === 'object' ? data : null;
-}
-
-async function incrementUsage(userId, seconds) {
-  const { data, error } = await supabase.rpc('increment_user_usage', {
-    user_id_param: userId,
-    seconds_param: seconds,
-  });
-
-  if (error) {
-    throw new Error(`Could not increment streaming usage: ${error.message}`);
-  }
-
-  let row = getUsageRow(data);
-
-  // The RPC should ideally return the updated row. This fallback supports RPCs
-  // that return no row, while failing closed if the follow-up read fails.
-  if (
-    !row ||
-    row.streaming_seconds_used == null ||
-    row.max_streaming_seconds === undefined
-  ) {
-    row = await getUserProfile(userId);
-  }
-
-  if (!row) {
-    throw new Error('Could not read updated streaming usage.');
-  }
-
-  return row;
-}
-
-function startUsageTracking(ws, userId) {
-  let stopped = false;
-  let timer = null;
-  let inFlight = null;
-  let lastChargedAt = Date.now();
-
-  async function flush() {
-    if (inFlight) {
-      await inFlight;
-      return;
+      currentUser = session.user;
+      userEmailSpan.innerText = currentUser.email;
+      loadUserEvents();
     }
 
-    const now = Date.now();
-    const seconds = Math.floor((now - lastChargedAt) / 1000);
+    // Sign Out Handler
+    logoutBtn.addEventListener('click', async () => {
+      await supabaseClient.auth.signOut();
+      window.location.href = '/auth.html';
+    });
 
-    if (seconds < 1) return;
+    // 3. Modal Controls
+    openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
+    closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
-    inFlight = (async () => {
-      const profile = await incrementUsage(userId, seconds);
+    // 4. Room Generator Logic (Uses Supabase or local state fallback)
+    createEventBtn.addEventListener('click', async () => {
+      const name = eventNameInput.value.trim();
+      if (!name) return;
 
-      // Advance only after the database call succeeds; retain any fractional second.
-      lastChargedAt += seconds * 1000;
+      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+      
+      const newRoom = {
+        id: roomId,
+        name: name,
+        created_at: new Date().toISOString()
+      };
 
-      const usedSeconds = Number(profile.streaming_seconds_used || 0);
-      const maxSeconds = profile.max_streaming_seconds;
+      // Store in local storage for instant client-side persistence
+      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      localRooms.unshift(newRoom);
+      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
 
-      if (maxSeconds != null && usedSeconds >= Number(maxSeconds)) {
-        safeClose(ws, 4006, 'Monthly streaming quota exhausted');
-      }
-    })();
-
-    try {
-      await inFlight;
-    } catch (error) {
-      console.error('Usage tracking failed:', error);
-      safeClose(ws, 1011, 'Could not track streaming usage');
-    } finally {
-      inFlight = null;
-    }
-  }
-
-  async function scheduleNextPulse() {
-    if (stopped) return;
-
-    timer = setTimeout(async () => {
-      await flush();
-      await scheduleNextPulse();
-    }, USAGE_PULSE_MS);
-  }
-
-  void scheduleNextPulse();
-
-  return async function stopUsageTracking() {
-    stopped = true;
-    clearTimeout(timer);
-    await flush();
-  };
-}
-
-async function handleViewer(ws, roomId) {
-  const room = getOrCreateRoom(roomId);
-
-  if (room.viewers.size >= MAX_VIEWERS_PER_ROOM) {
-    safeClose(ws, 1013, 'Room is full');
-    return;
-  }
-
-  room.viewers.add(ws);
-  console.log(`[room=${roomId}] Viewer connected (${room.viewers.size})`);
-
-  ws.once('close', () => {
-    room.viewers.delete(ws);
-    console.log(`[room=${roomId}] Viewer disconnected (${room.viewers.size})`);
-    deleteRoomIfEmpty(roomId, room);
-  });
-}
-
-async function handlePresenter(ws, { roomId, token, lang }) {
-  if (!deepgram) {
-    safeClose(ws, 1011, 'Captioning is unavailable');
-    return;
-  }
-
-  let authenticatedUser = null;
-  let profile = null;
-
-  if (token) {
-    authenticatedUser = await getAuthenticatedUser(token);
-
-    // A bad token must never silently become a guest session.
-    if (!authenticatedUser) {
-      safeClose(ws, 4001, 'Invalid or expired access token');
-      return;
-    }
-
-    try {
-      profile = await getUserProfile(authenticatedUser.id);
-    } catch (error) {
-      console.error('Presenter profile lookup failed:', error);
-      safeClose(ws, 1011, 'Could not verify account');
-      return;
-    }
-
-    const entitlement = checkPresenterEntitlements(profile);
-
-    if (!entitlement.allowed) {
-      safeClose(ws, entitlement.code, entitlement.reason);
-      return;
-    }
-  } else if (!allowGuestPresenters) {
-    safeClose(ws, 4001, 'Presenter authentication required');
-    return;
-  }
-
-  const userId = authenticatedUser?.id || `guest-${randomUUID()}`;
-  const room = getOrCreateRoom(roomId);
-
-  const existingPresenter = room.presenterWs;
-
-  if (
-    existingPresenter &&
-    existingPresenter.readyState !== WebSocket.CLOSED &&
-    room.presenterUserId !== userId
-  ) {
-    safeClose(ws, 4009, 'This room already has an active presenter');
-    return;
-  }
-
-  if (existingPresenter && existingPresenter !== ws) {
-    safeClose(existingPresenter, 4000, 'Replaced by your new session');
-  }
-
-  const currentRooms = activeRoomsByUser.get(userId);
-  const alreadyOwnsRoom = currentRooms?.has(roomId) || false;
-  const allowedRooms = Number(profile?.allowed_rooms ?? 1);
-  const currentRoomCount = currentRooms?.size || 0;
-
-  if (
-    authenticatedUser &&
-    !alreadyOwnsRoom &&
-    currentRoomCount >= allowedRooms
-  ) {
-    safeClose(ws, 4004, 'Maximum concurrent stages limit reached');
-    return;
-  }
-
-  room.presenterWs = ws;
-  room.presenterUserId = userId;
-
-  if (authenticatedUser) {
-    addUserRoom(userId, roomId);
-  }
-
-  let deepgramLive = null;
-  let deepgramReady = false;
-  let deepgramClosing = false;
-  let queuedAudioBytes = 0;
-  const audioQueue = [];
-
-  let stopUsageTracking = null;
-  let deepgramTimeout = null;
-  let cleanedUp = false;
-
-  function cleanup() {
-    if (cleanedUp) return;
-    cleanedUp = true;
-
-    clearTimeout(deepgramTimeout);
-
-    if (stopUsageTracking) {
-      void stopUsageTracking();
-    }
-
-    deepgramClosing = true;
-
-    if (deepgramLive) {
+      // Attempt Supabase insert if rooms table is configured
       try {
-        deepgramLive.finish();
-      } catch {
-        // The Deepgram connection may already be closed.
-      }
-    }
-
-    if (room.presenterWs === ws) {
-      room.presenterWs = null;
-      room.presenterUserId = null;
-
-      if (authenticatedUser) {
-        removeUserRoom(userId, roomId);
+        await supabaseClient.from('rooms').insert([
+          { room_id: roomId, name: name, user_id: currentUser.id }
+        ]);
+      } catch(e) {
+        console.log("Supabase table query skipped, using local session state.");
       }
 
-      console.log(`[room=${roomId}] Presenter disconnected`);
-    }
-
-    deleteRoomIfEmpty(roomId, room);
-  }
-
-  ws.once('close', cleanup);
-  ws.once('error', (error) => {
-    console.error(`[room=${roomId}] Presenter WebSocket error:`, error);
-    cleanup();
-  });
-
-  try {
-    deepgramLive = deepgram.listen.live({
-      model: 'nova-2',
-      language: lang,
-      smart_format: true,
-      punctuate: true,
-      interim_results: true,
+      eventNameInput.value = '';
+      eventModal.style.display = 'none';
+      loadUserEvents();
     });
 
-    deepgramTimeout = setTimeout(() => {
-      safeClose(ws, 1011, 'Captioning service did not become ready');
-    }, DEEPGRAM_CONNECT_TIMEOUT_MS);
+    // 5. Render Events to UI
+    function loadUserEvents() {
+      const origin = window.location.origin;
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
 
-    deepgramLive.on(LiveTranscriptionEvents.Open, () => {
-      clearTimeout(deepgramTimeout);
-      deepgramReady = true;
-      console.log(`[room=${roomId}] Deepgram connection ready`);
-
-      while (audioQueue.length > 0 && deepgramReady) {
-        const audio = audioQueue.shift();
-        queuedAudioBytes -= audio.length;
-
-        try {
-          deepgramLive.send(audio);
-        } catch (error) {
-          console.error(`[room=${roomId}] Audio forwarding failed:`, error);
-          safeClose(ws, 1011, 'Could not forward audio');
-          break;
-        }
+      // Default demo room if none exist yet
+      if (rooms.length === 0) {
+        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions', created_at: new Date().toISOString() }];
+        localStorage.setItem('user_rooms', JSON.stringify(rooms));
       }
-    });
 
-    deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
-      const text = data.channel?.alternatives?.[0]?.transcript?.trim();
+      eventsContainer.innerHTML = '';
 
-      if (!text) return;
+      rooms.forEach((room) => {
+        const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
+        const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
+        const audienceUrl = `${origin}/index.html?room=${room.id}`;
 
-      const payload = JSON.stringify({
-        type: 'caption',
-        text,
-        isFinal: Boolean(data.is_final),
+        const card = document.createElement('div');
+        card.className = 'event-card';
+        card.innerHTML = `
+          <div class="event-card-header">
+            <div>
+              <div class="event-title">${room.name}</div>
+              <div class="event-id">Room ID: ${room.id}</div>
+            </div>
+            <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
+          </div>
+
+          <div class="links-grid">
+            <!-- Presenter Panel Link -->
+            <div class="link-box">
+              <label>Presenter Microphones Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
+                <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
+              </div>
+            </div>
+
+            <!-- OBS Overlay Link -->
+            <div class="link-box">
+              <label>OBS Transparent Overlay Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
+                <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
+              </div>
+            </div>
+
+            <!-- Mobile Audience View Link -->
+            <div class="link-box">
+              <label>Mobile Audience View Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
+                <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        eventsContainer.appendChild(card);
       });
-
-      safeSend(ws, payload);
-
-      for (const viewer of room.viewers) {
-        if (!safeSend(viewer, payload)) {
-          room.viewers.delete(viewer);
-        }
-      }
-
-      deleteRoomIfEmpty(roomId, room);
-    });
-
-    deepgramLive.on(LiveTranscriptionEvents.Error, (error) => {
-      console.error(`[room=${roomId}] Deepgram error:`, error);
-      sendJson(ws, {
-        type: 'error',
-        message: 'Speech-to-text error occurred.',
-      });
-    });
-
-    deepgramLive.on(LiveTranscriptionEvents.Close, () => {
-      deepgramReady = false;
-
-      if (!deepgramClosing && ws.readyState === WebSocket.OPEN) {
-        console.warn(`[room=${roomId}] Deepgram closed unexpectedly`);
-        safeClose(ws, 1011, 'Captioning connection closed');
-      }
-    });
-  } catch (error) {
-    console.error(`[room=${roomId}] Could not start Deepgram:`, error);
-    safeClose(ws, 1011, 'Could not start captioning');
-    cleanup();
-    return;
-  }
-
-  if (authenticatedUser) {
-    stopUsageTracking = startUsageTracking(ws, authenticatedUser.id);
-  }
-
-  ws.on('message', (data, isBinary) => {
-    if (!isBinary || !deepgramLive) return;
-
-    let audio;
-
-    try {
-      audio = toBuffer(data);
-    } catch {
-      safeClose(ws, 1003, 'Invalid audio frame');
-      return;
     }
 
-    if (deepgramReady && deepgramLive.getReadyState() === 1) {
-      try {
-        deepgramLive.send(audio);
-      } catch (error) {
-        console.error(`[room=${roomId}] Audio forwarding failed:`, error);
-        safeClose(ws, 1011, 'Could not forward audio');
-      }
-
-      return;
+    // Helper: Copy to Clipboard
+    function copyLink(inputId) {
+      const input = document.getElementById(inputId);
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      alert("Link copied to clipboard!");
     }
 
-    if (queuedAudioBytes + audio.length > MAX_AUDIO_QUEUE_BYTES) {
-      safeClose(ws, 1013, 'Captioning service is overloaded');
-      return;
+    // Helper: Delete Room
+    function deleteRoom(roomId) {
+      let rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      rooms = rooms.filter(r => r.id !== roomId);
+      localStorage.setItem('user_rooms', JSON.stringify(rooms));
+      loadUserEvents();
     }
 
-    audioQueue.push(audio);
-    queuedAudioBytes += audio.length;
-  });
-}
-
-wss.on('connection', (ws, req) => {
-  ws.once('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
-
-  let request;
-
-  try {
-    request = parseRoomRequest(req);
-  } catch {
-    safeClose(ws, 1008, 'Invalid room request');
-    return;
-  }
-
-  if (request.role === 'presenter') {
-    void handlePresenter(ws, request).catch((error) => {
-      console.error('Presenter setup failed:', error);
-      safeClose(ws, 1011, 'Could not start presenter session');
-    });
-    return;
-  }
-
-  void handleViewer(ws, request.roomId);
-});
-
-server.listen(PORT, () => {
-  console.log(`AICaptions server listening on port ${PORT}`);
-});
-
-function shutdown(signal) {
-  console.log(`${signal} received; shutting down`);
-
-  for (const client of wss.clients) {
-    safeClose(client, 1001, 'Server shutting down');
-  }
-
-  server.close(() => {
-    process.exit(0);
-  });
-
-  setTimeout(() => process.exit(1), 10_000).unref();
-}
-
-process.once('SIGINT', () => shutdown('SIGINT'));
-process.once('SIGTERM', () => shutdown('SIGTERM'));
+    // Initialize Page
+    checkUserSession();
+  </script>
+</body>
+</html>
