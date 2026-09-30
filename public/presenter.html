@@ -103,6 +103,12 @@
     let pendingSeconds = 0;
     const UPDATE_INTERVAL_SECONDS = 5;
 
+    // Realtime Broadcast & Stream Limit Variables
+    let realtimeChannel = null;
+    let tickInterval = null;
+    let localElapsedCounter = 0;
+    let maxLimit = 3600; // Default maximum allowed stream time (seconds)
+
     // Authenticate Presenter Session
     async function initPresenterAuth() {
       try {
@@ -281,9 +287,13 @@
       });
     }
 
-    // Read room & token from URL parameters or storage
+    // Read room, token & maxLimit from URL parameters or storage
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+      maxLimit = parsedMaxLimit;
+    }
     
     // Attempt to locate Supabase session token if present
     const urlToken = urlParams.get('token');
@@ -358,6 +368,37 @@
           if (currentUser) {
             startUsageTracking(currentUser.id, room);
           }
+
+          // Broadcast room presence/tick over Supabase Realtime Channel
+          localElapsedCounter = 0;
+          realtimeChannel = supabaseClient.channel(`room_${room}`, {
+            config: { broadcast: { self: true } }
+          });
+
+          // Listen for broadcasted ticks
+          realtimeChannel.on('broadcast', { event: 'timer_tick' }, (response) => {
+            localElapsedCounter += (response.payload?.elapsed || 1);
+            if (localElapsedCounter >= maxLimit) {
+              status.innerText = "Status: Reached Maximum Streaming Limit";
+              status.style.color = "#ef4444";
+              cleanup();
+            }
+          });
+
+          realtimeChannel.subscribe((statusState) => {
+            if (statusState === 'SUBSCRIBED') {
+              // Send a tick event over WebSockets every second
+              tickInterval = setInterval(() => {
+                if (realtimeChannel) {
+                  realtimeChannel.send({
+                    type: 'broadcast',
+                    event: 'timer_tick',
+                    payload: { elapsed: 1 }
+                  });
+                }
+              }, 1000);
+            }
+          });
         };
 
         ws.onerror = (err) => {
@@ -389,6 +430,16 @@
       // Stop usage tracking timer
       stopUsageTracking();
 
+      // Clear realtime tick interval & unsubscribe channel
+      if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+      }
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
@@ -404,7 +455,7 @@
 
     // Stop tracking timer if browser tab closes or navigates away
     window.addEventListener('beforeunload', () => {
-      stopUsageTracking();
+      cleanup();
     });
   </script>
 </body>
