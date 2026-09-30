@@ -376,7 +376,7 @@
         const { data: profile, error } = await supabaseClient
           .from('users')
           .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
-          .eq('id', currentUser.id)
+          .eq('user_id', currentUser.id) // ✅ Matches 'user_id' column in database
           .single();
 
         if (error) throw error;
