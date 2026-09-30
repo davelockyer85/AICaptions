@@ -319,295 +319,292 @@
     </div>
   </div>
 
-  <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+ <script>
+  // 1. Supabase Initialization
+  const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // UI Elements
-    const userEmailSpan = document.getElementById('userEmail');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const eventsContainer = document.getElementById('eventsContainer');
+  // UI Elements
+  const userEmailSpan = document.getElementById('userEmail');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const eventsContainer = document.getElementById('eventsContainer');
+  
+  const eventModal = document.getElementById('eventModal');
+  const openModalBtn = document.getElementById('openModalBtn');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  const createEventBtn = document.getElementById('createEventBtn');
+  const eventNameInput = document.getElementById('eventNameInput');
+
+  // Status Bar UI Elements
+  const statusPlan = document.getElementById('statusPlan');
+  const statusMins = document.getElementById('statusMins');
+  const minsProgress = document.getElementById('minsProgress');
+  const statusRooms = document.getElementById('statusRooms');
+  const roomsProgress = document.getElementById('roomsProgress');
+
+  let currentUser = null;
+  let realtimeChannel = null;
+  let cachedProfile = null;
+  let currentRoomCount = 0;
+
+  // 2. Auth Session Protection & App Init
+  async function checkUserSession() {
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
     
-    const eventModal = document.getElementById('eventModal');
-    const openModalBtn = document.getElementById('openModalBtn');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const createEventBtn = document.getElementById('createEventBtn');
-    const eventNameInput = document.getElementById('eventNameInput');
-
-    // Status Bar Elements
-    const statusPlan = document.getElementById('statusPlan');
-    const statusMins = document.getElementById('statusMins');
-    const minsProgress = document.getElementById('minsProgress');
-    const statusRooms = document.getElementById('statusRooms');
-    const roomsProgress = document.getElementById('roomsProgress');
-
-    let currentUser = null;
-    let realtimeChannel = null;
-    let cachedProfile = null;
-    let currentRoomCount = 0;
-
-    // 2. Auth Session Protection & App Init
-    async function checkUserSession() {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      
-      if (error || !session) {
-        window.location.href = '/auth.html';
-        return;
-      }
-
-      currentUser = session.user;
-      if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
-
-      // Load profile details and active rooms
-      await loadUserProfile();
-      await loadUserEvents();
-
-      // Subscribe to live usage updates
-      subscribeToLiveUserUpdates();
-    }
-
-    // 3. Load Subscription & Account Details from Supabase
-    async function loadUserProfile() {
-      if (!currentUser) return;
-
-      try {
-        const { data: profile, error } = await supabaseClient
-          .from('users')
-          .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
-          .eq('id', currentUser.id)
-          .single();
-
-        if (error) throw error;
-
-        if (profile) {
-          cachedProfile = profile;
-          renderSubscriptionUI();
-        }
-      } catch (err) {
-        console.warn("Could not load user profile from Supabase:", err.message);
-      }
-    }
-
-    // Render Status Bar metrics and progress bars
-    function renderSubscriptionUI(updatedProfile) {
-      if (updatedProfile) cachedProfile = updatedProfile;
-      if (!cachedProfile) return;
-
-      const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
-      const usedSecs = cachedProfile.streaming_seconds_used || 0;
-      const maxSecs = cachedProfile.max_streaming_seconds;
-      const allowedRooms = cachedProfile.allowed_rooms || 1;
-
-      // Plan Name
-      if (statusPlan) statusPlan.innerText = planTier;
-
-      // Remaining Minutes & Fill Bar
-      if (maxSecs == null) {
-        if (statusMins) statusMins.innerText = 'Unlimited';
-        if (minsProgress) minsProgress.style.width = '100%';
-      } else {
-        const remainingSecs = Math.max(0, maxSecs - usedSecs);
-        const remainingMins = Math.floor(remainingSecs / 60);
-        const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
-
-        if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
-        if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
-      }
-
-      // Room Allocation & Fill Bar
-      if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
-      if (roomsProgress) {
-        const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
-        roomsProgress.style.width = `${roomPercent}%`;
-      }
-    }
-
-    // 4. Realtime Subscription with Reconnection Error Handling
-    function subscribeToLiveUserUpdates() {
-      if (!currentUser) return;
-
-      realtimeChannel = supabaseClient
-        .channel(`user_status_${currentUser.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'users',
-            filter: `id=eq.${currentUser.id}`
-          },
-          (payload) => {
-            if (payload.new) {
-              renderSubscriptionUI(payload.new);
-            }
-          }
-        )
-        .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn('Realtime sync connection issue, retrying...', err);
-            // Non-blocking auto reconnect attempt
-            setTimeout(() => {
-              if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-              subscribeToLiveUserUpdates();
-            }, 5000);
-          }
-        });
-    }
-
-    // Sign Out Handler
-    logoutBtn.addEventListener('click', async () => {
-      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-      await supabaseClient.auth.signOut();
+    if (error || !session) {
       window.location.href = '/auth.html';
-    });
+      return;
+    }
 
-    // Modal Controls
-    openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
-    closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+    currentUser = session.user;
+    if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
 
-    // 5. Create Room Handler (Includes explicit NOT NULL defaults)
-    createEventBtn.addEventListener('click', async () => {
-      const name = eventNameInput.value.trim();
-      if (!name) return;
+    // Load account details and rooms
+    await loadUserProfile();
+    await loadUserEvents();
 
-      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+    // Subscribe to live usage updates
+    subscribeToLiveUserUpdates();
+  }
 
-      try {
-        const { error } = await supabaseClient.from('rooms').insert([
-          { 
-            room_id: roomId, 
-            name: name, 
-            user_id: currentUser.id,
-            streaming_seconds_used: 0 
+  // 3. Load Subscription & Account Details from Supabase
+  async function loadUserProfile() {
+    if (!currentUser) return;
+
+    try {
+      const { data: profile, error } = await supabaseClient
+        .from('users')
+        .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
+        .eq('user_id', currentUser.id) // Fixes "column users.id does not exist"
+        .single();
+
+      if (error) throw error;
+
+      if (profile) {
+        cachedProfile = profile;
+        renderSubscriptionUI();
+      }
+    } catch (err) {
+      console.warn("Could not load user profile from Supabase:", err.message);
+    }
+  }
+
+  // Render Status Bar metrics and progress bars
+  function renderSubscriptionUI(updatedProfile) {
+    if (updatedProfile) cachedProfile = updatedProfile;
+    if (!cachedProfile) return;
+
+    const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
+    const usedSecs = cachedProfile.streaming_seconds_used || 0;
+    const maxSecs = cachedProfile.max_streaming_seconds;
+    const allowedRooms = cachedProfile.allowed_rooms || 1;
+
+    // Update Plan Name UI
+    if (statusPlan) statusPlan.innerText = planTier;
+
+    // Update Remaining Minutes & Fill Bar UI
+    if (maxSecs == null) {
+      if (statusMins) statusMins.innerText = 'Unlimited';
+      if (minsProgress) minsProgress.style.width = '100%';
+    } else {
+      const remainingSecs = Math.max(0, maxSecs - usedSecs);
+      const remainingMins = Math.floor(remainingSecs / 60);
+      const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
+
+      if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
+      if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
+    }
+
+    // Update Room Allocation & Fill Bar UI
+    if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
+    if (roomsProgress) {
+      const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
+      roomsProgress.style.width = `${roomPercent}%`;
+    }
+  }
+
+  // 4. Realtime Subscription for Live Usage Syncing
+  function subscribeToLiveUserUpdates() {
+    if (!currentUser) return;
+
+    if (realtimeChannel) {
+      supabaseClient.removeChannel(realtimeChannel);
+    }
+
+    realtimeChannel = supabaseClient
+      .channel(`user_status_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          if (payload.new) {
+            renderSubscriptionUI(payload.new);
           }
-        ]);
-
-        if (error) throw error;
-
-      } catch (e) {
-        console.warn("Supabase room insert failed, falling back to local storage:", e.message);
-        
-        let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-        localRooms.unshift({ id: roomId, name: name, created_at: new Date().toISOString() });
-        localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-      }
-
-      eventNameInput.value = '';
-      eventModal.style.display = 'none';
-      await loadUserEvents();
-    });
-
-    // 6. Fetch & Render Rooms (Supabase primary, LocalStorage fallback)
-    async function loadUserEvents() {
-      const origin = window.location.origin;
-      let rooms = [];
-
-      try {
-        const { data: dbRooms, error } = await supabaseClient
-          .from('rooms')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-
-        if (!error && dbRooms && dbRooms.length > 0) {
-          rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
         }
-      } catch (err) {
-        console.warn("Using local room state fallback:", err.message);
-      }
-
-      if (rooms.length === 0) {
-        rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      }
-
-      if (rooms.length === 0) {
-        rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
-        localStorage.setItem('user_rooms', JSON.stringify(rooms));
-      }
-
-      // Keep active room count updated in status bar
-      currentRoomCount = rooms.length;
-      renderSubscriptionUI();
-
-      eventsContainer.innerHTML = '';
-
-      rooms.forEach((room) => {
-        const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-        const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-        const audienceUrl = `${origin}/index.html?room=${room.id}`;
-
-        const card = document.createElement('div');
-        card.className = 'event-card';
-        card.innerHTML = `
-          <div class="event-card-header">
-            <div>
-              <div class="event-title">${room.name}</div>
-              <div class="event-id">Room ID: ${room.id}</div>
-            </div>
-            <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
-          </div>
-
-          <div class="links-grid">
-            <div class="link-box">
-              <label>Presenter Microphones Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-                <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
-              </div>
-            </div>
-
-            <div class="link-box">
-              <label>OBS Transparent Overlay Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-                <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
-              </div>
-            </div>
-
-            <div class="link-box">
-              <label>Mobile Audience View Link</label>
-              <div class="link-action">
-                <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-                <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
-              </div>
-            </div>
-          </div>
-        `;
-
-        eventsContainer.appendChild(card);
+      )
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime subscription issue, attempting reconnect...', err);
+        }
       });
-    }
+  }
 
-    // Copy Link Helper
-    function copyLink(inputId) {
-      const input = document.getElementById(inputId);
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      alert("Link copied to clipboard!");
-    }
+  // Sign Out Handler
+  logoutBtn.addEventListener('click', async () => {
+    if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+    await supabaseClient.auth.signOut();
+    window.location.href = '/auth.html';
+  });
 
-    // Delete Room Helper
-    async function deleteRoom(roomId) {
-      try {
-        await supabaseClient
-          .from('rooms')
-          .delete()
-          .eq('room_id', roomId)
-          .eq('user_id', currentUser.id);
-      } catch (e) {
-        console.warn("Could not delete room from Supabase:", e.message);
-      }
+  // Modal Controls
+  openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
+  closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
+  // 5. Create Room Handler
+  createEventBtn.addEventListener('click', async () => {
+    const name = eventNameInput.value.trim();
+    if (!name) return;
+
+    const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+
+    try {
+      const { error } = await supabaseClient.from('rooms').insert([
+        { 
+          room_id: roomId, 
+          name: name, 
+          user_id: currentUser.id,
+          streaming_seconds_used: 0 // Fixes NOT-NULL constraint error
+        }
+      ]);
+
+      if (error) throw error;
+
+    } catch (e) {
+      console.warn("Supabase room insert failed, falling back to local storage:", e.message);
+      
       let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms = localRooms.filter(r => r.id !== roomId);
+      localRooms.unshift({ id: roomId, name: name, created_at: new Date().toISOString() });
       localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-      await loadUserEvents();
     }
 
-    // Execute Init
-    checkUserSession();
-  </script>
-</body>
-</html>
+    eventNameInput.value = '';
+    eventModal.style.display = 'none';
+    await loadUserEvents();
+  });
+
+  // 6. Fetch & Render Rooms
+  async function loadUserEvents() {
+    const origin = window.location.origin;
+    let rooms = [];
+
+    try {
+      const { data: dbRooms, error } = await supabaseClient
+        .from('rooms')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (!error && dbRooms && dbRooms.length > 0) {
+        rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
+      }
+    } catch (err) {
+      console.warn("Using local room state fallback:", err.message);
+    }
+
+    if (rooms.length === 0) {
+      rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    }
+
+    if (rooms.length === 0) {
+      rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
+      localStorage.setItem('user_rooms', JSON.stringify(rooms));
+    }
+
+    // Keep active room count updated in status bar
+    currentRoomCount = rooms.length;
+    renderSubscriptionUI();
+
+    eventsContainer.innerHTML = '';
+
+    rooms.forEach((room) => {
+      const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
+      const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
+      const audienceUrl = `${origin}/index.html?room=${room.id}`;
+
+      const card = document.createElement('div');
+      card.className = 'event-card';
+      card.innerHTML = `
+        <div class="event-card-header">
+          <div>
+            <div class="event-title">${room.name}</div>
+            <div class="event-id">Room ID: ${room.id}</div>
+          </div>
+          <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
+        </div>
+
+        <div class="links-grid">
+          <div class="link-box">
+            <label>Presenter Microphones Link</label>
+            <div class="link-action">
+              <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
+              <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
+            </div>
+          </div>
+
+          <div class="link-box">
+            <label>OBS Transparent Overlay Link</label>
+            <div class="link-action">
+              <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
+              <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
+            </div>
+          </div>
+
+          <div class="link-box">
+            <label>Mobile Audience View Link</label>
+            <div class="link-action">
+              <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
+              <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      eventsContainer.appendChild(card);
+    });
+  }
+
+  // Copy Link Helper
+  function copyLink(inputId) {
+    const input = document.getElementById(inputId);
+    input.select();
+    navigator.clipboard.writeText(input.value);
+    alert("Link copied to clipboard!");
+  }
+
+  // Delete Room Helper
+  async function deleteRoom(roomId) {
+    try {
+      await supabaseClient
+        .from('rooms')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.id);
+    } catch (e) {
+      console.warn("Could not delete room from Supabase:", e.message);
+    }
+
+    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    localRooms = localRooms.filter(r => r.id !== roomId);
+    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+    await loadUserEvents();
+  }
+
+  // Execute Init
+  checkUserSession();
+</script>
