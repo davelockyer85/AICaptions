@@ -1,181 +1,214 @@
-import 'dotenv/config';
+import express from "express";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-import express from 'express';
-import http from 'node:http';
-import { randomUUID } from 'node:crypto';
-import { WebSocket, WebSocketServer } from 'ws';
-import Stripe from 'stripe';
-import {
-  createClient as createDeepgramClient,
-  LiveTranscriptionEvents,
-} from '@deepgram/sdk';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+dotenv.config();
 
-const PORT = Number(process.env.PORT || 10000);
-const DEFAULT_ROOM_ID = 'main-stage';
-
-const MAX_WEBSOCKET_PAYLOAD_BYTES = 1024 * 1024;
-const MAX_AUDIO_QUEUE_BYTES = 2 * 1024 * 1024;
-const MAX_WEBSOCKET_BUFFERED_BYTES = 1024 * 1024;
-const USAGE_PULSE_MS = 10_000;
-const DEEPGRAM_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_VIEWERS_PER_ROOM = Number(process.env.MAX_VIEWERS_PER_ROOM || 500);
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({
-  server,
-  maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
+
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.use(express.json({ limit: '16kb' }));
-app.use(express.static('public'));
+const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
+if (!DEEPGRAM_KEY) {
+  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
+}
+const deepgram = createClient(DEEPGRAM_KEY);
 
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
-
-const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-const deepgram = deepgramApiKey
-  ? createDeepgramClient(deepgramApiKey)
-  : null;
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// This key must stay on the server. Do not use it in browser code.
-const supabase = supabaseUrl && supabaseServiceRoleKey
-  ? createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    })
-  : null;
-
-const allowGuestPresenters =
-  process.env.ALLOW_GUEST_PRESENTERS === 'true';
-
-const oneTimePriceIds = new Set(
-  [
-    process.env.EVENT_PASS_PRICE_ID,
-    process.env.PRO_EVENT_PASS_PRICE_ID,
-    ...(process.env.ONE_TIME_PRICE_IDS || '').split(','),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean),
-);
-
-const allowedPriceIds = new Set(
-  [
-    ...oneTimePriceIds,
-    ...(process.env.ALLOWED_PRICE_IDS || '').split(','),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean),
-);
-
-// In-memory state is suitable only for a single server process.
+// Multi-Tenant Rooms Store
+// Map<roomId, { targetOverlayLang, overlays: Set, attendees: Set, dgLive, audioQueue, isDgReady }>
 const rooms = new Map();
-const activeRoomsByUser = new Map();
-
-if (!deepgram) {
-  console.warn('DEEPGRAM_API_KEY is missing; presenter connections will be rejected.');
-}
-
-if (!supabase) {
-  console.warn(
-    'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing; authenticated features are unavailable.',
-  );
-}
 
 function getOrCreateRoom(roomId) {
-  let room = rooms.get(roomId);
-
-  if (!room) {
-    room = {
-      presenterWs: null,
-      presenterUserId: null,
-      viewers: new Set(),
-    };
-    rooms.set(roomId, room);
+  if (!rooms.has(roomId)) {
+    console.log(`[Room Created] Initializing room: ${roomId}`);
+    rooms.set(roomId, {
+      targetOverlayLang: "en",
+      overlays: new Set(),
+      attendees: new Set(),
+      dgLive: null,
+      audioQueue: [],
+      isDgReady: false
+    });
   }
-
-  return room;
+  return rooms.get(roomId);
 }
 
-function deleteRoomIfEmpty(roomId, room) {
-  if (
-    room.presenterWs === null &&
-    room.viewers.size === 0 &&
-    rooms.get(roomId) === room
-  ) {
+function cleanupRoom(roomId) {
+  const room = rooms.get(roomId);
+  if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
+    console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
     rooms.delete(roomId);
   }
 }
 
-function addUserRoom(userId, roomId) {
-  let userRooms = activeRoomsByUser.get(userId);
-
-  if (!userRooms) {
-    userRooms = new Set();
-    activeRoomsByUser.set(userId, userRooms);
-  }
-
-  userRooms.add(roomId);
-}
-
-function removeUserRoom(userId, roomId) {
-  const userRooms = activeRoomsByUser.get(userId);
-  if (!userRooms) return;
-
-  userRooms.delete(roomId);
-
-  if (userRooms.size === 0) {
-    activeRoomsByUser.delete(userId);
-  }
-}
-
-function safeClose(ws, code, reason) {
-  if (
-    ws.readyState === WebSocket.OPEN ||
-    ws.readyState === WebSocket.CONNECTING
-  ) {
-    ws.close(code, reason);
-  }
-}
-
-function safeSend(ws, payload) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-
-  if (ws.bufferedAmount > MAX_WEBSOCKET_BUFFERED_BYTES) {
-    safeClose(ws, 1013, 'Connection is too slow');
-    return false;
-  }
-
+// Free Real-time Translation Helper (MyMemory API)
+async function translateText(text, targetLang) {
+  if (!targetLang || targetLang === "en") return text;
   try {
-    ws.send(payload);
-    return true;
-  } catch (error) {
-    console.error('WebSocket send failed:', error);
-    safeClose(ws, 1011, 'Send failed');
-    return false;
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+    );
+    const data = await res.json();
+    return data.responseData?.translatedText || text;
+  } catch (err) {
+    console.error("[Translation Error]", err.message);
+    return text;
   }
 }
 
-function sendJson(ws, payload) {
-  safeSend(ws, JSON.stringify(payload));
-}
+wss.on("connection", (ws, req) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = urlObj.pathname;
+  const roomId = urlObj.searchParams.get("room") || "default";
 
-function getBearerToken(req) {
-  const authorization = req.headers.authorization;
+  const room = getOrCreateRoom(roomId);
 
-  if (!authorization?.startsWith('Bearer ')) {
-    return null;
+  // ROUTE A: Stage Microphones / Audio Ingest
+  if (pathname === "/ws/ingest") {
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+
+    room.audioQueue = [];
+    room.isDgReady = false;
+
+    // Create a room-specific Deepgram STT stream
+    room.dgLive = deepgram.listen.live({
+      model: "nova-3",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      endpointing: 300
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Open, () => {
+      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
+      room.isDgReady = true;
+
+      while (room.audioQueue.length > 0) {
+        room.dgLive.send(room.audioQueue.shift());
+      }
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
+      console.error(`[Deepgram Error - Room ${roomId}]`, err);
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+      const transcript = data.channel.alternatives[0]?.transcript;
+      const isFinal = data.is_final;
+
+      if (transcript && transcript.trim().length > 0) {
+        let overlayText = transcript;
+
+        // Translate if room target language is not English
+        if (room.targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, room.targetOverlayLang);
+        }
+
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: room.targetOverlayLang
+        });
+
+        // Broadcast ONLY to overlays in THIS room
+        room.overlays.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(overlayPayload);
+          }
+        });
+
+        // Broadcast ONLY to mobile attendees in THIS room
+        if (isFinal) {
+          room.attendees.forEach(async (attendee) => {
+            if (attendee.readyState === WebSocket.OPEN) {
+              const translated = await translateText(transcript, attendee.language || "en");
+              attendee.send(
+                JSON.stringify({ text: translated, original: transcript })
+              );
+            }
+          });
+        }
+      }
+    });
+
+    ws.on("message", (message, isBinary) => {
+      // Handle JSON control messages (e.g. language change for this room)
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            room.targetOverlayLang = controlData.lang;
+            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          }
+        } catch (e) {}
+        return;
+      }
+
+      // Handle binary microphone audio stream
+      if (room.isDgReady && room.dgLive.getReadyState() === 1) {
+        room.dgLive.send(message);
+      } else {
+        room.audioQueue.push(message);
+      }
+    });
+
+    ws.on("close", () => {
+      console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
+      if (room.dgLive) {
+        room.dgLive.finish();
+        room.dgLive = null;
+      }
+      cleanupRoom(roomId);
+    });
   }
 
-  return authorization.slice('Bearer '.length).trim() || null;
-}
+  // ROUTE B: Stage Video Overlay (OBS / vMix)
+  else if (pathname === "/ws/overlay") {
+    console.log(`[Overlay] OBS connected to room: ${roomId}`);
+    room.overlays.add(ws);
 
-async function getAuthenticatedUser(token) {
+    ws.on("close", () => {
+      room.overlays.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (pathname.startsWith("/ws/attendee")) {
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+    ws.language = urlObj.searchParams.get("lang") || "en";
+
+    room.attendees.add(ws);
+
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+        }
+      } catch (e) {}
+    });
+
+    ws.on("close", () => {
+      room.attendees.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
