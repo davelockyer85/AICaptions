@@ -50,7 +50,7 @@
       backdrop-filter: blur(4px);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       
-      transition: all 0.15s ease-out;
+      transition: opacity 0.2s ease-out;
     }
 
     /* Style for real-time interim results */
@@ -58,59 +58,169 @@
       opacity: 0.85;
       font-style: italic;
     }
+
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
 
   <div id="caption-container">
-    <div id="captionBox" style="display: none;"></div>
+    <div id="captionBox" class="hidden"></div>
   </div>
 
   <script>
-    // Extract Room ID from query string (?room=event123), default to 'default'
+    // Extract parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get("room") || "default";
+    const roomId = urlParams.get("room") || urlParams.get("roomId") || "default";
+    // Allows overlay to explicitly request or override target translation language (e.g. ?targetLang=es-ES or ?targetLang=es)
+    const urlTargetLang = urlParams.get("targetLang") || urlParams.get("target") || urlParams.get("lang") || "";
 
     const captionBox = document.getElementById("captionBox");
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
     let socket = null;
+    let autoClearTimer = null;
+    let pendingTranslationTimer = null;
+
+    // Fast translation cache to avoid duplicate API calls for identical phrases
+    const translationCache = new Map();
+
+    /**
+     * Helper to normalize BCP-47 language codes (e.g., 'es-ES' -> 'es', 'zh-CN' -> 'zh-cn')
+     * so all 83 presenter languages map correctly to Google Translate parameters.
+     */
+    function normalizeLangCode(code) {
+      if (!code) return '';
+      const clean = code.trim();
+      if (/^zh-(CN|TW|HK)$/i.test(clean)) return clean.toLowerCase();
+      return clean.split('-')[0].toLowerCase();
+    }
+
+    /**
+     * Fast, zero-dependency client-side translation fallback for low-latency updates.
+     */
+    async function translateText(text, srcLang, tgtLang) {
+      if (!text || !text.trim()) return '';
+      
+      const normalizedSrc = normalizeLangCode(srcLang) || 'auto';
+      const normalizedTgt = normalizeLangCode(tgtLang);
+
+      if (!normalizedTgt || normalizedSrc === normalizedTgt) return text;
+
+      const cacheKey = `${normalizedSrc}:${normalizedTgt}:${text}`;
+      if (translationCache.has(cacheKey)) {
+        return translationCache.get(cacheKey);
+      }
+
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(normalizedSrc)}&tl=${encodeURIComponent(normalizedTgt)}&dt=t&q=${encodeURIComponent(text)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data && data[0]) {
+          const translated = data[0].map(part => part[0]).join('');
+          translationCache.set(cacheKey, translated);
+          // Keep cache size constrained
+          if (translationCache.size > 200) {
+            const firstKey = translationCache.keys().next().value;
+            translationCache.delete(firstKey);
+          }
+          return translated;
+        }
+      } catch (err) {
+        console.warn("[Overlay Translation] Client translation fallback error:", err);
+      }
+      return text;
+    }
+
+    /**
+     * Renders text to caption box with auto-fadeout after silence
+     */
+    function renderCaption(text, isFinal = true) {
+      if (!text || !text.trim()) return;
+
+      captionBox.innerText = text;
+      captionBox.classList.remove("hidden");
+
+      if (isFinal) {
+        captionBox.classList.remove("interim");
+      } else {
+        captionBox.classList.add("interim");
+      }
+
+      // Reset clear timer (hides captions after 6 seconds of silence)
+      if (autoClearTimer) clearTimeout(autoClearTimer);
+      autoClearTimer = setTimeout(() => {
+        captionBox.classList.add("hidden");
+      }, 6000);
+    }
 
     function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      let wsUrl = `${protocol}//${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
+      
+      // Append target language to WebSocket handshake if specified
+      if (urlTargetLang) {
+        wsUrl += `&targetLang=${encodeURIComponent(urlTargetLang)}`;
+      }
+
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
+        console.log(`[Overlay] Connected to room: ${roomId}`);
         captionBox.innerText = "";
-        captionBox.style.display = "none";
+        captionBox.classList.add("hidden");
       };
 
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.text && data.text.trim().length > 0) {
-            captionBox.style.display = "inline-block";
-            captionBox.innerText = data.text;
-            
-            if (data.isFinal) {
-              captionBox.classList.remove("interim");
-            } else {
-              captionBox.classList.add("interim");
-            }
+          
+          // Extract text from any potential translated or transcript field
+          const rawText = data.translation || 
+                          data.translatedText || 
+                          data.translated_text || 
+                          data.targetText || 
+                          data.text || 
+                          data.transcript || "";
+
+          if (!rawText || !rawText.trim()) return;
+
+          const isFinal = data.isFinal !== undefined ? data.isFinal : true;
+          const targetLang = urlTargetLang || data.targetLang || data.targetLanguage || "";
+          const sourceLang = data.sourceLang || data.lang || "auto";
+
+          // If backend already delivered pre-translated text or no target language was requested
+          if (data.translation || data.translatedText || !targetLang) {
+            renderCaption(rawText, isFinal);
+            return;
           }
+
+          // Debounce interim translation calls for fast-moving speech to maintain ultra-low latency
+          if (!isFinal) {
+            if (pendingTranslationTimer) clearTimeout(pendingTranslationTimer);
+            pendingTranslationTimer = setTimeout(async () => {
+              const translated = await translateText(rawText, sourceLang, targetLang);
+              renderCaption(translated, false);
+            }, 80);
+          } else {
+            if (pendingTranslationTimer) clearTimeout(pendingTranslationTimer);
+            const translated = await translateText(rawText, sourceLang, targetLang);
+            renderCaption(translated, true);
+          }
+
         } catch (err) {
-          console.error("Error parsing overlay payload:", err);
+          console.error("[Overlay] Error parsing payload:", err);
         }
       };
 
       socket.onclose = () => {
-        captionBox.style.display = "inline-block";
-        captionBox.classList.remove("interim");
-        captionBox.innerText = "[Overlay Reconnecting...]";
-        setTimeout(connect, 2000); // Auto-reconnect if connection drops
+        renderCaption("[Overlay Reconnecting...]", true);
+        setTimeout(connect, 2000);
       };
 
       socket.onerror = (err) => {
-        console.error("WebSocket Error:", err);
+        console.error("[Overlay] WebSocket Error:", err);
       };
     }
 
