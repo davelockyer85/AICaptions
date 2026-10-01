@@ -36,7 +36,19 @@
       border-radius: 9999px;
       font-family: monospace;
       font-weight: bold;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .timer-badge {
+      display: block;
+      background: #111827;
+      border: 1px solid #374151;
+      color: #38bdf8;
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-family: monospace;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
     }
     .btn-group {
       display: flex;
@@ -73,6 +85,9 @@
     <p>Room Identifier:</p>
     <div class="room-badge" id="roomDisplay">main-stage</div>
 
+    <!-- Real-Time Countdown Timer -->
+    <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
+
     <!-- Spoken / Ingest Language Selector -->
     <div class="setting-group" style="margin-top: 1rem; text-align: left;">
       <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
@@ -99,9 +114,12 @@
 
     // State Variables for Live Usage Tracking
     let currentUser = null;
-    let usageTimer = null;
+    let syncTimer = null;
+    let localCountdownTimer = null;
+    let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600; // Default limit fallback
+    let maxLimit = 3600; // Default fallback (1 hour)
+    let currentRemainingSeconds = 0;
 
     // Authenticate Presenter Session
     async function initPresenterAuth() {
@@ -109,57 +127,144 @@
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
-          // Initial sanity check on page load
-          await canStartStream(currentUser.id);
+          // Initial sanity check and subscription setup
+          await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
         console.warn("Could not retrieve Supabase session:", err.message);
       }
     }
 
-    // Pre-flight validation before starting stream
-    async function canStartStream(userId) {
-      if (!userId) return true;
+    // Initial Fetch & Realtime Push Subscription Setup
+    async function fetchUserTimeAndSubscribe(userId) {
+      if (!userId) return;
 
       try {
+        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .single();
 
-        if (error || !user) return true;
-
-        const used = user.streaming_seconds_used || 0;
-        const allowed = user.max_streaming_seconds ?? maxLimit;
-
-        if (used >= allowed) {
-          status.innerText = `Status: Time Limit Exceeded (${Math.floor(used/60)}/${Math.floor(allowed/60)} mins)`;
-          status.style.color = "#ef4444";
-          startBtn.disabled = true;
-          return false;
+        if (!error && user) {
+          applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
-        return true;
+
+        // Subscribe to real-time Postgres changes on the user row
+        subscribeToRealtimeUsage(userId);
       } catch (e) {
-        console.warn("Pre-flight check error:", e.message);
-        return true;
+        console.warn("Initial user state fetch error:", e.message);
       }
     }
 
-    // Usage Tracking & Limit Enforcement Loop
-    function startUsageTracking(userId, roomId) {
-      stopUsageTracking(); // Clear existing interval
+    // Subscribe to instant Supabase database updates
+    function subscribeToRealtimeUsage(userId) {
+      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
 
-      usageTimer = setInterval(async () => {
-        await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+      realtimeChannel = supabaseClient
+        .channel(`presenter_time_${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'users',
+            filter: `user_id=eq.${userId}`
+          },
+          (payload) => {
+            if (payload.new) {
+              const used = payload.new.streaming_seconds_used || 0;
+              const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
+              applyTimeLimits(used, maxSecs);
+            }
+          }
+        )
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR') {
+            console.warn("Realtime subscription error, falling back to polling:", err);
+          }
+        });
+    }
+
+    // Updates state, formats UI countdown, and cuts stream if limit is reached
+    function applyTimeLimits(usedSecs, allowedMaxSecs) {
+      currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
+      updateTimerDisplay(currentRemainingSeconds);
+
+      // CUT-OFF CHECK
+      if (currentRemainingSeconds <= 0) {
+        if (isStreamingActive()) {
+          cleanup();
+          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
+          status.style.color = "#ef4444";
+          alert(`Stream stopped: You have reached your maximum streaming limit.`);
+        } else {
+          status.innerText = `Status: Time Limit Exceeded (${Math.floor(usedSecs/60)}/${Math.floor(allowedMaxSecs/60)} mins)`;
+          status.style.color = "#ef4444";
+          startBtn.disabled = true;
+        }
+      }
+    }
+
+    // Format & Render visual timer badge (MM:SS)
+    function updateTimerDisplay(totalSeconds) {
+      const timerDisplay = document.getElementById('timerDisplay');
+      if (!timerDisplay) return;
+
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+      timerDisplay.innerText = `Remaining Time: ${formatted}`;
+
+      if (totalSeconds <= 60) {
+        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
+      } else if (totalSeconds <= 300) {
+        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
+      } else {
+        timerDisplay.style.color = '#38bdf8'; // Blue normal
+      }
+    }
+
+    // Local 1-second ticker while active
+    function startLocalCountdown() {
+      stopLocalCountdown();
+      localCountdownTimer = setInterval(() => {
+        if (currentRemainingSeconds > 0) {
+          currentRemainingSeconds--;
+          updateTimerDisplay(currentRemainingSeconds);
+
+          if (currentRemainingSeconds <= 0) {
+            cleanup();
+            status.innerText = "Status: Terminated — Maximum Time Limit Reached";
+            status.style.color = "#ef4444";
+            alert(`Stream stopped: You have run out of streaming time.`);
+          }
+        }
+      }, 1000);
+    }
+
+    function stopLocalCountdown() {
+      if (localCountdownTimer) {
+        clearInterval(localCountdownTimer);
+        localCountdownTimer = null;
+      }
+    }
+
+    // Sync accumulated usage to Supabase every 5 seconds
+    function startUsageSyncing(userId, roomId) {
+      stopUsageSyncing();
+
+      syncTimer = setInterval(async () => {
+        await pushUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
     }
 
-    async function syncUsageToSupabase(userId, roomId, secondsToAdd) {
+    async function pushUsageToSupabase(userId, roomId, secondsToAdd) {
       if (!userId) return;
 
       try {
-        // Step A: Fetch current user limit & usage
         const { data: user, error: userErr } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -172,30 +277,26 @@
         const allowedMax = user.max_streaming_seconds ?? maxLimit;
         const newTotal = currentUsed + secondsToAdd;
 
-        // HARD CUT-OFF CONDITION
-        if (currentUsed >= allowedMax || newTotal >= allowedMax) {
-          // Cap usage in DB at max allowed
+        if (newTotal >= allowedMax) {
           await supabaseClient
             .from('users')
             .update({ streaming_seconds_used: allowedMax })
             .eq('user_id', userId);
 
-          // STOP STREAM IMMEDIATELY
           cleanup();
-
           status.innerText = "Status: Terminated — Maximum Time Limit Reached";
           status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit of ${Math.floor(allowedMax / 60)} minutes.`);
+          alert(`Stream stopped: You have reached your maximum streaming limit.`);
           return;
         }
 
-        // Step B: Update user usage
+        // Update user row
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Step C: Update room-level usage
+        // Update room row
         if (roomId) {
           const { data: room } = await supabaseClient
             .from('rooms')
@@ -215,11 +316,15 @@
       }
     }
 
-    function stopUsageTracking() {
-      if (usageTimer) {
-        clearInterval(usageTimer);
-        usageTimer = null;
+    function stopUsageSyncing() {
+      if (syncTimer) {
+        clearInterval(syncTimer);
+        syncTimer = null;
       }
+    }
+
+    function isStreamingActive() {
+      return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
     // Supported Spoken Languages (BCP-47 Standard)
@@ -355,13 +460,9 @@
     let audioStream = null;
 
     startBtn.onclick = async () => {
-      // Step 1: Pre-flight stream limit check
-      if (currentUser) {
-        const allowedToStream = await canStartStream(currentUser.id);
-        if (!allowedToStream) {
-          alert("Cannot start streaming: Your maximum allowed streaming time has been reached.");
-          return;
-        }
+      if (currentRemainingSeconds <= 0) {
+        alert("Cannot start streaming: Your maximum allowed streaming time has been reached.");
+        return;
       }
 
       try {
@@ -406,9 +507,10 @@
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
-          // Start syncing usage to Supabase every 5 seconds
+          // Start local visual countdown and DB syncing loops
+          startLocalCountdown();
           if (currentUser) {
-            startUsageTracking(currentUser.id, room);
+            startUsageSyncing(currentUser.id, room);
           }
         };
 
@@ -440,7 +542,8 @@
     };
 
     function cleanup() {
-      stopUsageTracking();
+      stopUsageSyncing();
+      stopLocalCountdown();
 
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
@@ -451,11 +554,12 @@
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
-      startBtn.disabled = false;
+      startBtn.disabled = currentRemainingSeconds <= 0;
       stopBtn.disabled = true;
     }
 
     window.addEventListener('beforeunload', () => {
+      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
       cleanup();
     });
   </script>
