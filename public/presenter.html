@@ -50,6 +50,28 @@
       border-radius: 8px;
       margin: 1rem 0;
     }
+    .setting-group {
+      margin-top: 1rem;
+      text-align: left;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #9ca3af;
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+    select {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      background-color: #111827;
+      color: #f3f4f6;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      cursor: pointer;
+    }
     .btn-group {
       display: flex;
       gap: 1rem;
@@ -77,6 +99,17 @@
       font-size: 1.1rem;
       color: #9ca3af;
     }
+    #liveTranscript {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: #111827;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #60a5fa;
+      min-height: 40px;
+      text-align: left;
+      border: 1px dashed #374151;
+    }
   </style>
 </head>
 <body>
@@ -89,13 +122,15 @@
     <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
 
     <!-- Spoken / Ingest Language Selector -->
-    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
-      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
-        Spoken Language
-      </label>
-      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
-        <!-- Populated dynamically by JS -->
-      </select>
+    <div class="setting-group">
+      <label for="languageSelect">Spoken Language</label>
+      <select id="languageSelect"></select>
+    </div>
+
+    <!-- Target Translation Language Selector -->
+    <div class="setting-group">
+      <label for="targetLanguageSelect">Translate Captions To</label>
+      <select id="targetLanguageSelect"></select>
     </div>
 
     <div class="btn-group">
@@ -103,6 +138,7 @@
       <button id="stopBtn" disabled>Stop</button>
     </div>
 
+    <div id="liveTranscript">Live Captions Preview...</div>
     <p id="status">Status: Disconnected</p>
   </div>
 
@@ -127,7 +163,6 @@
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
-          // Initial sanity check and subscription setup
           await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
@@ -135,12 +170,10 @@
       }
     }
 
-    // Initial Fetch & Realtime Push Subscription Setup
     async function fetchUserTimeAndSubscribe(userId) {
       if (!userId) return;
 
       try {
-        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -151,14 +184,12 @@
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
 
-        // Subscribe to real-time Postgres changes on the user row
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
       }
     }
 
-    // Subscribe to instant Supabase database updates
     function subscribeToRealtimeUsage(userId) {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
 
@@ -170,7 +201,7 @@
             event: 'UPDATE',
             schema: 'public',
             table: 'users',
-            filter: `user_id=eq.${userId}`
+            filter: `user_id=${userId}`
           },
           (payload) => {
             if (payload.new) {
@@ -187,12 +218,10 @@
         });
     }
 
-    // Updates state, formats UI countdown, and cuts stream if limit is reached
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
 
-      // CUT-OFF CHECK
       if (currentRemainingSeconds <= 0) {
         if (isStreamingActive()) {
           cleanup();
@@ -207,7 +236,6 @@
       }
     }
 
-    // Format & Render visual timer badge (MM:SS)
     function updateTimerDisplay(totalSeconds) {
       const timerDisplay = document.getElementById('timerDisplay');
       if (!timerDisplay) return;
@@ -219,15 +247,14 @@
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
+        timerDisplay.style.color = '#ef4444';
       } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
+        timerDisplay.style.color = '#f59e0b';
       } else {
-        timerDisplay.style.color = '#38bdf8'; // Blue normal
+        timerDisplay.style.color = '#38bdf8';
       }
     }
 
-    // Local 1-second ticker while active
     function startLocalCountdown() {
       stopLocalCountdown();
       localCountdownTimer = setInterval(() => {
@@ -252,7 +279,6 @@
       }
     }
 
-    // Sync accumulated usage to Supabase every 5 seconds
     function startUsageSyncing(userId, roomId) {
       stopUsageSyncing();
 
@@ -290,13 +316,11 @@
           return;
         }
 
-        // Update user row
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Update room row
         if (roomId) {
           const { data: room } = await supabaseClient
             .from('rooms')
@@ -327,7 +351,7 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
-    // Supported Spoken Languages (BCP-47 Standard)
+    // Supported Spoken & Translation Languages
     const SUPPORTED_LANGUAGES = [
       { code: 'af-ZA', name: 'Afrikaans' },
       { code: 'sq-AL', name: 'Albanian' },
@@ -414,23 +438,62 @@
       { code: 'vi-VN', name: 'Vietnamese' }
     ];
 
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
+    function initLanguageSelectors() {
+      const srcSelect = document.getElementById('languageSelect');
+      const tgtSelect = document.getElementById('targetLanguageSelect');
+      if (!srcSelect || !tgtSelect) return;
 
-      selectElem.innerHTML = '';
+      const defaultSrc = localStorage.getItem('presenter_lang') || 'en-US';
+      const defaultTgt = localStorage.getItem('presenter_target_lang') || 'es-ES';
+
+      srcSelect.innerHTML = '';
+      tgtSelect.innerHTML = '';
 
       SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) opt.selected = true;
-        selectElem.appendChild(opt);
+        const opt1 = document.createElement('option');
+        opt1.value = lang.code;
+        opt1.textContent = `${lang.name} (${lang.code})`;
+        if (lang.code === defaultSrc) opt1.selected = true;
+        srcSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = lang.code;
+        opt2.textContent = `${lang.name} (${lang.code})`;
+        if (lang.code === defaultTgt) opt2.selected = true;
+        tgtSelect.appendChild(opt2);
       });
 
-      selectElem.addEventListener('change', (e) => {
+      srcSelect.addEventListener('change', (e) => {
         localStorage.setItem('presenter_lang', e.target.value);
       });
+      tgtSelect.addEventListener('change', (e) => {
+        localStorage.setItem('presenter_target_lang', e.target.value);
+      });
+    }
+
+    /**
+     * Free Google Translate Client SDK Endpoint
+     */
+    async function translateTextFree(text, sourceLang, targetLang) {
+      if (!text || !text.trim()) return '';
+      
+      const src = sourceLang ? sourceLang.split('-')[0] : 'auto';
+      const tgt = targetLang ? targetLang.split('-')[0] : 'en';
+
+      if (src === tgt) return text;
+
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=${tgt}&dt=t&q=${encodeURIComponent(text)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data && data[0]) {
+          return data[0].map(item => item[0]).join('');
+        }
+      } catch (err) {
+        console.warn("Free Google Translate Error:", err);
+      }
+      return text;
     }
 
     // Read room & maxLimit from URL parameters
@@ -448,16 +511,18 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+    initLanguageSelectors();
     initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const status = document.getElementById('status');
+    const liveTranscript = document.getElementById('liveTranscript');
 
     let ws = null;
     let mediaRecorder = null;
     let audioStream = null;
+    let speechRecognition = null;
 
     startBtn.onclick = async () => {
       if (currentRemainingSeconds <= 0) {
@@ -478,9 +543,10 @@
         });
 
         const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
+        const selectedTargetLang = document.getElementById('targetLanguageSelect')?.value || 'es-ES';
 
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}&targetLang=${encodeURIComponent(selectedTargetLang)}`;
         if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
@@ -489,25 +555,61 @@
           status.innerText = "Status: Live & Streaming Stage Audio";
           status.style.color = "#10b981";
 
+          // 1. Audio MediaRecorder Streaming
           let mimeType = 'audio/webm;codecs=opus';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
             mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
           }
 
           mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
           mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
             }
           };
-
           mediaRecorder.start(250);
+
+          // 2. In-Browser Speech Recognition & Google Translation
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SpeechRecognition) {
+            speechRecognition = new SpeechRecognition();
+            speechRecognition.continuous = true;
+            speechRecognition.interimResults = true;
+            speechRecognition.lang = selectedLang;
+
+            speechRecognition.onresult = async (event) => {
+              let transcript = '';
+              for (let i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+              }
+
+              const translated = await translateTextFree(transcript, selectedLang, selectedTargetLang);
+              liveTranscript.innerHTML = `<strong>Original:</strong> ${transcript}<br><strong>Translated:</strong> ${translated}`;
+
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'caption',
+                  originalText: transcript,
+                  translatedText: translated,
+                  sourceLang: selectedLang,
+                  targetLang: selectedTargetLang
+                }));
+              }
+            };
+
+            speechRecognition.onerror = (e) => console.warn("Speech Recognition Error:", e.error);
+            speechRecognition.onend = () => {
+              if (isStreamingActive() && speechRecognition) {
+                try { speechRecognition.start(); } catch (err) {}
+              }
+            };
+
+            speechRecognition.start();
+          }
 
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
-          // Start local visual countdown and DB syncing loops
           startLocalCountdown();
           if (currentUser) {
             startUsageSyncing(currentUser.id, room);
@@ -545,6 +647,11 @@
       stopUsageSyncing();
       stopLocalCountdown();
 
+      if (speechRecognition) {
+        speechRecognition.onend = null;
+        speechRecognition.stop();
+        speechRecognition = null;
+      }
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
