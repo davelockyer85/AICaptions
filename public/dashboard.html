@@ -3,643 +3,274 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AICaptions</title>
-
-  <!-- Supabase JS SDK -->
+  <title>Pricing - AICaptions</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- QRCode.js CDN for audience QR code generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
   <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
       min-height: 100vh;
-      padding-bottom: 60px;
-    }
-
-    /* Top Navigation Header */
-    header {
-      background-color: #1e293b;
-      border-bottom: 1px solid #334155;
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #3b82f6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .user-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .user-email {
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .btn-secondary {
-      background-color: #334155;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-secondary:hover { background-color: #475569; }
-
-    /* Main Container */
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
-
-    /* Status Bar Container */
-    .status-bar {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 28px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 24px;
-      align-items: center;
-    }
-
-    .status-item {
       display: flex;
       flex-direction: column;
-      gap: 6px;
     }
 
-    .status-label {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-    }
-
-    .status-value {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-
-    /* Progress Bar Components */
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #06b6d4);
-      width: 0%;
-      transition: width 0.4s ease;
-    }
-
-    /* Events Section */
-    .section-header {
+    header {
+      background-color: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 48px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 20px;
     }
 
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
-
-    .btn-primary {
-      background-color: #3b82f6;
+    .brand {
+      font-size: 1.35rem;
+      font-weight: 800;
       color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s, opacity 0.2s;
+      text-decoration: none;
     }
 
-    .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
-    
-    .btn-primary:disabled {
-      background-color: #475569;
-      color: #94a3b8;
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-
-    .event-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-
-    .event-card-header {
+    .nav-links {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #334155;
+      gap: 24px;
     }
 
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
 
-    .links-grid {
+    .nav-link:hover,
+    .nav-link.active {
+      color: var(--primary);
+    }
+
+    .pricing-container {
+      max-width: 1100px;
+      margin: 50px auto;
+      padding: 0 20px;
+      text-align: center;
+      flex: 1;
+    }
+
+    .pricing-header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .pricing-header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      margin-bottom: 40px;
+    }
+
+    .pricing-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
     }
 
-    .link-box {
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px 16px;
+    .price-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
     }
 
-    .link-box label {
-      display: block;
+    .price-card.featured {
+      border-color: var(--primary);
+      box-shadow: 0 0 25px rgba(59, 130, 246, 0.25);
+    }
+
+    .badge {
+      position: absolute;
+      top: -12px;
+      right: 20px;
+      background-color: var(--primary);
+      color: #fff;
       font-size: 0.75rem;
       font-weight: 700;
-      color: #94a3b8;
+      padding: 4px 12px;
+      border-radius: 12px;
       text-transform: uppercase;
-      margin-bottom: 8px;
     }
 
-    .link-action {
-      display: flex;
-      gap: 8px;
-    }
+    .plan-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+    .price { font-size: 2.5rem; font-weight: 800; margin-bottom: 16px; }
+    .price span { font-size: 0.95rem; color: var(--text-muted); font-weight: 400; }
 
-    .link-action input {
-      flex: 1;
-      background: none;
+    .features-list { list-style: none; text-align: left; margin-bottom: 28px; }
+    .features-list li { margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem; }
+    .features-list li::before { content: "✓ "; color: var(--primary); font-weight: bold; }
+
+    .btn-subscribe {
+      width: 100%;
+      padding: 12px;
+      background-color: var(--primary);
+      color: #ffffff;
       border: none;
-      color: #cbd5e1;
-      font-size: 0.85rem;
-      outline: none;
-      font-family: monospace;
-    }
-
-    .btn-copy {
-      background-color: #334155;
-      color: #3b82f6;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 600;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
       cursor: pointer;
     }
 
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
-    /* Modal for Event Creation */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 28px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .modal-card h3 { margin-bottom: 16px; }
-
-    .modal-card input {
-      width: 100%;
-      padding: 10px 14px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #f8fafc;
-      font-size: 0.95rem;
-      margin-bottom: 20px;
-      outline: none;
-    }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-    }
+    .btn-subscribe:hover { background-color: var(--primary-hover); }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">🎙️ AICaptions</div>
-    <div class="user-controls">
-      <span class="user-email" id="userEmail">Loading...</span>
-      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
-    </div>
+    <a href="/" class="brand">🎙️ AICaptions</a>
+    <nav class="nav-links">
+      <a href="/pricing.html" class="nav-link active">Pricing</a>
+    </nav>
   </header>
 
-  <div class="container">
-    
-    <!-- Status & Usage Bar -->
-    <div class="status-bar" id="statusBar">
-      <div class="status-item">
-        <span class="status-label">Current Plan</span>
-        <span class="status-value" id="statusPlan">Loading...</span>
-      </div>
+  <div class="pricing-container">
+    <div class="pricing-header">
+      <h1>Flexible Live Caption Plans</h1>
+      <p>High-accuracy real-time captions for events, live streams, and multi-stage venues.</p>
+    </div>
 
-      <div class="status-item">
-        <span class="status-label">Remaining Time</span>
-        <span class="status-value" id="statusMins">-- mins</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="minsProgress" style="width: 0%;"></div>
+    <div class="pricing-grid">
+      <!-- 1. Event Pass -->
+      <div class="price-card">
+        <div>
+          <div class="plan-name">Event Pass</div>
+          <div class="price">$49 <span>/ 2-hr session</span></div>
+          <ul class="features-list">
+            <li>Single 2-Hour Event Session</li>
+            <li>1 Stage / Room Stream</li>
+            <li>Deepgram Nova-3 Engine</li>
+            <li>Unlimited Audience Viewers</li>
+            <li>No Recurring Subscription</li>
+          </ul>
         </div>
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'one_time')">
+          Buy Event Pass
+        </button>
       </div>
 
-      <div class="status-item">
-        <span class="status-label">Room Allocation</span>
-        <span class="status-value" id="statusRooms">0 / 0 Rooms</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="roomsProgress" style="width: 0%;"></div>
+      <!-- 2. Starter Plan -->
+      <div class="price-card featured">
+        <div class="badge">Most Popular</div>
+        <div>
+          <div class="plan-name">Starter</div>
+          <div class="price">$129 <span>/ month</span></div>
+          <ul class="features-list">
+            <li><strong>30 Hours</strong> Live Streaming / mo</li>
+            <li><strong>2 Stage Rooms</strong> Simultaneously</li>
+            <li>Deepgram Nova-3 Engine</li>
+            <li>Unlimited Audience Viewers</li>
+            <li>Custom OBS & Web Overlays</li>
+          </ul>
         </div>
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtzaJv4dyhvuKyEXzNpH8x', 'subscription')">
+          Subscribe to Starter
+        </button>
+      </div>
+
+      <!-- 3. Pro Plan -->
+      <div class="price-card">
+        <div>
+          <div class="plan-name">Pro Multi-Stage</div>
+          <div class="price">$259 <span>/ month</span></div>
+          <ul class="features-list">
+            <li><strong>150 Hours</strong> Live Streaming / mo</li>
+            <li><strong>10 Stage Rooms</strong> Simultaneously</li>
+            <li>Deepgram Nova-3 Engine</li>
+            <li>Unlimited Audience Viewers</li>
+            <li>Priority Connections & Support</li>
+          </ul>
+        </div>
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtlkJv4dyhvuKy67mqD8tW', 'subscription')">
+          Subscribe to Pro Multi Stage
+        </button>
       </div>
     </div>
-
-    <!-- Events Management Header -->
-    <div class="section-header">
-      <h3>Active Event Rooms</h3>
-      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
-    </div>
-
-    <!-- Events List Container -->
-    <div id="eventsContainer">
-      <!-- Event cards will be dynamically injected here -->
-    </div>
-
   </div>
 
-  <!-- Create Event Modal -->
-  <div class="modal-overlay" id="eventModal">
-    <div class="modal-card">
-      <h3>Create Event Room</h3>
-      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
-      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
- <script>
-  // 1. Supabase Initialization
-  const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    async function handleCheckout(evt, priceId, checkoutType) {
+      const button = evt ? (evt.target || evt.currentTarget) : null;
+      const originalText = button ? button.innerText : 'Buy Now';
 
-  // UI Elements
-  const userEmailSpan = document.getElementById('userEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const eventsContainer = document.getElementById('eventsContainer');
-  
-  const eventModal = document.getElementById('eventModal');
-  const openModalBtn = document.getElementById('openModalBtn');
-  const closeModalBtn = document.getElementById('closeModalBtn');
-  const createEventBtn = document.getElementById('createEventBtn');
-  const eventNameInput = document.getElementById('eventNameInput');
-
-  // Status Bar UI Elements
-  const statusPlan = document.getElementById('statusPlan');
-  const statusMins = document.getElementById('statusMins');
-  const minsProgress = document.getElementById('minsProgress');
-  const statusRooms = document.getElementById('statusRooms');
-  const roomsProgress = document.getElementById('roomsProgress');
-
-  let currentUser = null;
-  let realtimeChannel = null;
-  let cachedProfile = null;
-  let currentRoomCount = 0;
-
-  // 2. Auth Session Protection & App Init
-  async function checkUserSession() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (error || !session) {
-      window.location.href = '/auth.html';
-      return;
-    }
-
-    currentUser = session.user;
-    if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
-
-    // Load account details and rooms
-    await loadUserProfile();
-    await loadUserEvents();
-
-    // Subscribe to live usage updates
-    subscribeToLiveUserUpdates();
-  }
-
-  // 3. Load Subscription & Account Details from Supabase
-  async function loadUserProfile() {
-    if (!currentUser) return;
-
-    try {
-      const { data: profile, error } = await supabaseClient
-        .from('users')
-        .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
-        .eq('user_id', currentUser.id)
-        .single();
-
-      if (error) throw error;
-
-      if (profile) {
-        cachedProfile = profile;
-        renderSubscriptionUI();
+      if (button) {
+        button.disabled = true;
+        button.innerText = "Redirecting...";
       }
-    } catch (err) {
-      console.warn("Could not load user profile from Supabase:", err.message);
-    }
-  }
 
-  // Render Status Bar metrics, progress bars, and toggle create button state
-  function renderSubscriptionUI(updatedProfile) {
-    if (updatedProfile) cachedProfile = updatedProfile;
-    if (!cachedProfile) return;
+      try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
 
-    const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
-    const usedSecs = cachedProfile.streaming_seconds_used || 0;
-    const maxSecs = cachedProfile.max_streaming_seconds;
-    const allowedRooms = cachedProfile.allowed_rooms || 1;
+        if (!user) {
+          alert("Please sign in or create an account before continuing.");
+          window.location.href = "/auth.html";
+          if (button) {
+            button.disabled = false;
+            button.innerText = originalText;
+          }
+          return;
+        }
 
-    // Update Plan Name UI
-    if (statusPlan) statusPlan.innerText = planTier;
+        const response = await fetch("/api/create-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            priceId: priceId,
+            userId: user.id,
+            userEmail: user.email,
+            checkoutType: checkoutType
+          })
+        });
 
-    // Update Remaining Minutes & Fill Bar UI
-    if (maxSecs == null) {
-      if (statusMins) statusMins.innerText = 'Unlimited';
-      if (minsProgress) minsProgress.style.width = '100%';
-    } else {
-      const remainingSecs = Math.max(0, maxSecs - usedSecs);
-      const remainingMins = Math.floor(remainingSecs / 60);
-      const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
-
-      if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
-      if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
-    }
-
-    // Update Room Allocation & Fill Bar UI
-    if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
-    if (roomsProgress) {
-      const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
-      roomsProgress.style.width = `${roomPercent}%`;
-    }
-
-    // Dynamic enforcement: Disable button if room limit is reached
-    if (openModalBtn) {
-      if (currentRoomCount >= allowedRooms) {
-        openModalBtn.disabled = true;
-        openModalBtn.innerText = "Room Limit Reached";
-      } else {
-        openModalBtn.disabled = false;
-        openModalBtn.innerText = "+ Create New Event";
-      }
-    }
-  }
-
-  // 4. Realtime Subscription for Live Usage Syncing
-  function subscribeToLiveUserUpdates() {
-    if (!currentUser) return;
-
-    if (realtimeChannel) {
-      supabaseClient.removeChannel(realtimeChannel);
-    }
-
-    realtimeChannel = supabaseClient
-      .channel(`user_status_${currentUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'users',
-          filter: `user_id=eq.${currentUser.id}`
-        },
-        (payload) => {
-          if (payload.new) {
-            renderSubscriptionUI(payload.new);
+        const session = await response.json();
+        if (session.url) {
+          window.location.href = session.url;
+        } else {
+          alert("Checkout Error: " + (session.error || "Failed to start checkout."));
+          if (button) {
+            button.disabled = false;
+            button.innerText = originalText;
           }
         }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Realtime subscription issue, attempting reconnect...', err);
+      } catch (err) {
+        console.error(err);
+        alert("Server communication error.");
+        if (button) {
+          button.disabled = false;
+          button.innerText = originalText;
         }
-      });
-  }
-
-  // Sign Out Handler
-  logoutBtn.addEventListener('click', async () => {
-    if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-    await supabaseClient.auth.signOut();
-    window.location.href = '/auth.html';
-  });
-
-  // Modal Controls with Limit Guard Check
-  openModalBtn.addEventListener('click', () => {
-    const allowedRooms = cachedProfile?.allowed_rooms || 1;
-    if (currentRoomCount >= allowedRooms) {
-      alert(`Room limit reached (${currentRoomCount}/${allowedRooms}). Delete an existing room or upgrade your plan to create more.`);
-      return;
-    }
-    eventModal.style.display = 'flex';
-  });
-
-  closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
-
-  // 5. Create Room Handler with Hard Guard Check
-  createEventBtn.addEventListener('click', async () => {
-    const allowedRooms = cachedProfile?.allowed_rooms || 1;
-    if (currentRoomCount >= allowedRooms) {
-      alert(`Cannot create room: You have reached your maximum room limit of ${allowedRooms}.`);
-      eventModal.style.display = 'none';
-      return;
-    }
-
-    const name = eventNameInput.value.trim();
-    if (!name) return;
-
-    const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
-
-    try {
-      const { error } = await supabaseClient.from('rooms').insert([
-        { 
-          room_id: roomId, 
-          name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0
-        }
-      ]);
-
-      if (error) throw error;
-
-    } catch (e) {
-      console.warn("Supabase room insert failed, falling back to local storage:", e.message);
-      
-      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms.unshift({ id: roomId, name: name, created_at: new Date().toISOString() });
-      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-    }
-
-    eventNameInput.value = '';
-    eventModal.style.display = 'none';
-    await loadUserEvents();
-  });
-
-  // 6. Fetch & Render Rooms
-  async function loadUserEvents() {
-    const origin = window.location.origin;
-    let rooms = [];
-
-    try {
-      const { data: dbRooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
-
-      if (!error && dbRooms && dbRooms.length > 0) {
-        rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
       }
-    } catch (err) {
-      console.warn("Using local room state fallback:", err.message);
     }
-
-    if (rooms.length === 0) {
-      rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    }
-
-    if (rooms.length === 0) {
-      rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
-      localStorage.setItem('user_rooms', JSON.stringify(rooms));
-    }
-
-    // Keep active room count updated in status bar
-    currentRoomCount = rooms.length;
-    renderSubscriptionUI();
-
-    eventsContainer.innerHTML = '';
-
-    rooms.forEach((room) => {
-      const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-      const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/index.html?room=${room.id}`;
-
-      const card = document.createElement('div');
-      card.className = 'event-card';
-      card.innerHTML = `
-        <div class="event-card-header">
-          <div>
-            <div class="event-title">${room.name}</div>
-            <div class="event-id">Room ID: ${room.id}</div>
-          </div>
-          <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
-        </div>
-
-        <div class="links-grid">
-          <div class="link-box">
-            <label>Presenter Microphones Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-              <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>OBS Transparent Overlay Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-              <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>Mobile Audience View Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-              <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      eventsContainer.appendChild(card);
-    });
-  }
-
-  // Copy Link Helper
-  function copyLink(inputId) {
-    const input = document.getElementById(inputId);
-    input.select();
-    navigator.clipboard.writeText(input.value);
-    alert("Link copied to clipboard!");
-  }
-
-  // Delete Room Helper
-  async function deleteRoom(roomId) {
-    try {
-      await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
-    } catch (e) {
-      console.warn("Could not delete room from Supabase:", e.message);
-    }
-
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms = localRooms.filter(r => r.id !== roomId);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-    await loadUserEvents();
-  }
-
-  // Execute Init
-  checkUserSession();
-</script>
+  </script>
 </body>
 </html>
