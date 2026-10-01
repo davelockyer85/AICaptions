@@ -3,608 +3,463 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AICaptions</title>
+  <title>Presenter Audio Ingest - AICaptions</title>
 
-  <!-- Supabase JS SDK -->
+  <!-- Supabase JS Client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- QRCode.js CDN for audience QR code generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
-      min-height: 100vh;
-      padding-bottom: 60px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111827;
+      color: #f3f4f6;
+      padding: 2rem;
+      text-align: center;
+      margin: 0;
     }
-
-    /* Top Navigation Header */
-    header {
-      background-color: #1e293b;
-      border-bottom: 1px solid #334155;
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #3b82f6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .user-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .user-email {
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .btn-secondary {
-      background-color: #334155;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-secondary:hover { background-color: #475569; }
-
-    /* Main Container */
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
-
-    /* Status Bar Container */
-    .status-bar {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 28px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 24px;
-      align-items: center;
-    }
-
-    .status-item {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .status-label {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-    }
-
-    .status-value {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-
-    /* Progress Bar Components */
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #06b6d4);
-      width: 0%;
-      transition: width 0.4s ease;
-    }
-
-    /* Events Section */
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
-
-    .btn-primary {
-      background-color: #3b82f6;
-      color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-primary:hover { background-color: #2563eb; }
-
-    .event-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
+    .card {
+      max-width: 500px;
+      margin: 2rem auto;
+      background: #1f2937;
+      padding: 2rem;
       border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
+      border: 1px solid #374151;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
     }
-
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #334155;
-    }
-
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
-
-    .links-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-    }
-
-    .link-box {
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-
-    .link-box label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .link-action {
-      display: flex;
-      gap: 8px;
-    }
-
-    .link-action input {
-      flex: 1;
-      background: none;
-      border: none;
-      color: #cbd5e1;
-      font-size: 0.85rem;
-      outline: none;
+    h1 { margin-top: 0; color: #60a5fa; font-size: 1.75rem; }
+    p { color: #9ca3af; }
+    .room-badge {
+      display: inline-block;
+      background: #374151;
+      color: #93c5fd;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
       font-family: monospace;
+      font-weight: bold;
+      margin-bottom: 1.5rem;
     }
-
-    .btn-copy {
-      background-color: #334155;
-      color: #3b82f6;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
-    /* Modal for Event Creation */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 28px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .modal-card h3 { margin-bottom: 16px; }
-
-    .modal-card input {
-      width: 100%;
-      padding: 10px 14px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #f8fafc;
-      font-size: 0.95rem;
-      margin-bottom: 20px;
-      outline: none;
-    }
-
-    .modal-actions {
+    .btn-group {
       display: flex;
-      justify-content: flex-end;
-      gap: 12px;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+    button {
+      padding: 0.85rem 1.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    #startBtn { background: #2563eb; color: white; }
+    #startBtn:hover { background: #1d4ed8; }
+    #startBtn:disabled { background: #4b5563; cursor: not-allowed; }
+    #stopBtn { background: #dc2626; color: white; }
+    #stopBtn:hover { background: #b91c1c; }
+    #stopBtn:disabled { background: #4b5563; cursor: not-allowed; }
+    #status {
+      margin-top: 1.5rem;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #9ca3af;
     }
   </style>
 </head>
 <body>
+  <div class="card">
+    <h1>Stage Audio Transmitter</h1>
+    <p>Room Identifier:</p>
+    <div class="room-badge" id="roomDisplay">main-stage</div>
 
-  <header>
-    <div class="logo">🎙️ AICaptions</div>
-    <div class="user-controls">
-      <span class="user-email" id="userEmail">Loading...</span>
-      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
-    </div>
-  </header>
-
-  <div class="container">
-    
-    <!-- Status & Usage Bar -->
-    <div class="status-bar" id="statusBar">
-      <div class="status-item">
-        <span class="status-label">Current Plan</span>
-        <span class="status-value" id="statusPlan">Loading...</span>
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">Remaining Time</span>
-        <span class="status-value" id="statusMins">-- mins</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="minsProgress" style="width: 0%;"></div>
-        </div>
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">Room Allocation</span>
-        <span class="status-value" id="statusRooms">0 / 0 Rooms</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="roomsProgress" style="width: 0%;"></div>
-        </div>
-      </div>
+    <!-- Spoken / Ingest Language Selector -->
+    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
+      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
+        Spoken Language
+      </label>
+      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+        <!-- Populated dynamically by JS -->
+      </select>
     </div>
 
-    <!-- Events Management Header -->
-    <div class="section-header">
-      <h3>Active Event Rooms</h3>
-      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
+    <div class="btn-group">
+      <button id="startBtn">Start Streaming</button>
+      <button id="stopBtn" disabled>Stop</button>
     </div>
 
-    <!-- Events List Container -->
-    <div id="eventsContainer">
-      <!-- Event cards will be dynamically injected here -->
-    </div>
-
+    <p id="status">Status: Disconnected</p>
   </div>
 
-  <!-- Create Event Modal -->
-  <div class="modal-overlay" id="eventModal">
-    <div class="modal-card">
-      <h3>Create Event Room</h3>
-      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
-      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
- <script>
-  // 1. Supabase Initialization
-  const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // State Variables for Live Usage Tracking
+    let currentUser = null;
+    let usageTimer = null;
+    let pendingSeconds = 0;
+    const UPDATE_INTERVAL_SECONDS = 5;
 
-  // UI Elements
-  const userEmailSpan = document.getElementById('userEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const eventsContainer = document.getElementById('eventsContainer');
-  
-  const eventModal = document.getElementById('eventModal');
-  const openModalBtn = document.getElementById('openModalBtn');
-  const closeModalBtn = document.getElementById('closeModalBtn');
-  const createEventBtn = document.getElementById('createEventBtn');
-  const eventNameInput = document.getElementById('eventNameInput');
+    // Realtime Broadcast & Stream Limit Variables
+    let realtimeChannel = null;
+    let tickInterval = null;
+    let localElapsedCounter = 0;
+    let maxLimit = 3600; // Default maximum allowed stream time (seconds)
 
-  // Status Bar UI Elements
-  const statusPlan = document.getElementById('statusPlan');
-  const statusMins = document.getElementById('statusMins');
-  const minsProgress = document.getElementById('minsProgress');
-  const statusRooms = document.getElementById('statusRooms');
-  const roomsProgress = document.getElementById('roomsProgress');
-
-  let currentUser = null;
-  let realtimeChannel = null;
-  let cachedProfile = null;
-  let currentRoomCount = 0;
-
-  // 2. Auth Session Protection & App Init
-  async function checkUserSession() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (error || !session) {
-      window.location.href = '/auth.html';
-      return;
-    }
-
-    currentUser = session.user;
-    if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
-
-    // Load account details and rooms
-    await loadUserProfile();
-    await loadUserEvents();
-
-    // Subscribe to live usage updates
-    subscribeToLiveUserUpdates();
-  }
-
-  // 3. Load Subscription & Account Details from Supabase
-  async function loadUserProfile() {
-    if (!currentUser) return;
-
-    try {
-      const { data: profile, error } = await supabaseClient
-        .from('users')
-        .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
-        .eq('user_id', currentUser.id) // Fixes "column users.id does not exist"
-        .single();
-
-      if (error) throw error;
-
-      if (profile) {
-        cachedProfile = profile;
-        renderSubscriptionUI();
+    // Authenticate Presenter Session
+    async function initPresenterAuth() {
+      try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session && session.user) {
+          currentUser = session.user;
+        }
+      } catch (err) {
+        console.warn("Could not retrieve Supabase session:", err.message);
       }
-    } catch (err) {
-      console.warn("Could not load user profile from Supabase:", err.message);
     }
-  }
+    initPresenterAuth();
 
-  // Render Status Bar metrics and progress bars
-  function renderSubscriptionUI(updatedProfile) {
-    if (updatedProfile) cachedProfile = updatedProfile;
-    if (!cachedProfile) return;
+    // Usage Tracking Functions
+    function startUsageTracking(userId, roomId) {
+      stopUsageTracking(); // Clear any existing interval
 
-    const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
-    const usedSecs = cachedProfile.streaming_seconds_used || 0;
-    const maxSecs = cachedProfile.max_streaming_seconds;
-    const allowedRooms = cachedProfile.allowed_rooms || 1;
-
-    // Update Plan Name UI
-    if (statusPlan) statusPlan.innerText = planTier;
-
-    // Update Remaining Minutes & Fill Bar UI
-    if (maxSecs == null) {
-      if (statusMins) statusMins.innerText = 'Unlimited';
-      if (minsProgress) minsProgress.style.width = '100%';
-    } else {
-      const remainingSecs = Math.max(0, maxSecs - usedSecs);
-      const remainingMins = Math.floor(remainingSecs / 60);
-      const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
-
-      if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
-      if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
+      usageTimer = setInterval(async () => {
+        pendingSeconds += UPDATE_INTERVAL_SECONDS;
+        await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+      }, UPDATE_INTERVAL_SECONDS * 1000);
     }
 
-    // Update Room Allocation & Fill Bar UI
-    if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
-    if (roomsProgress) {
-      const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
-      roomsProgress.style.width = `${roomPercent}%`;
-    }
-  }
+    // UPDATED FUNCTION: Uses maybeSingle() and upsert() to support new users
+    async function syncUsageToSupabase(userId, roomId, secondsToAdd) {
+      if (!userId) return;
 
-  // 4. Realtime Subscription for Live Usage Syncing
-  function subscribeToLiveUserUpdates() {
-    if (!currentUser) return;
+      try {
+        // Step A: Upsert 'users' table usage
+        const { data: user } = await supabaseClient
+          .from('users')
+          .select('streaming_seconds_used')
+          .eq('user_id', userId)
+          .maybeSingle(); // Safe against 0 rows found
 
-    if (realtimeChannel) {
-      supabaseClient.removeChannel(realtimeChannel);
-    }
+        const currentSeconds = user?.streaming_seconds_used || 0;
 
-    realtimeChannel = supabaseClient
-      .channel(`user_status_${currentUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'users',
-          filter: `user_id=eq.${currentUser.id}`
-        },
-        (payload) => {
-          if (payload.new) {
-            renderSubscriptionUI(payload.new);
-          }
+        await supabaseClient
+          .from('users')
+          .upsert({ 
+            user_id: userId, 
+            streaming_seconds_used: currentSeconds + secondsToAdd 
+          }, { onConflict: 'user_id' });
+
+        // Step B: Upsert 'rooms' table usage
+        if (roomId) {
+          const { data: room } = await supabaseClient
+            .from('rooms')
+            .select('streaming_seconds_used')
+            .eq('room_id', roomId)
+            .maybeSingle();
+
+          const roomSeconds = room?.streaming_seconds_used || 0;
+
+          await supabaseClient
+            .from('rooms')
+            .upsert({ 
+              room_id: roomId, 
+              streaming_seconds_used: roomSeconds + secondsToAdd 
+            }, { onConflict: 'room_id' });
         }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Realtime subscription issue, attempting reconnect...', err);
+      } catch (err) {
+        console.warn("Usage sync error:", err.message);
+      }
+    }
+
+    function stopUsageTracking() {
+      if (usageTimer) {
+        clearInterval(usageTimer);
+        usageTimer = null;
+      }
+    }
+
+    // Array of 83 Supported Spoken Languages (BCP-47 Standard)
+    const SUPPORTED_LANGUAGES = [
+      { code: 'af-ZA', name: 'Afrikaans' },
+      { code: 'sq-AL', name: 'Albanian' },
+      { code: 'am-ET', name: 'Amharic' },
+      { code: 'ar-SA', name: 'Arabic' },
+      { code: 'hy-AM', name: 'Armenian' },
+      { code: 'az-AZ', name: 'Azerbaijani' },
+      { code: 'eu-ES', name: 'Basque' },
+      { code: 'be-BY', name: 'Belarusian' },
+      { code: 'bn-IN', name: 'Bengali' },
+      { code: 'bs-BA', name: 'Bosnian' },
+      { code: 'bg-BG', name: 'Bulgarian' },
+      { code: 'ca-ES', name: 'Catalan' },
+      { code: 'zh-CN', name: 'Chinese (Simplified)' },
+      { code: 'zh-TW', name: 'Chinese (Traditional)' },
+      { code: 'hr-HR', name: 'Croatian' },
+      { code: 'cs-CZ', name: 'Czech' },
+      { code: 'da-DK', name: 'Danish' },
+      { code: 'nl-NL', name: 'Dutch' },
+      { code: 'en-AU', name: 'English (Australia)' },
+      { code: 'en-GB', name: 'English (United Kingdom)' },
+      { code: 'en-US', name: 'English (United States)' },
+      { code: 'eo',    name: 'Esperanto' },
+      { code: 'et-EE', name: 'Estonian' },
+      { code: 'fil-PH', name: 'Filipino' },
+      { code: 'fi-FI', name: 'Finnish' },
+      { code: 'fr-CA', name: 'French (Canada)' },
+      { code: 'fr-FR', name: 'French (France)' },
+      { code: 'gl-ES', name: 'Galician' },
+      { code: 'ka-GE', name: 'Georgian' },
+      { code: 'de-DE', name: 'German' },
+      { code: 'el-GR', name: 'Greek' },
+      { code: 'gu-IN', name: 'Gujarati' },
+      { code: 'ht',    name: 'Haitian Creole' },
+      { code: 'ha-NG', name: 'Hausa' },
+      { code: 'he-IL', name: 'Hebrew' },
+      { code: 'hi-IN', name: 'Hindi' },
+      { code: 'hu-HU', name: 'Hungarian' },
+      { code: 'is-IS', name: 'Icelandic' },
+      { code: 'id-ID', name: 'Indonesian' },
+      { code: 'ga-IE', name: 'Irish' },
+      { code: 'it-IT', name: 'Italian' },
+      { code: 'ja-JP', name: 'Japanese' },
+      { code: 'jv-ID', name: 'Javanese' },
+      { code: 'kn-IN', name: 'Kannada' },
+      { code: 'kk-KZ', name: 'Kazakh' },
+      { code: 'km-KH', name: 'Khmer' },
+      { code: 'ko-KR', name: 'Korean' },
+      { code: 'lo-LA', name: 'Lao' },
+      { code: 'lv-LV', name: 'Latvian' },
+      { code: 'lt-LT', name: 'Lithuanian' },
+      { code: 'mk-MK', name: 'Macedonian' },
+      { code: 'ms-MY', name: 'Malay' },
+      { code: 'ml-IN', name: 'Malayalam' },
+      { code: 'mt-MT', name: 'Maltese' },
+      { code: 'mr-IN', name: 'Marathi' },
+      { code: 'mn-MN', name: 'Mongolian' },
+      { code: 'ne-NP', name: 'Nepali' },
+      { code: 'nb-NO', name: 'Norwegian' },
+      { code: 'fa-IR', name: 'Persian' },
+      { code: 'pl-PL', name: 'Polish' },
+      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
+      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
+      { code: 'pa-IN', name: 'Punjabi' },
+      { code: 'ro-RO', name: 'Romanian' },
+      { code: 'ru-RU', name: 'Russian' },
+      { code: 'sr-RS', name: 'Serbian' },
+      { code: 'si-LK', name: 'Sinhala' },
+      { code: 'sk-SK', name: 'Slovak' },
+      { code: 'sl-SI', name: 'Slovenian' },
+      { code: 'so-SO', name: 'Somali' },
+      { code: 'es-419', name: 'Spanish (Latin America)' },
+      { code: 'es-ES', name: 'Spanish (Spain)' },
+      { code: 'su-ID', name: 'Sundanese' },
+      { code: 'sw-KE', name: 'Swahili' },
+      { code: 'sv-SE', name: 'Swedish' },
+      { code: 'ta-IN', name: 'Tamil' },
+      { code: 'te-IN', name: 'Telugu' },
+      { code: 'th-TH', name: 'Thai' },
+      { code: 'tr-TR', name: 'Turkish' },
+      { code: 'uk-UA', name: 'Ukrainian' },
+      { code: 'ur-PK', name: 'Urdu' },
+      { code: 'uz-UZ', name: 'Uzbek' },
+      { code: 'vi-VN', name: 'Vietnamese' }
+    ];
+
+    function initLanguageSelector(defaultCode = 'en-US') {
+      const selectElem = document.getElementById('languageSelect');
+      if (!selectElem) return;
+
+      selectElem.innerHTML = '';
+
+      SUPPORTED_LANGUAGES.forEach((lang) => {
+        const opt = document.createElement('option');
+        opt.value = lang.code;
+        opt.textContent = `${lang.name} (${lang.code})`;
+        if (lang.code === defaultCode) {
+          opt.selected = true;
         }
+        selectElem.appendChild(opt);
       });
-  }
 
-  // Sign Out Handler
-  logoutBtn.addEventListener('click', async () => {
-    if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-    await supabaseClient.auth.signOut();
-    window.location.href = '/auth.html';
-  });
+      selectElem.addEventListener('change', (e) => {
+        localStorage.setItem('presenter_lang', e.target.value);
+      });
+    }
 
-  // Modal Controls
-  openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
-  closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
+    // Read room, token & maxLimit from URL parameters or storage
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+      maxLimit = parsedMaxLimit;
+    }
+    
+    // Attempt to locate Supabase session token if present
+    const urlToken = urlParams.get('token');
+    const localToken = localStorage.getItem('supabase.auth.token') 
+      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
+      : null;
+    const token = urlToken || localToken || '';
 
-  // 5. Create Room Handler
-  createEventBtn.addEventListener('click', async () => {
-    const name = eventNameInput.value.trim();
-    if (!name) return;
+    document.getElementById('roomDisplay').innerText = room;
 
-    const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+    // Initialize Language Dropdown
+    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
 
-    try {
-      const { error } = await supabaseClient.from('rooms').insert([
-        { 
-          room_id: roomId, 
-          name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0 // Fixes NOT-NULL constraint error
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+
+    let ws = null;
+    let mediaRecorder = null;
+    let audioStream = null;
+
+    startBtn.onclick = async () => {
+      try {
+        status.innerText = "Status: Requesting Microphone Access...";
+        status.style.color = "#f59e0b";
+
+        audioStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+
+        // Get selected language code
+        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
+
+        // Build WebSocket connection string with room, role, token, and selected language
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
+        if (token) {
+          wsUrl += `&token=${encodeURIComponent(token)}`;
         }
-      ]);
 
-      if (error) throw error;
+        ws = new WebSocket(wsUrl);
 
-    } catch (e) {
-      console.warn("Supabase room insert failed, falling back to local storage:", e.message);
-      
-      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms.unshift({ id: roomId, name: name, created_at: new Date().toISOString() });
-      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-    }
+        ws.onopen = () => {
+          status.innerText = "Status: Live & Streaming Stage Audio";
+          status.style.color = "#10b981";
 
-    eventNameInput.value = '';
-    eventModal.style.display = 'none';
-    await loadUserEvents();
-  });
+          // Select supported audio MIME type for MediaRecorder
+          let mimeType = 'audio/webm;codecs=opus';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+          }
 
-  // 6. Fetch & Render Rooms
-  async function loadUserEvents() {
-    const origin = window.location.origin;
-    let rooms = [];
+          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
 
-    try {
-      const { data: dbRooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
+            }
+          };
 
-      if (!error && dbRooms && dbRooms.length > 0) {
-        rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
+          // Send 250ms chunks to Deepgram
+          mediaRecorder.start(250);
+
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+
+          // Start pushing live time updates to Supabase every 5 seconds
+          if (currentUser) {
+            startUsageTracking(currentUser.id, room);
+          }
+
+          // Broadcast room presence/tick over Supabase Realtime Channel
+          localElapsedCounter = 0;
+          realtimeChannel = supabaseClient.channel(`room_${room}`, {
+            config: { broadcast: { self: true } }
+          });
+
+          // Listen for broadcasted ticks
+          realtimeChannel.on('broadcast', { event: 'timer_tick' }, (response) => {
+            localElapsedCounter += (response.payload?.elapsed || 1);
+            if (localElapsedCounter >= maxLimit) {
+              status.innerText = "Status: Reached Maximum Streaming Limit";
+              status.style.color = "#ef4444";
+              cleanup();
+            }
+          });
+
+          realtimeChannel.subscribe((statusState) => {
+            if (statusState === 'SUBSCRIBED') {
+              // Send a tick event over WebSockets every second
+              tickInterval = setInterval(() => {
+                if (realtimeChannel) {
+                  realtimeChannel.send({
+                    type: 'broadcast',
+                    event: 'timer_tick',
+                    payload: { elapsed: 1 }
+                  });
+                }
+              }, 1000);
+            }
+          });
+        };
+
+        ws.onerror = (err) => {
+          console.error("WebSocket Error:", err);
+          status.innerText = "Status: Connection Error";
+          status.style.color = "#ef4444";
+        };
+
+        ws.onclose = (e) => {
+          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
+          status.style.color = "#ef4444";
+          cleanup();
+        };
+
+      } catch (err) {
+        console.error("Microphone Access Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
       }
-    } catch (err) {
-      console.warn("Using local room state fallback:", err.message);
+    };
+
+    stopBtn.onclick = () => {
+      cleanup();
+      status.innerText = "Status: Stopped";
+      status.style.color = "#9ca3af";
+    };
+
+    function cleanup() {
+      // Stop usage tracking timer
+      stopUsageTracking();
+
+      // Clear realtime tick interval & unsubscribe channel
+      if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+      }
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
     }
 
-    if (rooms.length === 0) {
-      rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    }
-
-    if (rooms.length === 0) {
-      rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
-      localStorage.setItem('user_rooms', JSON.stringify(rooms));
-    }
-
-    // Keep active room count updated in status bar
-    currentRoomCount = rooms.length;
-    renderSubscriptionUI();
-
-    eventsContainer.innerHTML = '';
-
-    rooms.forEach((room) => {
-      const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-      const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/index.html?room=${room.id}`;
-
-      const card = document.createElement('div');
-      card.className = 'event-card';
-      card.innerHTML = `
-        <div class="event-card-header">
-          <div>
-            <div class="event-title">${room.name}</div>
-            <div class="event-id">Room ID: ${room.id}</div>
-          </div>
-          <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
-        </div>
-
-        <div class="links-grid">
-          <div class="link-box">
-            <label>Presenter Microphones Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-              <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>OBS Transparent Overlay Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-              <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>Mobile Audience View Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-              <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      eventsContainer.appendChild(card);
+    // Stop tracking timer if browser tab closes or navigates away
+    window.addEventListener('beforeunload', () => {
+      cleanup();
     });
-  }
-
-  // Copy Link Helper
-  function copyLink(inputId) {
-    const input = document.getElementById(inputId);
-    input.select();
-    navigator.clipboard.writeText(input.value);
-    alert("Link copied to clipboard!");
-  }
-
-  // Delete Room Helper
-  async function deleteRoom(roomId) {
-    try {
-      await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
-    } catch (e) {
-      console.warn("Could not delete room from Supabase:", e.message);
-    }
-
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms = localRooms.filter(r => r.id !== roomId);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-    await loadUserEvents();
-  }
-
-  // Execute Init
-  checkUserSession();
-</script>
+  </script>
+</body>
+</html>
