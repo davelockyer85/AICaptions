@@ -132,7 +132,7 @@
     </div>
 
     <div class="pricing-grid">
-      <!-- 1. Event Pass -->
+      <!-- 1. Event Pass (One-Time) -->
       <div class="price-card">
         <div>
           <div class="plan-name">Event Pass</div>
@@ -145,12 +145,12 @@
             <li>No Recurring Subscription</li>
           </ul>
         </div>
-        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'one_time')">
+        <button class="btn-subscribe" onclick="handleCheckout(event, 'price_1UJtjiJv4dyhvuKyHFiWUnuI', 'payment')">
           Buy Event Pass
         </button>
       </div>
 
-      <!-- 2. Starter Plan -->
+      <!-- 2. Starter Plan (Subscription) -->
       <div class="price-card featured">
         <div class="badge">Most Popular</div>
         <div>
@@ -169,7 +169,7 @@
         </button>
       </div>
 
-      <!-- 3. Pro Plan -->
+      <!-- 3. Pro Plan (Subscription) -->
       <div class="price-card">
         <div>
           <div class="plan-name">Pro Multi-Stage</div>
@@ -194,7 +194,7 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function handleCheckout(evt, priceId, checkoutType) {
+    async function handleCheckout(evt, priceId, mode) {
       const button = evt ? (evt.target || evt.currentTarget) : null;
       const originalText = button ? button.innerText : 'Buy Now';
 
@@ -223,7 +223,7 @@
             priceId: priceId,
             userId: user.id,
             userEmail: user.email,
-            checkoutType: checkoutType
+            mode: mode // Send Stripe mode ('payment' or 'subscription')
           })
         });
 
