@@ -100,14 +100,8 @@
     // State Variables for Live Usage Tracking
     let currentUser = null;
     let usageTimer = null;
-    let pendingSeconds = 0;
     const UPDATE_INTERVAL_SECONDS = 5;
-
-    // Realtime Broadcast & Stream Limit Variables
-    let realtimeChannel = null;
-    let tickInterval = null;
-    let localElapsedCounter = 0;
-    let maxLimit = 3600; // Default maximum allowed stream time (seconds)
+    let maxLimit = 3600; // Default limit fallback
 
     // Authenticate Presenter Session
     async function initPresenterAuth() {
@@ -115,19 +109,48 @@
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
+          // Initial sanity check on page load
+          await canStartStream(currentUser.id);
         }
       } catch (err) {
         console.warn("Could not retrieve Supabase session:", err.message);
       }
     }
-    initPresenterAuth();
 
-    // Usage Tracking Functions
+    // Pre-flight validation before starting stream
+    async function canStartStream(userId) {
+      if (!userId) return true;
+
+      try {
+        const { data: user, error } = await supabaseClient
+          .from('users')
+          .select('streaming_seconds_used, max_streaming_seconds')
+          .eq('user_id', userId)
+          .single();
+
+        if (error || !user) return true;
+
+        const used = user.streaming_seconds_used || 0;
+        const allowed = user.max_streaming_seconds ?? maxLimit;
+
+        if (used >= allowed) {
+          status.innerText = `Status: Time Limit Exceeded (${Math.floor(used/60)}/${Math.floor(allowed/60)} mins)`;
+          status.style.color = "#ef4444";
+          startBtn.disabled = true;
+          return false;
+        }
+        return true;
+      } catch (e) {
+        console.warn("Pre-flight check error:", e.message);
+        return true;
+      }
+    }
+
+    // Usage Tracking & Limit Enforcement Loop
     function startUsageTracking(userId, roomId) {
-      stopUsageTracking(); // Clear any existing interval
+      stopUsageTracking(); // Clear existing interval
 
       usageTimer = setInterval(async () => {
-        pendingSeconds += UPDATE_INTERVAL_SECONDS;
         await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
     }
@@ -136,34 +159,54 @@
       if (!userId) return;
 
       try {
-        // Step A: Fetch & Update 'users' table usage
+        // Step A: Fetch current user limit & usage
         const { data: user, error: userErr } = await supabaseClient
           .from('users')
-          .select('streaming_seconds_used')
+          .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .single();
 
-        if (!userErr && user) {
-          const currentSeconds = user.streaming_seconds_used || 0;
+        if (userErr || !user) return;
+
+        const currentUsed = user.streaming_seconds_used || 0;
+        const allowedMax = user.max_streaming_seconds ?? maxLimit;
+        const newTotal = currentUsed + secondsToAdd;
+
+        // HARD CUT-OFF CONDITION
+        if (currentUsed >= allowedMax || newTotal >= allowedMax) {
+          // Cap usage in DB at max allowed
           await supabaseClient
             .from('users')
-            .update({ streaming_seconds_used: currentSeconds + secondsToAdd })
+            .update({ streaming_seconds_used: allowedMax })
             .eq('user_id', userId);
+
+          // STOP STREAM IMMEDIATELY
+          cleanup();
+
+          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
+          status.style.color = "#ef4444";
+          alert(`Stream stopped: You have reached your maximum streaming limit of ${Math.floor(allowedMax / 60)} minutes.`);
+          return;
         }
 
-        // Step B: Update 'rooms' table usage
+        // Step B: Update user usage
+        await supabaseClient
+          .from('users')
+          .update({ streaming_seconds_used: newTotal })
+          .eq('user_id', userId);
+
+        // Step C: Update room-level usage
         if (roomId) {
-          const { data: room, error: roomErr } = await supabaseClient
+          const { data: room } = await supabaseClient
             .from('rooms')
             .select('streaming_seconds_used')
             .eq('room_id', roomId)
             .single();
 
-          if (!roomErr && room) {
-            const roomSeconds = room.streaming_seconds_used || 0;
+          if (room) {
             await supabaseClient
               .from('rooms')
-              .update({ streaming_seconds_used: roomSeconds + secondsToAdd })
+              .update({ streaming_seconds_used: (room.streaming_seconds_used || 0) + secondsToAdd })
               .eq('room_id', roomId);
           }
         }
@@ -179,7 +222,7 @@
       }
     }
 
-    // Array of 83 Supported Spoken Languages (BCP-47 Standard)
+    // Supported Spoken Languages (BCP-47 Standard)
     const SUPPORTED_LANGUAGES = [
       { code: 'af-ZA', name: 'Afrikaans' },
       { code: 'sq-AL', name: 'Albanian' },
@@ -276,9 +319,7 @@
         const opt = document.createElement('option');
         opt.value = lang.code;
         opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) {
-          opt.selected = true;
-        }
+        if (lang.code === defaultCode) opt.selected = true;
         selectElem.appendChild(opt);
       });
 
@@ -287,7 +328,7 @@
       });
     }
 
-    // Read room, token & maxLimit from URL parameters or storage
+    // Read room & maxLimit from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
     const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
@@ -295,7 +336,6 @@
       maxLimit = parsedMaxLimit;
     }
     
-    // Attempt to locate Supabase session token if present
     const urlToken = urlParams.get('token');
     const localToken = localStorage.getItem('supabase.auth.token') 
       ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
@@ -303,9 +343,8 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-
-    // Initialize Language Dropdown
     initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+    initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -316,6 +355,15 @@
     let audioStream = null;
 
     startBtn.onclick = async () => {
+      // Step 1: Pre-flight stream limit check
+      if (currentUser) {
+        const allowedToStream = await canStartStream(currentUser.id);
+        if (!allowedToStream) {
+          alert("Cannot start streaming: Your maximum allowed streaming time has been reached.");
+          return;
+        }
+      }
+
       try {
         status.innerText = "Status: Requesting Microphone Access...";
         status.style.color = "#f59e0b";
@@ -328,15 +376,11 @@
           } 
         });
 
-        // Get selected language code
         const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
 
-        // Build WebSocket connection string with room, role, token, and selected language
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
         let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
-        if (token) {
-          wsUrl += `&token=${encodeURIComponent(token)}`;
-        }
+        if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
 
@@ -344,7 +388,6 @@
           status.innerText = "Status: Live & Streaming Stage Audio";
           status.style.color = "#10b981";
 
-          // Select supported audio MIME type for MediaRecorder
           let mimeType = 'audio/webm;codecs=opus';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
             mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
@@ -358,47 +401,15 @@
             }
           };
 
-          // Send 250ms chunks to Deepgram
           mediaRecorder.start(250);
 
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
-          // Start pushing live time updates to Supabase every 5 seconds
+          // Start syncing usage to Supabase every 5 seconds
           if (currentUser) {
             startUsageTracking(currentUser.id, room);
           }
-
-          // Broadcast room presence/tick over Supabase Realtime Channel
-          localElapsedCounter = 0;
-          realtimeChannel = supabaseClient.channel(`room_${room}`, {
-            config: { broadcast: { self: true } }
-          });
-
-          // Listen for broadcasted ticks
-          realtimeChannel.on('broadcast', { event: 'timer_tick' }, (response) => {
-            localElapsedCounter += (response.payload?.elapsed || 1);
-            if (localElapsedCounter >= maxLimit) {
-              status.innerText = "Status: Reached Maximum Streaming Limit";
-              status.style.color = "#ef4444";
-              cleanup();
-            }
-          });
-
-          realtimeChannel.subscribe((statusState) => {
-            if (statusState === 'SUBSCRIBED') {
-              // Send a tick event over WebSockets every second
-              tickInterval = setInterval(() => {
-                if (realtimeChannel) {
-                  realtimeChannel.send({
-                    type: 'broadcast',
-                    event: 'timer_tick',
-                    payload: { elapsed: 1 }
-                  });
-                }
-              }, 1000);
-            }
-          });
         };
 
         ws.onerror = (err) => {
@@ -408,8 +419,10 @@
         };
 
         ws.onclose = (e) => {
-          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-          status.style.color = "#ef4444";
+          if (status.innerText !== "Status: Terminated — Maximum Time Limit Reached") {
+            status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
+            status.style.color = "#ef4444";
+          }
           cleanup();
         };
 
@@ -427,18 +440,7 @@
     };
 
     function cleanup() {
-      // Stop usage tracking timer
       stopUsageTracking();
-
-      // Clear realtime tick interval & unsubscribe channel
-      if (tickInterval) {
-        clearInterval(tickInterval);
-        tickInterval = null;
-      }
-      if (realtimeChannel) {
-        supabaseClient.removeChannel(realtimeChannel);
-        realtimeChannel = null;
-      }
 
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
@@ -453,7 +455,6 @@
       stopBtn.disabled = true;
     }
 
-    // Stop tracking timer if browser tab closes or navigates away
     window.addEventListener('beforeunload', () => {
       cleanup();
     });
