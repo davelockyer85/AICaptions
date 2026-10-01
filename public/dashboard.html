@@ -141,10 +141,17 @@
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background 0.2s, opacity 0.2s;
     }
 
-    .btn-primary:hover { background-color: #2563eb; }
+    .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
+    
+    .btn-primary:disabled {
+      background-color: #475569;
+      color: #94a3b8;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
 
     .event-card {
       background-color: #1e293b;
@@ -376,7 +383,7 @@
       const { data: profile, error } = await supabaseClient
         .from('users')
         .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
-        .eq('user_id', currentUser.id) // Fixes "column users.id does not exist"
+        .eq('user_id', currentUser.id)
         .single();
 
       if (error) throw error;
@@ -390,7 +397,7 @@
     }
   }
 
-  // Render Status Bar metrics and progress bars
+  // Render Status Bar metrics, progress bars, and toggle create button state
   function renderSubscriptionUI(updatedProfile) {
     if (updatedProfile) cachedProfile = updatedProfile;
     if (!cachedProfile) return;
@@ -421,6 +428,17 @@
     if (roomsProgress) {
       const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
       roomsProgress.style.width = `${roomPercent}%`;
+    }
+
+    // Dynamic enforcement: Disable button if room limit is reached
+    if (openModalBtn) {
+      if (currentRoomCount >= allowedRooms) {
+        openModalBtn.disabled = true;
+        openModalBtn.innerText = "Room Limit Reached";
+      } else {
+        openModalBtn.disabled = false;
+        openModalBtn.innerText = "+ Create New Event";
+      }
     }
   }
 
@@ -462,12 +480,27 @@
     window.location.href = '/auth.html';
   });
 
-  // Modal Controls
-  openModalBtn.addEventListener('click', () => { eventModal.style.display = 'flex'; });
+  // Modal Controls with Limit Guard Check
+  openModalBtn.addEventListener('click', () => {
+    const allowedRooms = cachedProfile?.allowed_rooms || 1;
+    if (currentRoomCount >= allowedRooms) {
+      alert(`Room limit reached (${currentRoomCount}/${allowedRooms}). Delete an existing room or upgrade your plan to create more.`);
+      return;
+    }
+    eventModal.style.display = 'flex';
+  });
+
   closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
 
-  // 5. Create Room Handler
+  // 5. Create Room Handler with Hard Guard Check
   createEventBtn.addEventListener('click', async () => {
+    const allowedRooms = cachedProfile?.allowed_rooms || 1;
+    if (currentRoomCount >= allowedRooms) {
+      alert(`Cannot create room: You have reached your maximum room limit of ${allowedRooms}.`);
+      eventModal.style.display = 'none';
+      return;
+    }
+
     const name = eventNameInput.value.trim();
     if (!name) return;
 
@@ -479,7 +512,7 @@
           room_id: roomId, 
           name: name, 
           user_id: currentUser.id,
-          streaming_seconds_used: 0 // Fixes NOT-NULL constraint error
+          streaming_seconds_used: 0
         }
       ]);
 
@@ -608,3 +641,5 @@
   // Execute Init
   checkUserSession();
 </script>
+</body>
+</html>
