@@ -91,375 +91,403 @@
     <p id="status">Status: Disconnected</p>
   </div>
 
-  <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<script>
+  // 1. Supabase Initialization
+  const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // State Variables for Live Usage Tracking
-    let currentUser = null;
-    let usageTimer = null;
-    let pendingSeconds = 0;
-    const UPDATE_INTERVAL_SECONDS = 5;
+  // State Variables for Live Usage Tracking
+  let currentUser = null;
+  let usageTimer = null;
+  let pendingSeconds = 0;
+  const UPDATE_INTERVAL_SECONDS = 5;
 
-    // Realtime Broadcast & Stream Limit Variables
-    let realtimeChannel = null;
-    let tickInterval = null;
-    let localElapsedCounter = 0;
-    let maxLimit = 3600; // Default maximum allowed stream time (seconds)
+  // Realtime Broadcast & Stream Limit Variables
+  let realtimeChannel = null;
+  let tickInterval = null;
+  let localElapsedCounter = 0;
+  let maxLimit = 3600; // Default maximum allowed stream time (seconds)
 
-    // Authenticate Presenter Session
-    async function initPresenterAuth() {
-      try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session && session.user) {
-          currentUser = session.user;
-        }
-      } catch (err) {
-        console.warn("Could not retrieve Supabase session:", err.message);
-      }
-    }
-    initPresenterAuth();
+  // Authenticate Presenter Session & Check Room Limits
+  async function initPresenterAuth() {
+    try {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session && session.user) {
+        currentUser = session.user;
 
-    // Usage Tracking Functions
-    function startUsageTracking(userId, roomId) {
-      stopUsageTracking(); // Clear any existing interval
-
-      usageTimer = setInterval(async () => {
-        pendingSeconds += UPDATE_INTERVAL_SECONDS;
-        await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
-      }, UPDATE_INTERVAL_SECONDS * 1000);
-    }
-
-    // UPDATED FUNCTION: Uses maybeSingle() and upsert() to support new users
-    async function syncUsageToSupabase(userId, roomId, secondsToAdd) {
-      if (!userId) return;
-
-      try {
-        // Step A: Upsert 'users' table usage
-        const { data: user } = await supabaseClient
+        // ==========================================
+        // ROOM LIMIT CHECK (INTEGRATED HERE)
+        // ==========================================
+        // 1. Fetch user's room limit
+        const { data: userProfile } = await supabaseClient
           .from('users')
-          .select('streaming_seconds_used')
-          .eq('user_id', userId)
-          .maybeSingle(); // Safe against 0 rows found
+          .select('max_rooms')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
 
-        const currentSeconds = user?.streaming_seconds_used || 0;
+        if (userProfile && typeof userProfile.max_rooms === 'number') {
+          // 2. Count existing rooms
+          const { count: currentRooms } = await supabaseClient
+            .from('rooms')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', currentUser.id);
+
+          // 3. Disable creation/streaming if limit hit
+          const cannotCreateRoom = (currentRooms || 0) >= userProfile.max_rooms;
+
+          if (cannotCreateRoom) {
+            document.getElementById('startBtn').disabled = true;
+            const status = document.getElementById('status');
+            status.innerText = `Status: Room Limit Reached (${currentRooms}/${userProfile.max_rooms})`;
+            status.style.color = '#ef4444';
+          }
+        }
+        // ==========================================
+      }
+    } catch (err) {
+      console.warn("Could not retrieve Supabase session:", err.message);
+    }
+  }
+  initPresenterAuth();
+
+  // Usage Tracking Functions
+  function startUsageTracking(userId, roomId) {
+    stopUsageTracking(); // Clear any existing interval
+
+    usageTimer = setInterval(async () => {
+      pendingSeconds += UPDATE_INTERVAL_SECONDS;
+      await syncUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+    }, UPDATE_INTERVAL_SECONDS * 1000);
+  }
+
+  async function syncUsageToSupabase(userId, roomId, secondsToAdd) {
+    if (!userId) return;
+
+    try {
+      // Step A: Upsert 'users' table usage
+      const { data: user } = await supabaseClient
+        .from('users')
+        .select('streaming_seconds_used')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const currentSeconds = user?.streaming_seconds_used || 0;
+
+      await supabaseClient
+        .from('users')
+        .upsert({ 
+          user_id: userId, 
+          streaming_seconds_used: currentSeconds + secondsToAdd 
+        }, { onConflict: 'user_id' });
+
+      // Step B: Upsert 'rooms' table usage
+      if (roomId) {
+        const { data: room } = await supabaseClient
+          .from('rooms')
+          .select('streaming_seconds_used')
+          .eq('room_id', roomId)
+          .maybeSingle();
+
+        const roomSeconds = room?.streaming_seconds_used || 0;
 
         await supabaseClient
-          .from('users')
+          .from('rooms')
           .upsert({ 
-            user_id: userId, 
-            streaming_seconds_used: currentSeconds + secondsToAdd 
-          }, { onConflict: 'user_id' });
-
-        // Step B: Upsert 'rooms' table usage
-        if (roomId) {
-          const { data: room } = await supabaseClient
-            .from('rooms')
-            .select('streaming_seconds_used')
-            .eq('room_id', roomId)
-            .maybeSingle();
-
-          const roomSeconds = room?.streaming_seconds_used || 0;
-
-          await supabaseClient
-            .from('rooms')
-            .upsert({ 
-              room_id: roomId, 
-              streaming_seconds_used: roomSeconds + secondsToAdd 
-            }, { onConflict: 'room_id' });
-        }
-      } catch (err) {
-        console.warn("Usage sync error:", err.message);
+            room_id: roomId, 
+            streaming_seconds_used: roomSeconds + secondsToAdd 
+          }, { onConflict: 'room_id' });
       }
+    } catch (err) {
+      console.warn("Usage sync error:", err.message);
     }
+  }
 
-    function stopUsageTracking() {
-      if (usageTimer) {
-        clearInterval(usageTimer);
-        usageTimer = null;
+  function stopUsageTracking() {
+    if (usageTimer) {
+      clearInterval(usageTimer);
+      usageTimer = null;
+    }
+  }
+
+  // Array of 83 Supported Spoken Languages (BCP-47 Standard)
+  const SUPPORTED_LANGUAGES = [
+    { code: 'af-ZA', name: 'Afrikaans' },
+    { code: 'sq-AL', name: 'Albanian' },
+    { code: 'am-ET', name: 'Amharic' },
+    { code: 'ar-SA', name: 'Arabic' },
+    { code: 'hy-AM', name: 'Armenian' },
+    { code: 'az-AZ', name: 'Azerbaijani' },
+    { code: 'eu-ES', name: 'Basque' },
+    { code: 'be-BY', name: 'Belarusian' },
+    { code: 'bn-IN', name: 'Bengali' },
+    { code: 'bs-BA', name: 'Bosnian' },
+    { code: 'bg-BG', name: 'Bulgarian' },
+    { code: 'ca-ES', name: 'Catalan' },
+    { code: 'zh-CN', name: 'Chinese (Simplified)' },
+    { code: 'zh-TW', name: 'Chinese (Traditional)' },
+    { code: 'hr-HR', name: 'Croatian' },
+    { code: 'cs-CZ', name: 'Czech' },
+    { code: 'da-DK', name: 'Danish' },
+    { code: 'nl-NL', name: 'Dutch' },
+    { code: 'en-AU', name: 'English (Australia)' },
+    { code: 'en-GB', name: 'English (United Kingdom)' },
+    { code: 'en-US', name: 'English (United States)' },
+    { code: 'eo',    name: 'Esperanto' },
+    { code: 'et-EE', name: 'Estonian' },
+    { code: 'fil-PH', name: 'Filipino' },
+    { code: 'fi-FI', name: 'Finnish' },
+    { code: 'fr-CA', name: 'French (Canada)' },
+    { code: 'fr-FR', name: 'French (France)' },
+    { code: 'gl-ES', name: 'Galician' },
+    { code: 'ka-GE', name: 'Georgian' },
+    { code: 'de-DE', name: 'German' },
+    { code: 'el-GR', name: 'Greek' },
+    { code: 'gu-IN', name: 'Gujarati' },
+    { code: 'ht',    name: 'Haitian Creole' },
+    { code: 'ha-NG', name: 'Hausa' },
+    { code: 'he-IL', name: 'Hebrew' },
+    { code: 'hi-IN', name: 'Hindi' },
+    { code: 'hu-HU', name: 'Hungarian' },
+    { code: 'is-IS', name: 'Icelandic' },
+    { code: 'id-ID', name: 'Indonesian' },
+    { code: 'ga-IE', name: 'Irish' },
+    { code: 'it-IT', name: 'Italian' },
+    { code: 'ja-JP', name: 'Japanese' },
+    { code: 'jv-ID', name: 'Javanese' },
+    { code: 'kn-IN', name: 'Kannada' },
+    { code: 'kk-KZ', name: 'Kazakh' },
+    { code: 'km-KH', name: 'Khmer' },
+    { code: 'ko-KR', name: 'Korean' },
+    { code: 'lo-LA', name: 'Lao' },
+    { code: 'lv-LV', name: 'Latvian' },
+    { code: 'lt-LT', name: 'Lithuanian' },
+    { code: 'mk-MK', name: 'Macedonian' },
+    { code: 'ms-MY', name: 'Malay' },
+    { code: 'ml-IN', name: 'Malayalam' },
+    { code: 'mt-MT', name: 'Maltese' },
+    { code: 'mr-IN', name: 'Marathi' },
+    { code: 'mn-MN', name: 'Mongolian' },
+    { code: 'ne-NP', name: 'Nepali' },
+    { code: 'nb-NO', name: 'Norwegian' },
+    { code: 'fa-IR', name: 'Persian' },
+    { code: 'pl-PL', name: 'Polish' },
+    { code: 'pt-BR', name: 'Portuguese (Brazil)' },
+    { code: 'pt-PT', name: 'Portuguese (Portugal)' },
+    { code: 'pa-IN', name: 'Punjabi' },
+    { code: 'ro-RO', name: 'Romanian' },
+    { code: 'ru-RU', name: 'Russian' },
+    { code: 'sr-RS', name: 'Serbian' },
+    { code: 'si-LK', name: 'Sinhala' },
+    { code: 'sk-SK', name: 'Slovak' },
+    { code: 'sl-SI', name: 'Slovenian' },
+    { code: 'so-SO', name: 'Somali' },
+    { code: 'es-419', name: 'Spanish (Latin America)' },
+    { code: 'es-ES', name: 'Spanish (Spain)' },
+    { code: 'su-ID', name: 'Sundanese' },
+    { code: 'sw-KE', name: 'Swahili' },
+    { code: 'sv-SE', name: 'Swedish' },
+    { code: 'ta-IN', name: 'Tamil' },
+    { code: 'te-IN', name: 'Telugu' },
+    { code: 'th-TH', name: 'Thai' },
+    { code: 'tr-TR', name: 'Turkish' },
+    { code: 'uk-UA', name: 'Ukrainian' },
+    { code: 'ur-PK', name: 'Urdu' },
+    { code: 'uz-UZ', name: 'Uzbek' },
+    { code: 'vi-VN', name: 'Vietnamese' }
+  ];
+
+  function initLanguageSelector(defaultCode = 'en-US') {
+    const selectElem = document.getElementById('languageSelect');
+    if (!selectElem) return;
+
+    selectElem.innerHTML = '';
+
+    SUPPORTED_LANGUAGES.forEach((lang) => {
+      const opt = document.createElement('option');
+      opt.value = lang.code;
+      opt.textContent = `${lang.name} (${lang.code})`;
+      if (lang.code === defaultCode) {
+        opt.selected = true;
       }
-    }
+      selectElem.appendChild(opt);
+    });
 
-    // Array of 83 Supported Spoken Languages (BCP-47 Standard)
-    const SUPPORTED_LANGUAGES = [
-      { code: 'af-ZA', name: 'Afrikaans' },
-      { code: 'sq-AL', name: 'Albanian' },
-      { code: 'am-ET', name: 'Amharic' },
-      { code: 'ar-SA', name: 'Arabic' },
-      { code: 'hy-AM', name: 'Armenian' },
-      { code: 'az-AZ', name: 'Azerbaijani' },
-      { code: 'eu-ES', name: 'Basque' },
-      { code: 'be-BY', name: 'Belarusian' },
-      { code: 'bn-IN', name: 'Bengali' },
-      { code: 'bs-BA', name: 'Bosnian' },
-      { code: 'bg-BG', name: 'Bulgarian' },
-      { code: 'ca-ES', name: 'Catalan' },
-      { code: 'zh-CN', name: 'Chinese (Simplified)' },
-      { code: 'zh-TW', name: 'Chinese (Traditional)' },
-      { code: 'hr-HR', name: 'Croatian' },
-      { code: 'cs-CZ', name: 'Czech' },
-      { code: 'da-DK', name: 'Danish' },
-      { code: 'nl-NL', name: 'Dutch' },
-      { code: 'en-AU', name: 'English (Australia)' },
-      { code: 'en-GB', name: 'English (United Kingdom)' },
-      { code: 'en-US', name: 'English (United States)' },
-      { code: 'eo',    name: 'Esperanto' },
-      { code: 'et-EE', name: 'Estonian' },
-      { code: 'fil-PH', name: 'Filipino' },
-      { code: 'fi-FI', name: 'Finnish' },
-      { code: 'fr-CA', name: 'French (Canada)' },
-      { code: 'fr-FR', name: 'French (France)' },
-      { code: 'gl-ES', name: 'Galician' },
-      { code: 'ka-GE', name: 'Georgian' },
-      { code: 'de-DE', name: 'German' },
-      { code: 'el-GR', name: 'Greek' },
-      { code: 'gu-IN', name: 'Gujarati' },
-      { code: 'ht',    name: 'Haitian Creole' },
-      { code: 'ha-NG', name: 'Hausa' },
-      { code: 'he-IL', name: 'Hebrew' },
-      { code: 'hi-IN', name: 'Hindi' },
-      { code: 'hu-HU', name: 'Hungarian' },
-      { code: 'is-IS', name: 'Icelandic' },
-      { code: 'id-ID', name: 'Indonesian' },
-      { code: 'ga-IE', name: 'Irish' },
-      { code: 'it-IT', name: 'Italian' },
-      { code: 'ja-JP', name: 'Japanese' },
-      { code: 'jv-ID', name: 'Javanese' },
-      { code: 'kn-IN', name: 'Kannada' },
-      { code: 'kk-KZ', name: 'Kazakh' },
-      { code: 'km-KH', name: 'Khmer' },
-      { code: 'ko-KR', name: 'Korean' },
-      { code: 'lo-LA', name: 'Lao' },
-      { code: 'lv-LV', name: 'Latvian' },
-      { code: 'lt-LT', name: 'Lithuanian' },
-      { code: 'mk-MK', name: 'Macedonian' },
-      { code: 'ms-MY', name: 'Malay' },
-      { code: 'ml-IN', name: 'Malayalam' },
-      { code: 'mt-MT', name: 'Maltese' },
-      { code: 'mr-IN', name: 'Marathi' },
-      { code: 'mn-MN', name: 'Mongolian' },
-      { code: 'ne-NP', name: 'Nepali' },
-      { code: 'nb-NO', name: 'Norwegian' },
-      { code: 'fa-IR', name: 'Persian' },
-      { code: 'pl-PL', name: 'Polish' },
-      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
-      { code: 'pa-IN', name: 'Punjabi' },
-      { code: 'ro-RO', name: 'Romanian' },
-      { code: 'ru-RU', name: 'Russian' },
-      { code: 'sr-RS', name: 'Serbian' },
-      { code: 'si-LK', name: 'Sinhala' },
-      { code: 'sk-SK', name: 'Slovak' },
-      { code: 'sl-SI', name: 'Slovenian' },
-      { code: 'so-SO', name: 'Somali' },
-      { code: 'es-419', name: 'Spanish (Latin America)' },
-      { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'su-ID', name: 'Sundanese' },
-      { code: 'sw-KE', name: 'Swahili' },
-      { code: 'sv-SE', name: 'Swedish' },
-      { code: 'ta-IN', name: 'Tamil' },
-      { code: 'te-IN', name: 'Telugu' },
-      { code: 'th-TH', name: 'Thai' },
-      { code: 'tr-TR', name: 'Turkish' },
-      { code: 'uk-UA', name: 'Ukrainian' },
-      { code: 'ur-PK', name: 'Urdu' },
-      { code: 'uz-UZ', name: 'Uzbek' },
-      { code: 'vi-VN', name: 'Vietnamese' }
-    ];
+    selectElem.addEventListener('change', (e) => {
+      localStorage.setItem('presenter_lang', e.target.value);
+    });
+  }
 
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
+  // Read room, token & maxLimit from URL parameters or storage
+  const urlParams = new URLSearchParams(window.location.search);
+  const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+  const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
+  if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+    maxLimit = parsedMaxLimit;
+  }
+  
+  // Attempt to locate Supabase session token if present
+  const urlToken = urlParams.get('token');
+  const localToken = localStorage.getItem('supabase.auth.token') 
+    ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
+    : null;
+  const token = urlToken || localToken || '';
 
-      selectElem.innerHTML = '';
+  document.getElementById('roomDisplay').innerText = room;
 
-      SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) {
-          opt.selected = true;
-        }
-        selectElem.appendChild(opt);
+  // Initialize Language Dropdown
+  initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const status = document.getElementById('status');
+
+  let ws = null;
+  let mediaRecorder = null;
+  let audioStream = null;
+
+  startBtn.onclick = async () => {
+    try {
+      status.innerText = "Status: Requesting Microphone Access...";
+      status.style.color = "#f59e0b";
+
+      audioStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
       });
 
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
-    }
+      // Get selected language code
+      const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
 
-    // Read room, token & maxLimit from URL parameters or storage
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
-    }
-    
-    // Attempt to locate Supabase session token if present
-    const urlToken = urlParams.get('token');
-    const localToken = localStorage.getItem('supabase.auth.token') 
-      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
-      : null;
-    const token = urlToken || localToken || '';
+      // Build WebSocket connection string with room, role, token, and selected language
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
+      if (token) {
+        wsUrl += `&token=${encodeURIComponent(token)}`;
+      }
 
-    document.getElementById('roomDisplay').innerText = room;
+      ws = new WebSocket(wsUrl);
 
-    // Initialize Language Dropdown
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+      ws.onopen = () => {
+        status.innerText = "Status: Live & Streaming Stage Audio";
+        status.style.color = "#10b981";
 
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
+        // Select supported audio MIME type for MediaRecorder
+        let mimeType = 'audio/webm;codecs=opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+        }
 
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
+        mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
 
-    startBtn.onclick = async () => {
-      try {
-        status.innerText = "Status: Requesting Microphone Access...";
-        status.style.color = "#f59e0b";
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(e.data);
+          }
+        };
 
-        audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
+        // Send 250ms chunks to Deepgram
+        mediaRecorder.start(250);
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        // Start pushing live time updates to Supabase every 5 seconds
+        if (currentUser) {
+          startUsageTracking(currentUser.id, room);
+        }
+
+        // Broadcast room presence/tick over Supabase Realtime Channel
+        localElapsedCounter = 0;
+        realtimeChannel = supabaseClient.channel(`room_${room}`, {
+          config: { broadcast: { self: true } }
         });
 
-        // Get selected language code
-        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
-
-        // Build WebSocket connection string with room, role, token, and selected language
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
-        if (token) {
-          wsUrl += `&token=${encodeURIComponent(token)}`;
-        }
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          status.innerText = "Status: Live & Streaming Stage Audio";
-          status.style.color = "#10b981";
-
-          // Select supported audio MIME type for MediaRecorder
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+        // Listen for broadcasted ticks
+        realtimeChannel.on('broadcast', { event: 'timer_tick' }, (response) => {
+          localElapsedCounter += (response.payload?.elapsed || 1);
+          if (localElapsedCounter >= maxLimit) {
+            status.innerText = "Status: Reached Maximum Streaming Limit";
+            status.style.color = "#ef4444";
+            cleanup();
           }
+        });
 
-          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
-            }
-          };
-
-          // Send 250ms chunks to Deepgram
-          mediaRecorder.start(250);
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-
-          // Start pushing live time updates to Supabase every 5 seconds
-          if (currentUser) {
-            startUsageTracking(currentUser.id, room);
+        realtimeChannel.subscribe((statusState) => {
+          if (statusState === 'SUBSCRIBED') {
+            // Send a tick event over WebSockets every second
+            tickInterval = setInterval(() => {
+              if (realtimeChannel) {
+                realtimeChannel.send({
+                  type: 'broadcast',
+                  event: 'timer_tick',
+                  payload: { elapsed: 1 }
+                });
+              }
+            }, 1000);
           }
+        });
+      };
 
-          // Broadcast room presence/tick over Supabase Realtime Channel
-          localElapsedCounter = 0;
-          realtimeChannel = supabaseClient.channel(`room_${room}`, {
-            config: { broadcast: { self: true } }
-          });
-
-          // Listen for broadcasted ticks
-          realtimeChannel.on('broadcast', { event: 'timer_tick' }, (response) => {
-            localElapsedCounter += (response.payload?.elapsed || 1);
-            if (localElapsedCounter >= maxLimit) {
-              status.innerText = "Status: Reached Maximum Streaming Limit";
-              status.style.color = "#ef4444";
-              cleanup();
-            }
-          });
-
-          realtimeChannel.subscribe((statusState) => {
-            if (statusState === 'SUBSCRIBED') {
-              // Send a tick event over WebSockets every second
-              tickInterval = setInterval(() => {
-                if (realtimeChannel) {
-                  realtimeChannel.send({
-                    type: 'broadcast',
-                    event: 'timer_tick',
-                    payload: { elapsed: 1 }
-                  });
-                }
-              }, 1000);
-            }
-          });
-        };
-
-        ws.onerror = (err) => {
-          console.error("WebSocket Error:", err);
-          status.innerText = "Status: Connection Error";
-          status.style.color = "#ef4444";
-        };
-
-        ws.onclose = (e) => {
-          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-          status.style.color = "#ef4444";
-          cleanup();
-        };
-
-      } catch (err) {
-        console.error("Microphone Access Error:", err);
-        status.innerText = "Status: Microphone Access Denied";
+      ws.onerror = (err) => {
+        console.error("WebSocket Error:", err);
+        status.innerText = "Status: Connection Error";
         status.style.color = "#ef4444";
-      }
-    };
+      };
 
-    stopBtn.onclick = () => {
-      cleanup();
-      status.innerText = "Status: Stopped";
-      status.style.color = "#9ca3af";
-    };
+      ws.onclose = (e) => {
+        status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
+        status.style.color = "#ef4444";
+        cleanup();
+      };
 
-    function cleanup() {
-      // Stop usage tracking timer
-      stopUsageTracking();
+    } catch (err) {
+      console.error("Microphone Access Error:", err);
+      status.innerText = "Status: Microphone Access Denied";
+      status.style.color = "#ef4444";
+    }
+  };
 
-      // Clear realtime tick interval & unsubscribe channel
-      if (tickInterval) {
-        clearInterval(tickInterval);
-        tickInterval = null;
-      }
-      if (realtimeChannel) {
-        supabaseClient.removeChannel(realtimeChannel);
-        realtimeChannel = null;
-      }
+  stopBtn.onclick = () => {
+    cleanup();
+    status.innerText = "Status: Stopped";
+    status.style.color = "#9ca3af";
+  };
 
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
+  function cleanup() {
+    // Stop usage tracking timer
+    stopUsageTracking();
+
+    // Clear realtime tick interval & unsubscribe channel
+    if (tickInterval) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+    }
+    if (realtimeChannel) {
+      supabaseClient.removeChannel(realtimeChannel);
+      realtimeChannel = null;
     }
 
-    // Stop tracking timer if browser tab closes or navigates away
-    window.addEventListener('beforeunload', () => {
-      cleanup();
-    });
-  </script>
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    if (audioStream) {
+      audioStream.getTracks().forEach(track => track.stop());
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.close();
+    }
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
+  // Stop tracking timer if browser tab closes or navigates away
+  window.addEventListener('beforeunload', () => {
+    cleanup();
+  });
+</script>
 </body>
 </html>
