@@ -50,28 +50,6 @@
       border-radius: 8px;
       margin: 1rem 0;
     }
-    .setting-group {
-      margin-top: 1rem;
-      text-align: left;
-    }
-    label {
-      display: block;
-      font-size: 0.85rem;
-      color: #9ca3af;
-      margin-bottom: 0.35rem;
-      font-weight: 600;
-    }
-    select {
-      width: 100%;
-      padding: 0.6rem 0.8rem;
-      background-color: #111827;
-      color: #f3f4f6;
-      border: 1px solid #374151;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      outline: none;
-      cursor: pointer;
-    }
     .btn-group {
       display: flex;
       gap: 1rem;
@@ -110,16 +88,14 @@
     <!-- Real-Time Countdown Timer -->
     <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
 
-    <!-- Spoken Language Selector -->
-    <div class="setting-group">
-      <label for="languageSelect">Spoken Language</label>
-      <select id="languageSelect"></select>
-    </div>
-
-    <!-- Overlay Target Translation Selector -->
-    <div class="setting-group">
-      <label for="targetLanguageSelect">Translate Captions To (Overlay)</label>
-      <select id="targetLanguageSelect"></select>
+    <!-- Spoken / Ingest Language Selector -->
+    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
+      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
+        Spoken Language
+      </label>
+      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+        <!-- Populated dynamically by JS -->
+      </select>
     </div>
 
     <div class="btn-group">
@@ -131,23 +107,27 @@
   </div>
 
   <script>
+    // 1. Supabase Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // State Variables for Live Usage Tracking
     let currentUser = null;
     let syncTimer = null;
     let localCountdownTimer = null;
     let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600;
+    let maxLimit = 3600; // Default fallback (1 hour)
     let currentRemainingSeconds = 0;
 
+    // Authenticate Presenter Session
     async function initPresenterAuth() {
       try {
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
+          // Initial sanity check and subscription setup
           await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
@@ -155,10 +135,12 @@
       }
     }
 
+    // Initial Fetch & Realtime Push Subscription Setup
     async function fetchUserTimeAndSubscribe(userId) {
       if (!userId) return;
 
       try {
+        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -169,12 +151,14 @@
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
 
+        // Subscribe to real-time Postgres changes on the user row
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
       }
     }
 
+    // Subscribe to instant Supabase database updates
     function subscribeToRealtimeUsage(userId) {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
 
@@ -182,7 +166,12 @@
         .channel(`presenter_time_${userId}`)
         .on(
           'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'users',
+            filter: `user_id=eq.${userId}`
+          },
           (payload) => {
             if (payload.new) {
               const used = payload.new.streaming_seconds_used || 0;
@@ -193,15 +182,17 @@
         )
         .subscribe((status, err) => {
           if (status === 'CHANNEL_ERROR') {
-            console.warn("Realtime subscription error:", err);
+            console.warn("Realtime subscription error, falling back to polling:", err);
           }
         });
     }
 
+    // Updates state, formats UI countdown, and cuts stream if limit is reached
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
 
+      // CUT-OFF CHECK
       if (currentRemainingSeconds <= 0) {
         if (isStreamingActive()) {
           cleanup();
@@ -216,6 +207,7 @@
       }
     }
 
+    // Format & Render visual timer badge (MM:SS)
     function updateTimerDisplay(totalSeconds) {
       const timerDisplay = document.getElementById('timerDisplay');
       if (!timerDisplay) return;
@@ -227,14 +219,15 @@
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444';
+        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
       } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b';
+        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
       } else {
-        timerDisplay.style.color = '#38bdf8';
+        timerDisplay.style.color = '#38bdf8'; // Blue normal
       }
     }
 
+    // Local 1-second ticker while active
     function startLocalCountdown() {
       stopLocalCountdown();
       localCountdownTimer = setInterval(() => {
@@ -259,8 +252,10 @@
       }
     }
 
+    // Sync accumulated usage to Supabase every 5 seconds
     function startUsageSyncing(userId, roomId) {
       stopUsageSyncing();
+
       syncTimer = setInterval(async () => {
         await pushUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
@@ -295,11 +290,13 @@
           return;
         }
 
+        // Update user row
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
+        // Update room row
         if (roomId) {
           const { data: room } = await supabaseClient
             .from('rooms')
@@ -330,6 +327,7 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
+    // Supported Spoken Languages (BCP-47 Standard)
     const SUPPORTED_LANGUAGES = [
       { code: 'af-ZA', name: 'Afrikaans' },
       { code: 'sq-AL', name: 'Albanian' },
@@ -416,40 +414,33 @@
       { code: 'vi-VN', name: 'Vietnamese' }
     ];
 
-    function initLanguageSelectors() {
-      const srcSelect = document.getElementById('languageSelect');
-      const tgtSelect = document.getElementById('targetLanguageSelect');
-      if (!srcSelect || !tgtSelect) return;
+    function initLanguageSelector(defaultCode = 'en-US') {
+      const selectElem = document.getElementById('languageSelect');
+      if (!selectElem) return;
 
-      const defaultSrc = localStorage.getItem('presenter_lang') || 'en-US';
-      const defaultTgt = localStorage.getItem('presenter_target_lang') || 'es-ES';
-
-      srcSelect.innerHTML = '';
-      tgtSelect.innerHTML = '';
+      selectElem.innerHTML = '';
 
       SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt1 = document.createElement('option');
-        opt1.value = lang.code;
-        opt1.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultSrc) opt1.selected = true;
-        srcSelect.appendChild(opt1);
-
-        const opt2 = document.createElement('option');
-        opt2.value = lang.code;
-        opt2.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultTgt) opt2.selected = true;
-        tgtSelect.appendChild(opt2);
+        const opt = document.createElement('option');
+        opt.value = lang.code;
+        opt.textContent = `${lang.name} (${lang.code})`;
+        if (lang.code === defaultCode) opt.selected = true;
+        selectElem.appendChild(opt);
       });
 
-      srcSelect.addEventListener('change', (e) => localStorage.setItem('presenter_lang', e.target.value));
-      tgtSelect.addEventListener('change', (e) => localStorage.setItem('presenter_target_lang', e.target.value));
+      selectElem.addEventListener('change', (e) => {
+        localStorage.setItem('presenter_lang', e.target.value);
+      });
     }
 
+    // Read room & maxLimit from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
     const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) maxLimit = parsedMaxLimit;
-
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+      maxLimit = parsedMaxLimit;
+    }
+    
     const urlToken = urlParams.get('token');
     const localToken = localStorage.getItem('supabase.auth.token') 
       ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
@@ -457,7 +448,7 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelectors();
+    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
     initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
@@ -479,14 +470,17 @@
         status.style.color = "#f59e0b";
 
         audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
         });
 
         const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
-        const selectedTargetLang = document.getElementById('targetLanguageSelect')?.value || 'es-ES';
 
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}&targetLang=${encodeURIComponent(selectedTargetLang)}`;
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
         if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
@@ -501,6 +495,7 @@
           }
 
           mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+
           mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
@@ -508,11 +503,15 @@
           };
 
           mediaRecorder.start(250);
+
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
+          // Start local visual countdown and DB syncing loops
           startLocalCountdown();
-          if (currentUser) startUsageSyncing(currentUser.id, room);
+          if (currentUser) {
+            startUsageSyncing(currentUser.id, room);
+          }
         };
 
         ws.onerror = (err) => {
@@ -546,10 +545,15 @@
       stopUsageSyncing();
       stopLocalCountdown();
 
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-      if (audioStream) audioStream.getTracks().forEach(track => track.stop());
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
       startBtn.disabled = currentRemainingSeconds <= 0;
       stopBtn.disabled = true;
     }
