@@ -32,7 +32,11 @@
       max-width: 90vw;
       line-height: 1.3;
       word-wrap: break-word;
-      transition: opacity 0.2s ease-in-out;
+      transition: opacity 0.3s ease-in-out;
+      opacity: 1;
+    }
+    .caption-text.hidden {
+      opacity: 0;
     }
   </style>
 </head>
@@ -42,22 +46,41 @@
   </div>
 
   <script>
-    // Handle both ?room= and ?roomId= query parameters
+    // Extract room identifier and optional target language parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const targetLang = urlParams.get('targetLang') || urlParams.get('lang') || '';
 
     const captionsDiv = document.getElementById('captions');
     let socket = null;
+    let clearTimer = null;
+
+    function displayCaption(text) {
+      if (!text || !text.trim()) return;
+
+      captionsDiv.innerText = text;
+      captionsDiv.classList.remove('hidden');
+
+      // Auto-hide captions after 6 seconds of silence
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => {
+        captionsDiv.classList.add('hidden');
+      }, 6000);
+    }
 
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
+      let wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
+
+      if (targetLang) {
+        wsUrl += `&targetLang=${encodeURIComponent(targetLang)}`;
+      }
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
         console.log(`[Overlay] Connected to room: ${roomId}`);
-        captionsDiv.innerText = "Waiting for live captions...";
+        displayCaption("Waiting for live captions...");
       };
 
       socket.onmessage = (event) => {
@@ -65,8 +88,21 @@
           const data = JSON.parse(event.data);
           console.log("[Overlay] Received event:", data);
 
-          if (data.type === 'caption' && data.text) {
-            captionsDiv.innerText = data.text;
+          // Support 'caption', 'translation', and 'transcript' message types
+          const isSupportedType = ['caption', 'translation', 'transcript'].includes(data.type) || !data.type;
+
+          if (isSupportedType) {
+            // Priority order: Translated fields > Original text/transcript
+            const displayText = data.translation || 
+                                data.translatedText || 
+                                data.translated_text || 
+                                data.targetText || 
+                                data.text || 
+                                data.transcript;
+
+            if (displayText) {
+              displayCaption(displayText);
+            }
           }
         } catch (err) {
           console.error("[Overlay] Failed to parse payload:", err);
@@ -75,7 +111,7 @@
 
       socket.onclose = () => {
         console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
-        captionsDiv.innerText = "Reconnecting...";
+        displayCaption("Reconnecting...");
         setTimeout(connect, 3000);
       };
 
