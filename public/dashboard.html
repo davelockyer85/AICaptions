@@ -538,7 +538,7 @@
     await loadUserEvents();
   });
 
-  // 6. Fetch & Render Rooms directly from Supabase
+  // 6. Fetch & Render Rooms directly aligned with Supabase
   async function loadUserEvents() {
     const origin = window.location.origin;
     let rooms = [];
@@ -551,19 +551,20 @@
 
     if (error) {
       console.warn("Could not fetch rooms from Supabase:", error.message);
+      rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
     } else if (dbRooms) {
-      // Direct room_id assignment matching Supabase public.rooms table schema
-      rooms = dbRooms.map(r => ({ room_id: r.room_id, name: r.name }));
-      // Keep local backup strictly matching Supabase
+      // Map returned database rows directly
+      rooms = dbRooms.map(r => ({ room_id: r.room_id || r.id, name: r.name }));
       localStorage.setItem('user_rooms', JSON.stringify(rooms));
     }
 
-    // Keep active room count updated in status bar
+    // Active room count matches exact database row count
     currentRoomCount = rooms.length;
     renderSubscriptionUI();
 
     eventsContainer.innerHTML = '';
 
+    // Render empty state placeholder when count is 0
     if (rooms.length === 0) {
       eventsContainer.innerHTML = `
         <div class="empty-state">
