@@ -572,7 +572,7 @@
     rooms.forEach((room) => {
       const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
       const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/index.html?room=${room.id}`;
+      const audienceUrl = `${origin}/viewer.html?room=${room.id}`;
 
       const card = document.createElement('div');
       card.className = 'event-card';
