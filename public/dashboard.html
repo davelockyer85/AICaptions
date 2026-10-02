@@ -393,9 +393,10 @@
     if (!currentUser) return;
 
     try {
+      // Changed from specific missing column query to select all available columns cleanly
       const { data: profile, error } = await supabaseClient
         .from('users')
-        .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms, event_pass_expires_at')
+        .select('*')
         .eq('user_id', currentUser.id)
         .single();
 
@@ -413,12 +414,12 @@
   // Render Status Bar metrics, progress bars, and toggle create button state
   function renderSubscriptionUI(updatedProfile) {
     if (updatedProfile) cachedProfile = updatedProfile;
-    if (!cachedProfile) return;
 
-    const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
-    const usedSecs = cachedProfile.streaming_seconds_used || 0;
-    const maxSecs = cachedProfile.max_streaming_seconds;
-    const allowedRooms = cachedProfile.allowed_rooms || 1;
+    // Use optional chaining so UI updates even if profile load is in-flight
+    const planTier = (cachedProfile?.plan_tier || 'free').toUpperCase();
+    const usedSecs = cachedProfile?.streaming_seconds_used || 0;
+    const maxSecs = cachedProfile?.max_streaming_seconds;
+    const allowedRooms = cachedProfile?.allowed_rooms ?? 1;
 
     // Update Plan Name UI
     if (statusPlan) statusPlan.innerText = planTier;
