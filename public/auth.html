@@ -283,11 +283,17 @@
 
       try {
         if (isSignUp) {
-          const { data, error } = await supabaseClient.auth.signUp({ email, password });
+          const { data, error } = await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: `${window.location.origin}/dashboard.html`
+            }
+          });
           if (error) throw error;
 
           alertBox.className = 'alert success';
-          alertBox.innerText = 'Account created! Please check your email for confirmation or log in.';
+          alertBox.innerText = 'Account created! Please check your email and click the confirmation link.';
           alertBox.style.display = 'block';
         } else {
           const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
