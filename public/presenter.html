@@ -98,6 +98,16 @@
       </select>
     </div>
 
+    <!-- Output Translation Language Selector (New) -->
+    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
+      <label for="targetLanguageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
+        Output Translation Language (Overlay / Viewer)
+      </label>
+      <select id="targetLanguageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+        <!-- Populated dynamically by JS -->
+      </select>
+    </div>
+
     <div class="btn-group">
       <button id="startBtn">Start Streaming</button>
       <button id="stopBtn" disabled>Stop</button>
@@ -117,6 +127,7 @@
     let syncTimer = null;
     let localCountdownTimer = null;
     let realtimeChannel = null;
+    let roomBroadcastChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
     let maxLimit = 3600; // Default fallback (1 hour)
     let currentRemainingSeconds = 0;
@@ -127,7 +138,6 @@
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
-          // Initial sanity check and subscription setup
           await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
@@ -140,7 +150,6 @@
       if (!userId) return;
 
       try {
-        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -151,14 +160,12 @@
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
 
-        // Subscribe to real-time Postgres changes on the user row
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
       }
     }
 
-    // Subscribe to instant Supabase database updates
     function subscribeToRealtimeUsage(userId) {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
 
@@ -187,12 +194,10 @@
         });
     }
 
-    // Updates state, formats UI countdown, and cuts stream if limit is reached
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
 
-      // CUT-OFF CHECK
       if (currentRemainingSeconds <= 0) {
         if (isStreamingActive()) {
           cleanup();
@@ -207,7 +212,6 @@
       }
     }
 
-    // Format & Render visual timer badge (MM:SS)
     function updateTimerDisplay(totalSeconds) {
       const timerDisplay = document.getElementById('timerDisplay');
       if (!timerDisplay) return;
@@ -219,15 +223,14 @@
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
+        timerDisplay.style.color = '#ef4444';
       } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
+        timerDisplay.style.color = '#f59e0b';
       } else {
-        timerDisplay.style.color = '#38bdf8'; // Blue normal
+        timerDisplay.style.color = '#38bdf8';
       }
     }
 
-    // Local 1-second ticker while active
     function startLocalCountdown() {
       stopLocalCountdown();
       localCountdownTimer = setInterval(() => {
@@ -252,7 +255,6 @@
       }
     }
 
-    // Sync accumulated usage to Supabase every 5 seconds
     function startUsageSyncing(userId, roomId) {
       stopUsageSyncing();
 
@@ -290,13 +292,11 @@
           return;
         }
 
-        // Update user row
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Update room row
         if (roomId) {
           const { data: room } = await supabaseClient
             .from('rooms')
@@ -327,7 +327,7 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
-    // Supported Spoken Languages (BCP-47 Standard)
+    // Supported Languages (BCP-47 Standard)
     const SUPPORTED_LANGUAGES = [
       { code: 'af-ZA', name: 'Afrikaans' },
       { code: 'sq-AL', name: 'Albanian' },
@@ -414,31 +414,81 @@
       { code: 'vi-VN', name: 'Vietnamese' }
     ];
 
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
-
-      selectElem.innerHTML = '';
-
-      SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) opt.selected = true;
-        selectElem.appendChild(opt);
-      });
-
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
-    }
-
     // Read room & maxLimit from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
     const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
     if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
       maxLimit = parsedMaxLimit;
+    }
+
+    // Broadcast target language changes to overlay/viewer pages in real time
+    async function broadcastTargetLanguage(targetLang) {
+      try {
+        if (!roomBroadcastChannel) {
+          roomBroadcastChannel = supabaseClient.channel(`room_${room}`);
+          await roomBroadcastChannel.subscribe();
+        }
+        roomBroadcastChannel.send({
+          type: 'broadcast',
+          event: 'target_lang_change',
+          payload: { targetLang, room }
+        });
+      } catch (err) {
+        console.warn("Could not broadcast target language change:", err.message);
+      }
+    }
+
+    function initLanguageSelectors(defaultSpoken = 'en-US', defaultTarget = 'none') {
+      const selectSpoken = document.getElementById('languageSelect');
+      const selectTarget = document.getElementById('targetLanguageSelect');
+
+      if (selectSpoken) {
+        selectSpoken.innerHTML = '';
+        SUPPORTED_LANGUAGES.forEach((lang) => {
+          const opt = document.createElement('option');
+          opt.value = lang.code;
+          opt.textContent = `${lang.name} (${lang.code})`;
+          if (lang.code === defaultSpoken) opt.selected = true;
+          selectSpoken.appendChild(opt);
+        });
+
+        selectSpoken.addEventListener('change', (e) => {
+          localStorage.setItem('presenter_lang', e.target.value);
+        });
+      }
+
+      if (selectTarget) {
+        selectTarget.innerHTML = '';
+        
+        // Add option for no translation
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = 'none';
+        defaultOpt.textContent = 'Same as Spoken Language (No Translation)';
+        if (defaultTarget === 'none') defaultOpt.selected = true;
+        selectTarget.appendChild(defaultOpt);
+
+        SUPPORTED_LANGUAGES.forEach((lang) => {
+          const opt = document.createElement('option');
+          opt.value = lang.code;
+          opt.textContent = `${lang.name} (${lang.code})`;
+          if (lang.code === defaultTarget) opt.selected = true;
+          selectTarget.appendChild(opt);
+        });
+
+        selectTarget.addEventListener('change', (e) => {
+          const selectedTargetLang = e.target.value;
+          localStorage.setItem('target_lang', selectedTargetLang);
+
+          // If WS stream is open, notify server of setting change
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'config', targetLang: selectedTargetLang }));
+          }
+
+          // Broadcast change live to overlays & viewers
+          broadcastTargetLanguage(selectedTargetLang);
+        });
+      }
     }
     
     const urlToken = urlParams.get('token');
@@ -448,7 +498,10 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+    initLanguageSelectors(
+      localStorage.getItem('presenter_lang') || 'en-US',
+      localStorage.getItem('target_lang') || 'none'
+    );
     initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
@@ -477,10 +530,11 @@
           } 
         });
 
-        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
+        const selectedSpokenLang = document.getElementById('languageSelect')?.value || 'en-US';
+        const selectedTargetLang = document.getElementById('targetLanguageSelect')?.value || 'none';
 
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedSpokenLang)}&target_lang=${encodeURIComponent(selectedTargetLang)}`;
         if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
@@ -506,6 +560,9 @@
 
           startBtn.disabled = true;
           stopBtn.disabled = false;
+
+          // Notify overlay and viewers of active translation setting
+          broadcastTargetLanguage(selectedTargetLang);
 
           // Start local visual countdown and DB syncing loops
           startLocalCountdown();
@@ -560,6 +617,7 @@
 
     window.addEventListener('beforeunload', () => {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
       cleanup();
     });
   </script>
