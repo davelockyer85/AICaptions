@@ -517,7 +517,14 @@
     if (!name) return;
 
     const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+    const newRoom = { room_id: roomId, name: name, user_id: currentUser.id };
 
+    // Update local storage immediately
+    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    localRooms.unshift(newRoom);
+    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+
+    // Async Insert to Supabase
     try {
       const { error } = await supabaseClient.from('rooms').insert([
         { 
@@ -528,14 +535,9 @@
         }
       ]);
 
-      if (error) throw error;
-
+      if (error) console.warn("Supabase room insert warning:", error.message);
     } catch (e) {
-      console.warn("Supabase room insert failed, falling back to local storage:", e.message);
-      
-      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms.unshift({ room_id: roomId, name: name, created_at: new Date().toISOString() });
-      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+      console.warn("Supabase insert exception:", e.message);
     }
 
     eventNameInput.value = '';
@@ -543,37 +545,46 @@
     await loadUserEvents();
   });
 
-  // 6. Fetch & Render Rooms (With Anti-Undefined & Legacy Cleaning)
+  // 6. Fetch & Render Rooms
   async function loadUserEvents() {
     const origin = window.location.origin;
-    let rawRooms = [];
+    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    let dbMapped = [];
 
     try {
       const { data: dbRooms, error } = await supabaseClient
         .from('rooms')
         .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
+        .eq('user_id', currentUser.id);
 
-      if (!error && dbRooms) {
-        rawRooms = dbRooms;
-      } else {
-        rawRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      if (!error && dbRooms && dbRooms.length > 0) {
+        dbMapped = dbRooms.map(r => ({
+          room_id: r.room_id || r.id,
+          name: r.name || 'Event Room'
+        }));
       }
     } catch (err) {
-      console.warn("Using local room state fallback:", err.message);
-      rawRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      console.warn("Could not query Supabase rooms:", err.message);
     }
 
-    // Sanitize and filter out invalid/undefined records
-    const validRooms = rawRooms
-      .map(r => ({
-        room_id: r.room_id || r.id,
-        name: r.name || 'Event Room'
-      }))
-      .filter(r => Boolean(r.room_id) && r.room_id !== 'undefined');
+    // Merge DB rooms and local storage rooms to prevent missing newly created rooms
+    const combinedMap = new Map();
+    
+    // Process local rooms first
+    localRooms.forEach(r => {
+      const id = r.room_id || r.id;
+      if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+    });
 
-    // Sync cleaned list back to localStorage to destroy old legacy keys
+    // Overwrite/add with DB rooms
+    dbMapped.forEach(r => {
+      const id = r.room_id || r.id;
+      if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+    });
+
+    const validRooms = Array.from(combinedMap.values());
+
+    // Update cache
     localStorage.setItem('user_rooms', JSON.stringify(validRooms));
 
     // Keep active room count updated in status bar (allows 0)
@@ -653,6 +664,11 @@
   async function deleteRoom(roomId) {
     if (!roomId || roomId === 'undefined') return;
 
+    // Immediately remove from local storage
+    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    localRooms = localRooms.filter(r => (r.room_id || r.id) !== roomId);
+    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+
     try {
       const { error } = await supabaseClient
         .from('rooms')
@@ -664,10 +680,6 @@
     } catch (e) {
       console.warn("Could not delete room from Supabase:", e.message);
     }
-
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms = localRooms.filter(r => (r.room_id || r.id) !== roomId);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
 
     await loadUserEvents();
   }
