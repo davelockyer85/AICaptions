@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Live Captions - AICaptions</title>
+
+  <!-- Preconnect & Supabase JS SDK -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://euopdmwtowuxdzczwbul.supabase.co" crossorigin>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --primary: #3b82f6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --caption-size: 1.5rem;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Navigation Bar */
+    header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      padding-top: max(12px, env(safe-area-inset-top));
+    }
+
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .room-badge {
+      background-color: #0f172a;
+      border: 1px solid var(--border-color);
+      color: #93c5fd;
+      font-family: monospace;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #10b981;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Main Scrollable Captions Area */
+    .captions-container {
+      flex: 1;
+      padding: 20px 16px;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .caption-segment {
+      font-size: var(--caption-size);
+      line-height: 1.6;
+      color: var(--text-main);
+      background-color: rgba(30, 41, 59, 0.4);
+      border-left: 3px solid var(--primary);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      word-break: break-word;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    .caption-segment.interim {
+      color: var(--text-muted);
+      border-left-color: #f59e0b;
+      font-style: italic;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .placeholder-msg {
+      text-align: center;
+      color: var(--text-muted);
+      margin: auto 0;
+      font-size: 1rem;
+      padding: 20px;
+    }
+
+    /* Floating Audience Toolbar */
+    .toolbar {
+      background-color: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border-color);
+      padding: 10px 16px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-tool {
+      background-color: #0f172a;
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 40px;
+      touch-action: manipulation;
+      transition: background 0.2s;
+    }
+
+    .btn-tool:hover { background-color: #334155; }
+    .btn-tool.active { background-color: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* Custom scrollbar */
+    .captions-container::-webkit-scrollbar { width: 4px; }
+    .captions-container::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand">🎙️ AICaptions</div>
+    <div class="room-badge" id="roomDisplay">main-stage</div>
+    <div class="live-indicator" id="statusIndicator">
+      <div class="live-dot"></div>
+      <span id="statusText">LIVE</span>
+    </div>
+  </header>
+
+  <!-- Main Scrollable Captions Output -->
+  <main class="captions-container" id="captionsBox">
+    <div class="placeholder-msg" id="placeholder">
+      Waiting for stage presenter to begin speaking...
+    </div>
+  </main>
+
+  <!-- Audience Accessibility & Text Controls -->
+  <footer class="toolbar">
+    <div class="tool-group">
+      <button class="btn-tool" id="fontDownBtn" title="Decrease Text Size">A-</button>
+      <button class="btn-tool" id="fontUpBtn" title="Increase Text Size">A+</button>
+    </div>
+
+    <div class="tool-group">
+      <button class="btn-tool active" id="autoscrollBtn">Auto-Scroll: ON</button>
+      <button class="btn-tool" id="clearBtn">Clear</button>
+    </div>
+  </footer>
+
+  <script>
+    // 1. Supabase Client Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Parse Room Parameter from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+
+    // UI Element References
+    const roomDisplay = document.getElementById('roomDisplay');
+    const statusText = document.getElementById('statusText');
+    const captionsBox = document.getElementById('captionsBox');
+    const placeholder = document.getElementById('placeholder');
+    
+    const fontUpBtn = document.getElementById('fontUpBtn');
+    const fontDownBtn = document.getElementById('fontDownBtn');
+    const autoscrollBtn = document.getElementById('autoscrollBtn');
+    const clearBtn = document.getElementById('clearBtn');
+
+    let isAutoScrollEnabled = true;
+    let currentFontSizePx = 24; // Default font size (1.5rem)
+    let interimElement = null;
+
+    roomDisplay.innerText = roomId;
+
+    // 2. Realtime Channel Subscription for Audience Captions
+    function connectToCaptionStream() {
+      const channel = supabaseClient.channel(`room_${roomId}`, {
+        config: { broadcast: { ack: false } }
+      });
+
+      channel
+        .on('broadcast', { event: 'caption' }, (payload) => {
+          if (payload && payload.text) {
+            renderCaptionChunk(payload.text, payload.isFinal);
+          }
+        })
+        .on('broadcast', { event: 'transcript' }, (payload) => {
+          if (payload && payload.text) {
+            renderCaptionChunk(payload.text, payload.isFinal);
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            statusText.innerText = "LIVE";
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            statusText.innerText = "RECONNECTING...";
+          }
+        });
+    }
+
+    // Render incoming text to the screen
+    function renderCaptionChunk(text, isFinal = true) {
+      if (placeholder) placeholder.style.display = 'none';
+
+      if (!isFinal) {
+        // Handle streaming interim (partial) transcript
+        if (!interimElement) {
+          interimElement = document.createElement('div');
+          interimElement.className = 'caption-segment interim';
+          captionsBox.appendChild(interimElement);
+        }
+        interimElement.innerText = text;
+      } else {
+        // Handle finalized sentence block
+        if (interimElement) {
+          interimElement.remove();
+          interimElement = null;
+        }
+
+        const segment = document.createElement('div');
+        segment.className = 'caption-segment';
+        segment.innerText = text;
+        captionsBox.appendChild(segment);
+      }
+
+      // Auto-scroll to bottom if enabled
+      if (isAutoScrollEnabled) {
+        captionsBox.scrollTop = captionsBox.scrollHeight;
+      }
+    }
+
+    // 3. User Interface Control Handlers
+    
+    // Adjust Font Size Up/Down
+    fontUpBtn.onclick = () => {
+      if (currentFontSizePx < 40) {
+        currentFontSizePx += 2;
+        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
+      }
+    };
+
+    fontDownBtn.onclick = () => {
+      if (currentFontSizePx > 16) {
+        currentFontSizePx -= 2;
+        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
+      }
+    };
+
+    // Toggle Auto-Scroll Mode
+    autoscrollBtn.onclick = () => {
+      isAutoScrollEnabled = !isAutoScrollEnabled;
+      if (isAutoScrollEnabled) {
+        autoscrollBtn.classList.add('active');
+        autoscrollBtn.innerText = 'Auto-Scroll: ON';
+        captionsBox.scrollTop = captionsBox.scrollHeight;
+      } else {
+        autoscrollBtn.classList.remove('active');
+        autoscrollBtn.innerText = 'Auto-Scroll: OFF';
+      }
+    };
+
+    // Clear Captions Display
+    clearBtn.onclick = () => {
+      captionsBox.innerHTML = '';
+      if (placeholder) {
+        placeholder.style.display = 'block';
+        captionsBox.appendChild(placeholder);
+      }
+    };
+
+    // Initialize Connection
+    connectToCaptionStream();
+  </script>
+</body>
+</html>
