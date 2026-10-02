@@ -18,8 +18,8 @@
       margin: 0;
     }
     .card {
-      max-width: 500px;
-      margin: 2rem auto;
+      max-width: 580px;
+      margin: 1rem auto;
       background: #1f2937;
       padding: 2rem;
       border-radius: 12px;
@@ -49,6 +49,34 @@
       padding: 0.6rem 1rem;
       border-radius: 8px;
       margin: 1rem 0;
+    }
+    .setting-group {
+      margin-top: 1rem;
+      text-align: left;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #9ca3af;
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+    select {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      background-color: #111827;
+      color: #f3f4f6;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+    }
+    .targets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px;
+      margin-top: 0.5rem;
     }
     .btn-group {
       display: flex;
@@ -85,17 +113,39 @@
     <p>Room Identifier:</p>
     <div class="room-badge" id="roomDisplay">main-stage</div>
 
-    <!-- Real-Time Countdown Timer -->
     <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
 
     <!-- Spoken / Ingest Language Selector -->
-    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
-      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
-        Spoken Language
-      </label>
-      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
-        <!-- Populated dynamically by JS -->
-      </select>
+    <div class="setting-group">
+      <label for="languageSelect">Spoken Input Language</label>
+      <select id="languageSelect"></select>
+    </div>
+
+    <!-- Up to 5 Active Translation Output Channels -->
+    <div class="setting-group">
+      <label>Active Output Translations (Max 5 Channels)</label>
+      <div class="targets-grid">
+        <div>
+          <label style="font-size: 0.75rem; color: #60a5fa;">Output Channel 1</label>
+          <select class="target-select" id="target1"></select>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem; color: #60a5fa;">Output Channel 2</label>
+          <select class="target-select" id="target2"></select>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem; color: #60a5fa;">Output Channel 3</label>
+          <select class="target-select" id="target3"></select>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem; color: #60a5fa;">Output Channel 4</label>
+          <select class="target-select" id="target4"></select>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem; color: #60a5fa;">Output Channel 5</label>
+          <select class="target-select" id="target5"></select>
+        </div>
+      </div>
     </div>
 
     <div class="btn-group">
@@ -107,27 +157,23 @@
   </div>
 
   <script>
-    // 1. Supabase Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // State Variables for Live Usage Tracking
     let currentUser = null;
     let syncTimer = null;
     let localCountdownTimer = null;
     let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600; // Default fallback (1 hour)
+    let maxLimit = 3600;
     let currentRemainingSeconds = 0;
 
-    // Authenticate Presenter Session
     async function initPresenterAuth() {
       try {
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
-          // Initial sanity check and subscription setup
           await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
@@ -135,12 +181,10 @@
       }
     }
 
-    // Initial Fetch & Realtime Push Subscription Setup
     async function fetchUserTimeAndSubscribe(userId) {
       if (!userId) return;
 
       try {
-        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -151,14 +195,12 @@
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
 
-        // Subscribe to real-time Postgres changes on the user row
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
       }
     }
 
-    // Subscribe to instant Supabase database updates
     function subscribeToRealtimeUsage(userId) {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
 
@@ -166,12 +208,7 @@
         .channel(`presenter_time_${userId}`)
         .on(
           'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'users',
-            filter: `user_id=eq.${userId}`
-          },
+          { event: 'UPDATE', schema: 'public', table: 'users', filter: `user_id=eq.${userId}` },
           (payload) => {
             if (payload.new) {
               const used = payload.new.streaming_seconds_used || 0;
@@ -182,17 +219,15 @@
         )
         .subscribe((status, err) => {
           if (status === 'CHANNEL_ERROR') {
-            console.warn("Realtime subscription error, falling back to polling:", err);
+            console.warn("Realtime subscription error:", err);
           }
         });
     }
 
-    // Updates state, formats UI countdown, and cuts stream if limit is reached
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
 
-      // CUT-OFF CHECK
       if (currentRemainingSeconds <= 0) {
         if (isStreamingActive()) {
           cleanup();
@@ -207,7 +242,6 @@
       }
     }
 
-    // Format & Render visual timer badge (MM:SS)
     function updateTimerDisplay(totalSeconds) {
       const timerDisplay = document.getElementById('timerDisplay');
       if (!timerDisplay) return;
@@ -219,15 +253,14 @@
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
+        timerDisplay.style.color = '#ef4444';
       } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
+        timerDisplay.style.color = '#f59e0b';
       } else {
-        timerDisplay.style.color = '#38bdf8'; // Blue normal
+        timerDisplay.style.color = '#38bdf8';
       }
     }
 
-    // Local 1-second ticker while active
     function startLocalCountdown() {
       stopLocalCountdown();
       localCountdownTimer = setInterval(() => {
@@ -252,10 +285,8 @@
       }
     }
 
-    // Sync accumulated usage to Supabase every 5 seconds
     function startUsageSyncing(userId, roomId) {
       stopUsageSyncing();
-
       syncTimer = setInterval(async () => {
         await pushUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
@@ -290,13 +321,11 @@
           return;
         }
 
-        // Update user row
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Update room row
         if (roomId) {
           const { data: room } = await supabaseClient
             .from('rooms')
@@ -327,120 +356,110 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
-    // Supported Spoken Languages (BCP-47 Standard)
+    // Curated BCP-47 Languages List
     const SUPPORTED_LANGUAGES = [
-      { code: 'af-ZA', name: 'Afrikaans' },
-      { code: 'sq-AL', name: 'Albanian' },
-      { code: 'am-ET', name: 'Amharic' },
-      { code: 'ar-SA', name: 'Arabic' },
-      { code: 'hy-AM', name: 'Armenian' },
-      { code: 'az-AZ', name: 'Azerbaijani' },
-      { code: 'eu-ES', name: 'Basque' },
-      { code: 'be-BY', name: 'Belarusian' },
-      { code: 'bn-IN', name: 'Bengali' },
-      { code: 'bs-BA', name: 'Bosnian' },
-      { code: 'bg-BG', name: 'Bulgarian' },
-      { code: 'ca-ES', name: 'Catalan' },
+      { code: 'none', name: '-- None / Disabled --' },
+      { code: 'en-US', name: 'English (US)' },
+      { code: 'en-GB', name: 'English (UK)' },
+      { code: 'es-ES', name: 'Spanish (Spain)' },
+      { code: 'es-419', name: 'Spanish (Latin America)' },
+      { code: 'fr-FR', name: 'French' },
+      { code: 'de-DE', name: 'German' },
       { code: 'zh-CN', name: 'Chinese (Simplified)' },
       { code: 'zh-TW', name: 'Chinese (Traditional)' },
-      { code: 'hr-HR', name: 'Croatian' },
-      { code: 'cs-CZ', name: 'Czech' },
-      { code: 'da-DK', name: 'Danish' },
-      { code: 'nl-NL', name: 'Dutch' },
-      { code: 'en-AU', name: 'English (Australia)' },
-      { code: 'en-GB', name: 'English (United Kingdom)' },
-      { code: 'en-US', name: 'English (United States)' },
-      { code: 'eo',    name: 'Esperanto' },
-      { code: 'et-EE', name: 'Estonian' },
-      { code: 'fil-PH', name: 'Filipino' },
-      { code: 'fi-FI', name: 'Finnish' },
-      { code: 'fr-CA', name: 'French (Canada)' },
-      { code: 'fr-FR', name: 'French (France)' },
-      { code: 'gl-ES', name: 'Galician' },
-      { code: 'ka-GE', name: 'Georgian' },
-      { code: 'de-DE', name: 'German' },
-      { code: 'el-GR', name: 'Greek' },
-      { code: 'gu-IN', name: 'Gujarati' },
-      { code: 'ht',    name: 'Haitian Creole' },
-      { code: 'ha-NG', name: 'Hausa' },
-      { code: 'he-IL', name: 'Hebrew' },
-      { code: 'hi-IN', name: 'Hindi' },
-      { code: 'hu-HU', name: 'Hungarian' },
-      { code: 'is-IS', name: 'Icelandic' },
-      { code: 'id-ID', name: 'Indonesian' },
-      { code: 'ga-IE', name: 'Irish' },
-      { code: 'it-IT', name: 'Italian' },
       { code: 'ja-JP', name: 'Japanese' },
-      { code: 'jv-ID', name: 'Javanese' },
-      { code: 'kn-IN', name: 'Kannada' },
-      { code: 'kk-KZ', name: 'Kazakh' },
-      { code: 'km-KH', name: 'Khmer' },
       { code: 'ko-KR', name: 'Korean' },
-      { code: 'lo-LA', name: 'Lao' },
-      { code: 'lv-LV', name: 'Latvian' },
-      { code: 'lt-LT', name: 'Lithuanian' },
-      { code: 'mk-MK', name: 'Macedonian' },
-      { code: 'ms-MY', name: 'Malay' },
-      { code: 'ml-IN', name: 'Malayalam' },
-      { code: 'mt-MT', name: 'Maltese' },
-      { code: 'mr-IN', name: 'Marathi' },
-      { code: 'mn-MN', name: 'Mongolian' },
-      { code: 'ne-NP', name: 'Nepali' },
-      { code: 'nb-NO', name: 'Norwegian' },
-      { code: 'fa-IR', name: 'Persian' },
-      { code: 'pl-PL', name: 'Polish' },
+      { code: 'ar-SA', name: 'Arabic' },
+      { code: 'hi-IN', name: 'Hindi' },
       { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
-      { code: 'pa-IN', name: 'Punjabi' },
-      { code: 'ro-RO', name: 'Romanian' },
       { code: 'ru-RU', name: 'Russian' },
-      { code: 'sr-RS', name: 'Serbian' },
-      { code: 'si-LK', name: 'Sinhala' },
-      { code: 'sk-SK', name: 'Slovak' },
-      { code: 'sl-SI', name: 'Slovenian' },
-      { code: 'so-SO', name: 'Somali' },
-      { code: 'es-419', name: 'Spanish (Latin America)' },
-      { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'su-ID', name: 'Sundanese' },
-      { code: 'sw-KE', name: 'Swahili' },
-      { code: 'sv-SE', name: 'Swedish' },
-      { code: 'ta-IN', name: 'Tamil' },
-      { code: 'te-IN', name: 'Telugu' },
-      { code: 'th-TH', name: 'Thai' },
+      { code: 'it-IT', name: 'Italian' },
+      { code: 'nl-NL', name: 'Dutch' },
+      { code: 'pl-PL', name: 'Polish' },
       { code: 'tr-TR', name: 'Turkish' },
       { code: 'uk-UA', name: 'Ukrainian' },
-      { code: 'ur-PK', name: 'Urdu' },
-      { code: 'uz-UZ', name: 'Uzbek' },
-      { code: 'vi-VN', name: 'Vietnamese' }
+      { code: 'vi-VN', name: 'Vietnamese' },
+      { code: 'th-TH', name: 'Thai' },
+      { code: 'id-ID', name: 'Indonesian' }
     ];
 
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
+    function initLanguageSelectors() {
+      const srcSelect = document.getElementById('languageSelect');
+      const targetSelects = [
+        document.getElementById('target1'),
+        document.getElementById('target2'),
+        document.getElementById('target3'),
+        document.getElementById('target4'),
+        document.getElementById('target5')
+      ];
 
-      selectElem.innerHTML = '';
-
-      SUPPORTED_LANGUAGES.forEach((lang) => {
+      // Populate Input Spoken Select (exclude 'none')
+      srcSelect.innerHTML = '';
+      SUPPORTED_LANGUAGES.filter(l => l.code !== 'none').forEach(lang => {
         const opt = document.createElement('option');
         opt.value = lang.code;
         opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) opt.selected = true;
-        selectElem.appendChild(opt);
+        if (lang.code === (localStorage.getItem('presenter_lang') || 'en-US')) opt.selected = true;
+        srcSelect.appendChild(opt);
       });
 
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
+      // Populate 5 Output Target Selects
+      const savedTargets = JSON.parse(localStorage.getItem('presenter_targets') || '["es-ES", "fr-FR", "de-DE", "zh-CN", "none"]');
+
+      targetSelects.forEach((sel, idx) => {
+        sel.innerHTML = '';
+        SUPPORTED_LANGUAGES.forEach(lang => {
+          const opt = document.createElement('option');
+          opt.value = lang.code;
+          opt.textContent = lang.code === 'none' ? lang.name : `${lang.name} (${lang.code})`;
+          if (lang.code === (savedTargets[idx] || 'none')) opt.selected = true;
+          sel.appendChild(opt);
+        });
+
+        sel.addEventListener('change', pushLiveLanguageUpdate);
       });
+
+      srcSelect.addEventListener('change', pushLiveLanguageUpdate);
     }
 
-    // Read room & maxLimit from URL parameters
+    /**
+     * Pushes real-time language updates over the active WebSocket
+     */
+    function pushLiveLanguageUpdate() {
+      const spokenLang = document.getElementById('languageSelect').value;
+      const targetLangs = [
+        document.getElementById('target1').value,
+        document.getElementById('target2').value,
+        document.getElementById('target3').value,
+        document.getElementById('target4').value,
+        document.getElementById('target5').value
+      ].filter(code => code !== 'none');
+
+      localStorage.setItem('presenter_lang', spokenLang);
+      localStorage.setItem('presenter_targets', JSON.stringify([
+        document.getElementById('target1').value,
+        document.getElementById('target2').value,
+        document.getElementById('target3').value,
+        document.getElementById('target4').value,
+        document.getElementById('target5').value
+      ]));
+
+      // Send real-time control frame over active WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log("[Presenter] Pushing live language config update:", { spokenLang, targetLangs });
+        ws.send(JSON.stringify({
+          type: 'config_update',
+          spokenLang: spokenLang,
+          targetLangs: targetLangs
+        }));
+      }
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
     const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
-    }
-    
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) maxLimit = parsedMaxLimit;
+
     const urlToken = urlParams.get('token');
     const localToken = localStorage.getItem('supabase.auth.token') 
       ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
@@ -448,7 +467,7 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
+    initLanguageSelectors();
     initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
@@ -470,17 +489,20 @@
         status.style.color = "#f59e0b";
 
         audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
         });
 
-        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
+        const selectedLang = document.getElementById('languageSelect').value;
+        const targetLangs = [
+          document.getElementById('target1').value,
+          document.getElementById('target2').value,
+          document.getElementById('target3').value,
+          document.getElementById('target4').value,
+          document.getElementById('target5').value
+        ].filter(code => code !== 'none').join(',');
 
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}&targets=${encodeURIComponent(targetLangs)}`;
         if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
@@ -495,7 +517,6 @@
           }
 
           mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
           mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
               ws.send(e.data);
@@ -503,15 +524,11 @@
           };
 
           mediaRecorder.start(250);
-
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
-          // Start local visual countdown and DB syncing loops
           startLocalCountdown();
-          if (currentUser) {
-            startUsageSyncing(currentUser.id, room);
-          }
+          if (currentUser) startUsageSyncing(currentUser.id, room);
         };
 
         ws.onerror = (err) => {
@@ -545,15 +562,10 @@
       stopUsageSyncing();
       stopLocalCountdown();
 
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      if (audioStream) audioStream.getTracks().forEach(track => track.stop());
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+
       startBtn.disabled = currentRemainingSeconds <= 0;
       stopBtn.disabled = true;
     }
