@@ -115,7 +115,7 @@
 
     <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
 
-    <!-- Spoken / Ingest Language Selector -->
+    <!-- Spoken Input Language -->
     <div class="setting-group">
       <label for="languageSelect">Spoken Input Language</label>
       <select id="languageSelect"></select>
@@ -356,7 +356,6 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
-    // Curated BCP-47 Languages List
     const SUPPORTED_LANGUAGES = [
       { code: 'none', name: '-- None / Disabled --' },
       { code: 'en-US', name: 'English (US)' },
@@ -393,7 +392,6 @@
         document.getElementById('target5')
       ];
 
-      // Populate Input Spoken Select (exclude 'none')
       srcSelect.innerHTML = '';
       SUPPORTED_LANGUAGES.filter(l => l.code !== 'none').forEach(lang => {
         const opt = document.createElement('option');
@@ -403,7 +401,6 @@
         srcSelect.appendChild(opt);
       });
 
-      // Populate 5 Output Target Selects
       const savedTargets = JSON.parse(localStorage.getItem('presenter_targets') || '["es-ES", "fr-FR", "de-DE", "zh-CN", "none"]');
 
       targetSelects.forEach((sel, idx) => {
@@ -422,35 +419,34 @@
       srcSelect.addEventListener('change', pushLiveLanguageUpdate);
     }
 
-    /**
-     * Pushes real-time language updates over the active WebSocket
-     */
+    function getSelectedTargets() {
+      return [
+        document.getElementById('target1').value,
+        document.getElementById('target2').value,
+        document.getElementById('target3').value,
+        document.getElementById('target4').value,
+        document.getElementById('target5').value
+      ];
+    }
+
     function pushLiveLanguageUpdate() {
       const spokenLang = document.getElementById('languageSelect').value;
-      const targetLangs = [
-        document.getElementById('target1').value,
-        document.getElementById('target2').value,
-        document.getElementById('target3').value,
-        document.getElementById('target4').value,
-        document.getElementById('target5').value
-      ].filter(code => code !== 'none');
+      const targetArray = getSelectedTargets();
+      const activeTargets = targetArray.filter(code => code !== 'none');
 
       localStorage.setItem('presenter_lang', spokenLang);
-      localStorage.setItem('presenter_targets', JSON.stringify([
-        document.getElementById('target1').value,
-        document.getElementById('target2').value,
-        document.getElementById('target3').value,
-        document.getElementById('target4').value,
-        document.getElementById('target5').value
-      ]));
+      localStorage.setItem('presenter_targets', JSON.stringify(targetArray));
 
-      // Send real-time control frame over active WebSocket
       if (ws && ws.readyState === WebSocket.OPEN) {
-        console.log("[Presenter] Pushing live language config update:", { spokenLang, targetLangs });
+        console.log("[Presenter] Sending language configuration update frame:", { spokenLang, activeTargets });
         ws.send(JSON.stringify({
           type: 'config_update',
           spokenLang: spokenLang,
-          targetLangs: targetLangs
+          sourceLang: spokenLang,
+          lang: spokenLang,
+          targets: activeTargets,
+          targetLangs: activeTargets,
+          targetLang: activeTargets[0] || ''
         }));
       }
     }
@@ -493,19 +489,24 @@
         });
 
         const selectedLang = document.getElementById('languageSelect').value;
-        const targetLangs = [
-          document.getElementById('target1').value,
-          document.getElementById('target2').value,
-          document.getElementById('target3').value,
-          document.getElementById('target4').value,
-          document.getElementById('target5').value
-        ].filter(code => code !== 'none').join(',');
+        const activeTargets = getSelectedTargets().filter(code => code !== 'none');
+        const targetString = activeTargets.join(',');
 
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}&targets=${encodeURIComponent(targetLangs)}`;
+        
+        // Populate all standard query parameter aliases to support any backend WS router logic
+        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter` +
+                    `&lang=${encodeURIComponent(selectedLang)}` +
+                    `&sourceLang=${encodeURIComponent(selectedLang)}` +
+                    `&spokenLang=${encodeURIComponent(selectedLang)}` +
+                    `&targets=${encodeURIComponent(targetString)}` +
+                    `&targetLangs=${encodeURIComponent(targetString)}` +
+                    `&targetLang=${encodeURIComponent(activeTargets[0] || '')}`;
+
         if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
 
         ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {
           status.innerText = "Status: Live & Streaming Stage Audio";
@@ -517,9 +518,12 @@
           }
 
           mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-          mediaRecorder.ondataavailable = (e) => {
+          
+          // Convert Blob -> ArrayBuffer to prevent binary socket corruption on the server
+          mediaRecorder.ondataavailable = async (e) => {
             if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
+              const buffer = await e.data.arrayBuffer();
+              ws.send(buffer);
             }
           };
 
