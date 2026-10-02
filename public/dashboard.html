@@ -538,7 +538,7 @@
 
     try {
       const { data: dbRooms, error } = await supabaseClient
-        .from('rooms')
+        .from('users')
         .select('*')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
