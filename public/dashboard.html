@@ -552,7 +552,8 @@
     if (error) {
       console.warn("Could not fetch rooms from Supabase:", error.message);
     } else if (dbRooms) {
-      rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
+      // Direct room_id assignment matching Supabase public.rooms table schema
+      rooms = dbRooms.map(r => ({ room_id: r.room_id, name: r.name }));
       // Keep local backup strictly matching Supabase
       localStorage.setItem('user_rooms', JSON.stringify(rooms));
     }
@@ -574,9 +575,9 @@
     }
 
     rooms.forEach((room) => {
-      const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
-      const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/viewer.html?room=${room.id}`;
+      const presenterUrl = `${origin}/presenter.html?room=${room.room_id}`;
+      const overlayUrl = `${origin}/overlay.html?room=${room.room_id}`;
+      const audienceUrl = `${origin}/viewer.html?room=${room.room_id}`;
 
       const card = document.createElement('div');
       card.className = 'event-card';
@@ -584,33 +585,33 @@
         <div class="event-card-header">
           <div>
             <div class="event-title">${room.name}</div>
-            <div class="event-id">Room ID: ${room.id}</div>
+            <div class="event-id">Room ID: ${room.room_id}</div>
           </div>
-          <button class="btn-secondary" onclick="deleteRoom('${room.id}')">Delete</button>
+          <button class="btn-secondary" onclick="deleteRoom('${room.room_id}')">Delete</button>
         </div>
 
         <div class="links-grid">
           <div class="link-box">
             <label>Presenter Microphones Link</label>
             <div class="link-action">
-              <input type="text" readonly value="${presenterUrl}" id="p_${room.id}">
-              <button class="btn-copy" onclick="copyLink('p_${room.id}')">Copy</button>
+              <input type="text" readonly value="${presenterUrl}" id="p_${room.room_id}">
+              <button class="btn-copy" onclick="copyLink('p_${room.room_id}')">Copy</button>
             </div>
           </div>
 
           <div class="link-box">
             <label>OBS Transparent Overlay Link</label>
             <div class="link-action">
-              <input type="text" readonly value="${overlayUrl}" id="o_${room.id}">
-              <button class="btn-copy" onclick="copyLink('o_${room.id}')">Copy</button>
+              <input type="text" readonly value="${overlayUrl}" id="o_${room.room_id}">
+              <button class="btn-copy" onclick="copyLink('o_${room.room_id}')">Copy</button>
             </div>
           </div>
 
           <div class="link-box">
             <label>Mobile Audience View Link</label>
             <div class="link-action">
-              <input type="text" readonly value="${audienceUrl}" id="a_${room.id}">
-              <button class="btn-copy" onclick="copyLink('a_${room.id}')">Copy</button>
+              <input type="text" readonly value="${audienceUrl}" id="a_${room.room_id}">
+              <button class="btn-copy" onclick="copyLink('a_${room.room_id}')">Copy</button>
             </div>
           </div>
         </div>
