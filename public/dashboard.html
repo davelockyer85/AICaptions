@@ -59,6 +59,9 @@
       font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
       transition: background 0.2s;
     }
 
@@ -262,6 +265,15 @@
       justify-content: flex-end;
       gap: 12px;
     }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      background-color: #1e293b;
+      border: 1px dashed #334155;
+      border-radius: 12px;
+      color: #94a3b8;
+    }
   </style>
 </head>
 <body>
@@ -269,6 +281,7 @@
   <header>
     <div class="logo">🎙️ AICaptions</div>
     <div class="user-controls">
+      <a href="/pricing.html" class="btn-secondary">Pricing</a>
       <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
     </div>
@@ -543,20 +556,12 @@
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
 
-      if (!error && dbRooms && dbRooms.length > 0) {
+      if (!error && dbRooms) {
         rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
       }
     } catch (err) {
       console.warn("Using local room state fallback:", err.message);
-    }
-
-    if (rooms.length === 0) {
       rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    }
-
-    if (rooms.length === 0) {
-      rooms = [{ id: 'main-stage', name: 'Main Stage Live Captions' }];
-      localStorage.setItem('user_rooms', JSON.stringify(rooms));
     }
 
     // Keep active room count updated in status bar
@@ -565,10 +570,20 @@
 
     eventsContainer.innerHTML = '';
 
+    if (rooms.length === 0) {
+      eventsContainer.innerHTML = `
+        <div class="empty-state">
+          <p style="margin-bottom: 8px; font-weight: 600;">No active event rooms.</p>
+          <p style="font-size: 0.85rem;">Click <strong>+ Create New Event</strong> above to configure live captions for your stage.</p>
+        </div>
+      `;
+      return;
+    }
+
     rooms.forEach((room) => {
       const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
       const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/index.html?room=${room.id}`;
+      const audienceUrl = `${origin}/viewer.html?room=${room.id}`;
 
       const card = document.createElement('div');
       card.className = 'event-card';
