@@ -234,6 +234,18 @@
 
     roomDisplay.innerText = roomId;
 
+    // Helper to safely extract text & final state from Supabase Realtime event payloads
+    function extractCaptionData(response) {
+      if (!response) return null;
+
+      // Extract inner payload from Supabase broadcast wrapper
+      const body = response.payload || response;
+      const text = body.text || body.transcript || body.caption || body.message || body.words;
+      const isFinal = body.isFinal ?? body.is_final ?? body.final ?? true;
+
+      return text ? { text, isFinal } : null;
+    }
+
     // 2. Realtime Channel Subscription for Audience Captions
     function connectToCaptionStream() {
       const channel = supabaseClient.channel(`room_${roomId}`, {
@@ -241,14 +253,29 @@
       });
 
       channel
-        .on('broadcast', { event: 'caption' }, (payload) => {
-          if (payload && payload.text) {
-            renderCaptionChunk(payload.text, payload.isFinal);
-          }
+        // Broadcast listeners for custom events
+        .on('broadcast', { event: 'caption' }, (res) => {
+          const data = extractCaptionData(res);
+          if (data) renderCaptionChunk(data.text, data.isFinal);
         })
-        .on('broadcast', { event: 'transcript' }, (payload) => {
-          if (payload && payload.text) {
-            renderCaptionChunk(payload.text, payload.isFinal);
+        .on('broadcast', { event: 'transcript' }, (res) => {
+          const data = extractCaptionData(res);
+          if (data) renderCaptionChunk(data.text, data.isFinal);
+        })
+        .on('broadcast', { event: '*' }, (res) => {
+          const data = extractCaptionData(res);
+          if (data) renderCaptionChunk(data.text, data.isFinal);
+        })
+        // Database listener fallback if captions are written directly to transcripts table
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transcripts',
+          filter: `room_id=eq.${roomId}`
+        }, (payload) => {
+          if (payload.new) {
+            const text = payload.new.text || payload.new.transcript || payload.new.content;
+            if (text) renderCaptionChunk(text, true);
           }
         })
         .subscribe((status) => {
@@ -292,8 +319,6 @@
     }
 
     // 3. User Interface Control Handlers
-    
-    // Adjust Font Size Up/Down
     fontUpBtn.onclick = () => {
       if (currentFontSizePx < 40) {
         currentFontSizePx += 2;
