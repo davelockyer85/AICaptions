@@ -231,29 +231,74 @@
     let isAutoScrollEnabled = true;
     let currentFontSizePx = 24; // Default font size (1.5rem)
     let interimElement = null;
+    let ws = null;
 
     roomDisplay.innerText = roomId;
 
-    // Helper to safely extract text & final state from Supabase Realtime event payloads
+    // Helper to safely extract text & final state from payloads
     function extractCaptionData(response) {
       if (!response) return null;
 
-      // Extract inner payload from Supabase broadcast wrapper
       const body = response.payload || response;
-      const text = body.text || body.transcript || body.caption || body.message || body.words;
+      let text = body.text || body.transcript || body.caption || body.message || body.words;
+      
+      if (!text && body.channel && body.channel.alternatives && body.channel.alternatives[0]) {
+        text = body.channel.alternatives[0].transcript;
+      }
+
       const isFinal = body.isFinal ?? body.is_final ?? body.final ?? true;
 
       return text ? { text, isFinal } : null;
     }
 
-    // 2. Realtime Channel Subscription for Audience Captions
+    // 2. Connect to Direct WebSocket Stream & Supabase Fallback
     function connectToCaptionStream() {
+      // Connect directly to backend WebSocket server
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          statusText.innerText = "LIVE";
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const extracted = extractCaptionData(data);
+            if (extracted && extracted.text) {
+              renderCaptionChunk(extracted.text, extracted.isFinal);
+            } else if (typeof data === 'string' && data.trim()) {
+              renderCaptionChunk(data, true);
+            }
+          } catch (e) {
+            if (typeof event.data === 'string' && event.data.trim()) {
+              renderCaptionChunk(event.data, true);
+            }
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.warn("WebSocket error, falling back to Supabase Realtime:", err);
+          statusText.innerText = "RECONNECTING...";
+        };
+
+        ws.onclose = () => {
+          statusText.innerText = "DISCONNECTED";
+          setTimeout(connectToCaptionStream, 3000); // Reconnect handler
+        };
+      } catch (err) {
+        console.warn("WebSocket connection init error:", err);
+      }
+
+      // Supabase Realtime Fallback
       const channel = supabaseClient.channel(`room_${roomId}`, {
         config: { broadcast: { ack: false } }
       });
 
       channel
-        // Broadcast listeners for custom events
         .on('broadcast', { event: 'caption' }, (res) => {
           const data = extractCaptionData(res);
           if (data) renderCaptionChunk(data.text, data.isFinal);
@@ -266,7 +311,6 @@
           const data = extractCaptionData(res);
           if (data) renderCaptionChunk(data.text, data.isFinal);
         })
-        // Database listener fallback if captions are written directly to transcripts table
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
@@ -278,13 +322,7 @@
             if (text) renderCaptionChunk(text, true);
           }
         })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            statusText.innerText = "LIVE";
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            statusText.innerText = "RECONNECTING...";
-          }
-        });
+        .subscribe();
     }
 
     // Render incoming text to the screen
