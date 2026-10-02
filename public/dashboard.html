@@ -393,7 +393,6 @@
     if (!currentUser) return;
 
     try {
-      // Changed from specific missing column query to select all available columns cleanly
       const { data: profile, error } = await supabaseClient
         .from('users')
         .select('*')
@@ -415,7 +414,6 @@
   function renderSubscriptionUI(updatedProfile) {
     if (updatedProfile) cachedProfile = updatedProfile;
 
-    // Use optional chaining so UI updates even if profile load is in-flight
     const planTier = (cachedProfile?.plan_tier || 'free').toUpperCase();
     const usedSecs = cachedProfile?.streaming_seconds_used || 0;
     const maxSecs = cachedProfile?.max_streaming_seconds;
@@ -520,24 +518,19 @@
 
     const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
 
-    try {
-      const { error } = await supabaseClient.from('rooms').insert([
-        { 
-          room_id: roomId, 
-          name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0
-        }
-      ]);
+    const { error } = await supabaseClient.from('rooms').insert([
+      { 
+        room_id: roomId, 
+        name: name, 
+        user_id: currentUser.id,
+        streaming_seconds_used: 0
+      }
+    ]);
 
-      if (error) throw error;
-
-    } catch (e) {
-      console.warn("Supabase room insert failed, falling back to local storage:", e.message);
-      
-      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-      localRooms.unshift({ id: roomId, name: name, created_at: new Date().toISOString() });
-      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+    if (error) {
+      console.warn("Supabase room insert failed:", error.message);
+      alert(`Error creating room: ${error.message}`);
+      return;
     }
 
     eventNameInput.value = '';
@@ -545,24 +538,23 @@
     await loadUserEvents();
   });
 
-  // 6. Fetch & Render Rooms
+  // 6. Fetch & Render Rooms directly from Supabase
   async function loadUserEvents() {
     const origin = window.location.origin;
     let rooms = [];
 
-    try {
-      const { data: dbRooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
+    const { data: dbRooms, error } = await supabaseClient
+      .from('rooms')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false });
 
-      if (!error && dbRooms) {
-        rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
-      }
-    } catch (err) {
-      console.warn("Using local room state fallback:", err.message);
-      rooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+    if (error) {
+      console.warn("Could not fetch rooms from Supabase:", error.message);
+    } else if (dbRooms) {
+      rooms = dbRooms.map(r => ({ id: r.room_id || r.id, name: r.name }));
+      // Keep local backup strictly matching Supabase
+      localStorage.setItem('user_rooms', JSON.stringify(rooms));
     }
 
     // Keep active room count updated in status bar
@@ -636,21 +628,20 @@
     alert("Link copied to clipboard!");
   }
 
-  // Delete Room Helper
+  // Delete Room Helper with explicit Supabase Error Checking
   async function deleteRoom(roomId) {
-    try {
-      await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
-    } catch (e) {
-      console.warn("Could not delete room from Supabase:", e.message);
+    const { error } = await supabaseClient
+      .from('rooms')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', currentUser.id);
+
+    if (error) {
+      console.warn("Could not delete room from Supabase:", error.message);
+      alert(`Failed to delete room: ${error.message}`);
+      return;
     }
 
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms = localRooms.filter(r => r.id !== roomId);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
     await loadUserEvents();
   }
 
