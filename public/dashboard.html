@@ -24,7 +24,7 @@
     header {
       background-color: #1e293b;
       border-bottom: 1px solid #334155;
-      padding: 16px 12px;
+      padding: 16px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -59,9 +59,6 @@
       font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
       transition: background 0.2s;
     }
 
@@ -272,8 +269,7 @@
   <header>
     <div class="logo">🎙️ AICaptions</div>
     <div class="user-controls">
-      <a class="user-email" id="userEmail">Loading...</a>
-      <a href="/pricing.html" class="btn-secondary">Pricing</a>
+      <span class="user-email" id="userEmail">Loading...</span>
       <button class="btn-secondary" id="logoutBtn">Sign Out</button>
     </div>
   </header>
@@ -572,7 +568,7 @@
     rooms.forEach((room) => {
       const presenterUrl = `${origin}/presenter.html?room=${room.id}`;
       const overlayUrl = `${origin}/overlay.html?room=${room.id}`;
-      const audienceUrl = `${origin}/viewer.html?room=${room.id}`;
+      const audienceUrl = `${origin}/index.html?room=${room.id}`;
 
       const card = document.createElement('div');
       card.className = 'event-card';
