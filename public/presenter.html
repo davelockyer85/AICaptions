@@ -139,7 +139,6 @@
       if (!userId) return;
 
       try {
-        // Use maybeSingle() to safely handle missing records without 406 errors
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
@@ -291,7 +290,7 @@
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Update or Upsert room row to prevent 406 errors when rooms don't exist yet
+        // Safely update or insert room row without requiring unique constraints
         if (roomId) {
           const { data: roomData } = await supabaseClient
             .from('rooms')
@@ -299,14 +298,19 @@
             .eq('room_id', roomId)
             .maybeSingle();
 
-          const currentRoomUsage = roomData?.streaming_seconds_used || 0;
-
-          await supabaseClient
-            .from('rooms')
-            .upsert({
-              room_id: roomId,
-              streaming_seconds_used: currentRoomUsage + secondsToAdd
-            }, { onConflict: 'room_id' });
+          if (roomData) {
+            await supabaseClient
+              .from('rooms')
+              .update({ streaming_seconds_used: (roomData.streaming_seconds_used || 0) + secondsToAdd })
+              .eq('room_id', roomId);
+          } else {
+            await supabaseClient
+              .from('rooms')
+              .insert({
+                room_id: roomId,
+                streaming_seconds_used: secondsToAdd
+              });
+          }
         }
       } catch (err) {
         console.warn("Usage sync error:", err.message);
