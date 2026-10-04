@@ -30,9 +30,9 @@ const deepgram = createClient(DEEPGRAM_KEY);
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
-  if (!rooms.has(roomId)) {
+  if (!users.has(roomId)) {
     console.log(`[Room Created] Initializing room: ${roomId}`);
-    rooms.set(roomId, {
+    users.set(roomId, {
       targetOverlayLang: "en",
       overlays: new Set(),
       attendees: new Set(),
@@ -41,14 +41,14 @@ function getOrCreateRoom(roomId) {
       isDgReady: false
     });
   }
-  return rooms.get(roomId);
+  return users.get(roomId);
 }
 
 function cleanupRoom(roomId) {
-  const room = rooms.get(roomId);
+  const room = users.get(roomId);
   if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
     console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
-    rooms.delete(roomId);
+    users.delete(roomId);
   }
 }
 
