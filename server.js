@@ -51,17 +51,16 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Read query parameters
+    // Handle both ?room= and ?roomId= query parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-
-    // Priority: URL parameter -> localStorage -> default ('none')
-    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'none';
 
     const captionsDiv = document.getElementById('captions');
     let socket = null;
     let roomBroadcastChannel = null;
-    let reconnectTimeout = null;
+
+    // Track output language setting locally
+    let activeTargetLang = localStorage.getItem('target_lang') || 'none';
 
     // 2. Listen to Presenter Live Language Broadcasts via Supabase Realtime
     function subscribeToRoomChannel() {
@@ -72,15 +71,13 @@
       roomBroadcastChannel
         .on('broadcast', { event: 'target_lang_change' }, (payload) => {
           if (payload.payload && payload.payload.targetLang) {
-            const newLang = payload.payload.targetLang;
-            
-            if (newLang !== activeTargetLang) {
-              activeTargetLang = newLang;
-              localStorage.setItem('target_lang', activeTargetLang);
-              console.log(`[Overlay] Presenter changed target language to: ${activeTargetLang}`);
+            activeTargetLang = payload.payload.targetLang;
+            localStorage.setItem('target_lang', activeTargetLang);
+            console.log(`[Overlay] Target translation language updated to: ${activeTargetLang}`);
 
-              // Reconnect WebSocket with new target_lang query param for server handshake
-              reconnectWebSocket();
+            // Send dynamic config update over WebSocket if connected
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'config', targetLang: activeTargetLang }));
             }
           }
         })
@@ -89,10 +86,10 @@
 
     // 3. Connect WebSocket Stream
     function connect() {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}&lang=${encodeURIComponent(activeTargetLang)}`;
+      
+      // Pass activeTargetLang in connection URL
+      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}`;
 
       socket = new WebSocket(wsUrl);
 
@@ -104,17 +101,15 @@
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log("[Overlay] Received event:", data);
 
-          if (data.type === 'caption' || data.type === 'translation') {
-            const shortLang = activeTargetLang.split('-')[0];
-
-            // Extract translation with short-code fallback (e.g., 'es' if 'es-ES' selected)
+          if (data.type === 'caption') {
+            // Intelligently extract translated text depending on backend payload structure
             const displayText = 
-              (data.translations && data.translations[activeTargetLang]) ||
-              (data.translations && data.translations[shortLang]) ||
-              data.translation ||
-              data.translated_text ||
-              data.translatedText ||
+              (activeTargetLang !== 'none' && data.translations && data.translations[activeTargetLang]) ||
+              (activeTargetLang !== 'none' && data.translation) ||
+              (activeTargetLang !== 'none' && data.translated_text) ||
+              (activeTargetLang !== 'none' && data.translatedText) ||
               data.text;
 
             if (displayText) {
@@ -129,20 +124,12 @@
       socket.onclose = () => {
         console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
         captionsDiv.innerText = "Reconnecting...";
-        reconnectTimeout = setTimeout(connect, 3000);
+        setTimeout(connect, 3000);
       };
 
       socket.onerror = (err) => {
         console.error("[Overlay] WebSocket Error:", err);
       };
-    }
-
-    function reconnectWebSocket() {
-      if (socket) {
-        socket.onclose = null; // Prevent duplicate reconnect loop
-        socket.close();
-      }
-      connect();
     }
 
     // Initialize subscriptions & connection
