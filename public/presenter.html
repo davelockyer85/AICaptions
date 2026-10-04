@@ -247,15 +247,15 @@
       }
     }
 
-    function startUsageSyncing(userId, roomId) {
+    function startUsageSyncing(userId) {
       stopUsageSyncing();
 
       syncTimer = setInterval(async () => {
-        await pushUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+        await pushUsageToSupabase(userId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
     }
 
-    async function pushUsageToSupabase(userId, roomId, secondsToAdd) {
+    async function pushUsageToSupabase(userId, secondsToAdd) {
       if (!userId) return;
 
       try {
@@ -284,34 +284,12 @@
           return;
         }
 
-        // Update user row
+        // Update user row only
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Safely update or insert room row without requiring unique constraints
-        if (roomId) {
-          const { data: roomData } = await supabaseClient
-            .from('rooms')
-            .select('streaming_seconds_used')
-            .eq('room_id', roomId)
-            .maybeSingle();
-
-          if (roomData) {
-            await supabaseClient
-              .from('rooms')
-              .update({ streaming_seconds_used: (roomData.streaming_seconds_used || 0) + secondsToAdd })
-              .eq('room_id', roomId);
-          } else {
-            await supabaseClient
-              .from('rooms')
-              .insert({
-                room_id: roomId,
-                streaming_seconds_used: secondsToAdd
-              });
-          }
-        }
       } catch (err) {
         console.warn("Usage sync error:", err.message);
       }
@@ -510,7 +488,7 @@
 
           startLocalCountdown();
           if (currentUser) {
-            startUsageSyncing(currentUser.id, room);
+            startUsageSyncing(currentUser.id);
           }
         };
 
