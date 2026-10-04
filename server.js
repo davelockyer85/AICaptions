@@ -1,145 +1,214 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AICaptions - Live OBS Overlay</title>
+import express from "express";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-  <!-- Supabase JS Client SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+dotenv.config();
 
-  <style>
-    body {
-      margin: 0;
-      padding: 20px;
-      background: transparent;
-      overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    #caption-container {
-      position: fixed;
-      bottom: 40px;
-      left: 5%;
-      right: 5%;
-      text-align: center;
-      pointer-events: none;
-    }
-    .caption-text {
-      font-size: 2.2rem;
-      font-weight: 700;
-      color: #ffffff;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), -2px -2px 4px rgba(0, 0, 0, 0.9);
-      background: rgba(0, 0, 0, 0.75);
-      padding: 12px 24px;
-      border-radius: 8px;
-      display: inline-block;
-      max-width: 90vw;
-      line-height: 1.3;
-      word-wrap: break-word;
-      transition: opacity 0.2s ease-in-out;
-    }
-  </style>
-</head>
-<body>
-  <div id="caption-container">
-    <div id="captions" class="caption-text">Connecting to caption stream...</div>
-  </div>
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
 
-  <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+app.use(express.static(path.join(__dirname, "public")));
 
-    // Handle both ?room= and ?roomId= query parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
-    const captionsDiv = document.getElementById('captions');
-    let socket = null;
-    let roomBroadcastChannel = null;
+const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
+if (!DEEPGRAM_KEY) {
+  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
+}
+const deepgram = createClient(DEEPGRAM_KEY);
 
-    // Track output language setting locally
-    let activeTargetLang = localStorage.getItem('target_lang') || 'none';
+// Multi-Tenant Rooms Store
+// Map<roomId, { targetOverlayLang, overlays: Set, attendees: Set, dgLive, audioQueue, isDgReady }>
+const rooms = new Map();
 
-    // 2. Listen to Presenter Live Language Broadcasts via Supabase Realtime
-    function subscribeToRoomChannel() {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
-
-      roomBroadcastChannel = supabaseClient.channel(`room_${roomId}`);
-
-      roomBroadcastChannel
-        .on('broadcast', { event: 'target_lang_change' }, (payload) => {
-          if (payload.payload && payload.payload.targetLang) {
-            activeTargetLang = payload.payload.targetLang;
-            localStorage.setItem('target_lang', activeTargetLang);
-            console.log(`[Overlay] Target translation language updated to: ${activeTargetLang}`);
-
-            // Send dynamic config update over WebSocket if connected
-            if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: 'config', targetLang: activeTargetLang }));
-            }
-          }
-        })
-        .subscribe();
-    }
-
-    // 3. Connect WebSocket Stream
-    function connect() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      
-      // Pass activeTargetLang in connection URL
-      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}`;
-
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} (Target Lang: ${activeTargetLang})`);
-        captionsDiv.innerText = "Waiting for live captions...";
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log("[Overlay] Received event:", data);
-
-          if (data.type === 'caption') {
-            // Intelligently extract translated text depending on backend payload structure
-            const displayText = 
-              (activeTargetLang !== 'none' && data.translations && data.translations[activeTargetLang]) ||
-              (activeTargetLang !== 'none' && data.translation) ||
-              (activeTargetLang !== 'none' && data.translated_text) ||
-              (activeTargetLang !== 'none' && data.translatedText) ||
-              data.text;
-
-            if (displayText) {
-              captionsDiv.innerText = displayText;
-            }
-          }
-        } catch (err) {
-          console.error("[Overlay] Failed to parse payload:", err);
-        }
-      };
-
-      socket.onclose = () => {
-        console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
-        captionsDiv.innerText = "Reconnecting...";
-        setTimeout(connect, 3000);
-      };
-
-      socket.onerror = (err) => {
-        console.error("[Overlay] WebSocket Error:", err);
-      };
-    }
-
-    // Initialize subscriptions & connection
-    subscribeToRoomChannel();
-    connect();
-
-    window.addEventListener('beforeunload', () => {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
-      if (socket) socket.close();
+function getOrCreateRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    console.log(`[Room Created] Initializing room: ${roomId}`);
+    rooms.set(roomId, {
+      targetOverlayLang: "en",
+      overlays: new Set(),
+      attendees: new Set(),
+      dgLive: null,
+      audioQueue: [],
+      isDgReady: false
     });
-  </script>
-</body>
-</html>
+  }
+  return rooms.get(roomId);
+}
+
+function cleanupRoom(roomId) {
+  const room = rooms.get(roomId);
+  if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
+    console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
+    rooms.delete(roomId);
+  }
+}
+
+// Free Real-time Translation Helper (MyMemory API)
+async function translateText(text, targetLang) {
+  if (!targetLang || targetLang === "en") return text;
+  try {
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+    );
+    const data = await res.json();
+    return data.responseData?.translatedText || text;
+  } catch (err) {
+    console.error("[Translation Error]", err.message);
+    return text;
+  }
+}
+
+wss.on("connection", (ws, req) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = urlObj.pathname;
+  const roomId = urlObj.searchParams.get("room") || "default";
+
+  const room = getOrCreateRoom(roomId);
+
+  // ROUTE A: Stage Microphones / Audio Ingest
+  if (pathname === "/ws/ingest") {
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+
+    room.audioQueue = [];
+    room.isDgReady = false;
+
+    // Create a room-specific Deepgram STT stream
+    room.dgLive = deepgram.listen.live({
+      model: "nova-3",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      endpointing: 300
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Open, () => {
+      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
+      room.isDgReady = true;
+
+      while (room.audioQueue.length > 0) {
+        room.dgLive.send(room.audioQueue.shift());
+      }
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
+      console.error(`[Deepgram Error - Room ${roomId}]`, err);
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+      const transcript = data.channel.alternatives[0]?.transcript;
+      const isFinal = data.is_final;
+
+      if (transcript && transcript.trim().length > 0) {
+        let overlayText = transcript;
+
+        // Translate if room target language is not English
+        if (room.targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, room.targetOverlayLang);
+        }
+
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: room.targetOverlayLang
+        });
+
+        // Broadcast ONLY to overlays in THIS room
+        room.overlays.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(overlayPayload);
+          }
+        });
+
+        // Broadcast ONLY to mobile attendees in THIS room
+        if (isFinal) {
+          room.attendees.forEach(async (attendee) => {
+            if (attendee.readyState === WebSocket.OPEN) {
+              const translated = await translateText(transcript, attendee.language || "en");
+              attendee.send(
+                JSON.stringify({ text: translated, original: transcript })
+              );
+            }
+          });
+        }
+      }
+    });
+
+    ws.on("message", (message, isBinary) => {
+      // Handle JSON control messages (e.g. language change for this room)
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            room.targetOverlayLang = controlData.lang;
+            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          }
+        } catch (e) {}
+        return;
+      }
+
+      // Handle binary microphone audio stream
+      if (room.isDgReady && room.dgLive.getReadyState() === 1) {
+        room.dgLive.send(message);
+      } else {
+        room.audioQueue.push(message);
+      }
+    });
+
+    ws.on("close", () => {
+      console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
+      if (room.dgLive) {
+        room.dgLive.finish();
+        room.dgLive = null;
+      }
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE B: Stage Video Overlay (OBS / vMix)
+  else if (pathname === "/ws/overlay") {
+    console.log(`[Overlay] OBS connected to room: ${roomId}`);
+    room.overlays.add(ws);
+
+    ws.on("close", () => {
+      room.overlays.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (pathname.startsWith("/ws/attendee")) {
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+    ws.language = urlObj.searchParams.get("lang") || "en";
+
+    room.attendees.add(ws);
+
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+        }
+      } catch (e) {}
+    });
+
+    ws.on("close", () => {
+      room.attendees.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
