@@ -52,21 +52,6 @@ function cleanupRoom(roomId) {
   }
 }
 
-// Free Real-time Translation Helper (MyMemory API)
-async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
-  try {
-    const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
-    );
-    const data = await res.json();
-    return data.responseData?.translatedText || text;
-  } catch (err) {
-    console.error("[Translation Error]", err.message);
-    return text;
-  }
-}
-
 wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const pathname = urlObj.pathname;
