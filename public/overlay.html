@@ -4,10 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Live OBS Overlay</title>
-
-  <!-- Supabase JS Client SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     body {
       margin: 0;
@@ -46,80 +42,31 @@
   </div>
 
   <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    // Read query parameters
+    // Handle both ?room= and ?roomId= query parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
 
-    // Priority: URL parameter -> localStorage -> default ('none')
-    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'none';
-
     const captionsDiv = document.getElementById('captions');
     let socket = null;
-    let roomBroadcastChannel = null;
-    let reconnectTimeout = null;
 
-    // 2. Listen to Presenter Live Language Broadcasts via Supabase Realtime
-    function subscribeToRoomChannel() {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
-
-      roomBroadcastChannel = supabaseClient.channel(`room_${roomId}`);
-
-      roomBroadcastChannel
-        .on('broadcast', { event: 'target_lang_change' }, (payload) => {
-          if (payload.payload && payload.payload.targetLang) {
-            const newLang = payload.payload.targetLang;
-            
-            if (newLang !== activeTargetLang) {
-              activeTargetLang = newLang;
-              localStorage.setItem('target_lang', activeTargetLang);
-              console.log(`[Overlay] Presenter changed target language to: ${activeTargetLang}`);
-
-              // Reconnect WebSocket with new target_lang query param for server handshake
-              reconnectWebSocket();
-            }
-          }
-        })
-        .subscribe();
-    }
-
-    // 3. Connect WebSocket Stream
     function connect() {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}&lang=${encodeURIComponent(activeTargetLang)}`;
+      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} (Target Lang: ${activeTargetLang})`);
+        console.log(`[Overlay] Connected to room: ${roomId}`);
         captionsDiv.innerText = "Waiting for live captions...";
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log("[Overlay] Received event:", data);
 
-          if (data.type === 'caption' || data.type === 'translation') {
-            const shortLang = activeTargetLang.split('-')[0];
-
-            // Extract translation with short-code fallback (e.g., 'es' if 'es-ES' selected)
-            const displayText = 
-              (data.translations && data.translations[activeTargetLang]) ||
-              (data.translations && data.translations[shortLang]) ||
-              data.translation ||
-              data.translated_text ||
-              data.translatedText ||
-              data.text;
-
-            if (displayText) {
-              captionsDiv.innerText = displayText;
-            }
+          if (data.type === 'caption' && data.text) {
+            captionsDiv.innerText = data.text;
           }
         } catch (err) {
           console.error("[Overlay] Failed to parse payload:", err);
@@ -129,7 +76,7 @@
       socket.onclose = () => {
         console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
         captionsDiv.innerText = "Reconnecting...";
-        reconnectTimeout = setTimeout(connect, 3000);
+        setTimeout(connect, 3000);
       };
 
       socket.onerror = (err) => {
@@ -137,22 +84,7 @@
       };
     }
 
-    function reconnectWebSocket() {
-      if (socket) {
-        socket.onclose = null; // Prevent duplicate reconnect loop
-        socket.close();
-      }
-      connect();
-    }
-
-    // Initialize subscriptions & connection
-    subscribeToRoomChannel();
     connect();
-
-    window.addEventListener('beforeunload', () => {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
-      if (socket) socket.close();
-    });
   </script>
 </body>
 </html>
