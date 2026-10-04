@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Live OBS Overlay</title>
+
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     body {
       margin: 0;
@@ -42,21 +46,55 @@
   </div>
 
   <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
     // Handle both ?room= and ?roomId= query parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
 
     const captionsDiv = document.getElementById('captions');
     let socket = null;
+    let roomBroadcastChannel = null;
 
+    // Track output language setting locally
+    let activeTargetLang = localStorage.getItem('target_lang') || 'none';
+
+    // 2. Listen to Presenter Live Language Broadcasts via Supabase Realtime
+    function subscribeToRoomChannel() {
+      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
+
+      roomBroadcastChannel = supabaseClient.channel(`room_${roomId}`);
+
+      roomBroadcastChannel
+        .on('broadcast', { event: 'target_lang_change' }, (payload) => {
+          if (payload.payload && payload.payload.targetLang) {
+            activeTargetLang = payload.payload.targetLang;
+            localStorage.setItem('target_lang', activeTargetLang);
+            console.log(`[Overlay] Target translation language updated to: ${activeTargetLang}`);
+
+            // Send dynamic config update over WebSocket if connected
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'config', targetLang: activeTargetLang }));
+            }
+          }
+        })
+        .subscribe();
+    }
+
+    // 3. Connect WebSocket Stream
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
+      
+      // Pass activeTargetLang in connection URL
+      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId}`);
+        console.log(`[Overlay] Connected to room: ${roomId} (Target Lang: ${activeTargetLang})`);
         captionsDiv.innerText = "Waiting for live captions...";
       };
 
@@ -65,8 +103,18 @@
           const data = JSON.parse(event.data);
           console.log("[Overlay] Received event:", data);
 
-          if (data.type === 'caption' && data.text) {
-            captionsDiv.innerText = data.text;
+          if (data.type === 'caption') {
+            // Intelligently extract translated text depending on backend payload structure
+            const displayText = 
+              (activeTargetLang !== 'none' && data.translations && data.translations[activeTargetLang]) ||
+              (activeTargetLang !== 'none' && data.translation) ||
+              (activeTargetLang !== 'none' && data.translated_text) ||
+              (activeTargetLang !== 'none' && data.translatedText) ||
+              data.text;
+
+            if (displayText) {
+              captionsDiv.innerText = displayText;
+            }
           }
         } catch (err) {
           console.error("[Overlay] Failed to parse payload:", err);
@@ -84,7 +132,14 @@
       };
     }
 
+    // Initialize subscriptions & connection
+    subscribeToRoomChannel();
     connect();
+
+    window.addEventListener('beforeunload', () => {
+      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
+      if (socket) socket.close();
+    });
   </script>
 </body>
 </html>
