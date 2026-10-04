@@ -26,7 +26,6 @@ if (!DEEPGRAM_KEY) {
 const deepgram = createClient(DEEPGRAM_KEY);
 
 // Multi-Tenant Rooms Store
-// Map<roomId, { targetOverlayLang, overlays: Set, attendees: Set, dgLive, audioQueue, isDgReady }>
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
@@ -52,15 +51,37 @@ function cleanupRoom(roomId) {
   }
 }
 
+// In-memory Translation Cache to optimize MyMemory API performance
+const translationCache = new Map();
+
 // Free Real-time Translation Helper (MyMemory API)
 async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
+  if (!text || !targetLang) return text;
+
+  // Clean language code (e.g. 'es-ES' -> 'es')
+  const cleanLang = targetLang.split("-")[0].toLowerCase();
+  if (cleanLang === "en") return text;
+
+  const cacheKey = `${cleanLang}:${text.trim()}`;
+  if (translationCache.has(cacheKey)) {
+    return translationCache.get(cacheKey);
+  }
+
   try {
     const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${cleanLang}`
     );
     const data = await res.json();
-    return data.responseData?.translatedText || text;
+    const translated = data.responseData?.translatedText || text;
+
+    // Store in cache
+    translationCache.set(cacheKey, translated);
+    if (translationCache.size > 2000) {
+      const firstKey = translationCache.keys().next().value;
+      translationCache.delete(firstKey);
+    }
+
+    return translated;
   } catch (err) {
     console.error("[Translation Error]", err.message);
     return text;
@@ -69,19 +90,31 @@ async function translateText(text, targetLang) {
 
 wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = urlObj.pathname;
+  let pathname = urlObj.pathname;
   const roomId = urlObj.searchParams.get("room") || "default";
+  const role = urlObj.searchParams.get("role"); // Fallback for route handling
+  const urlLang = urlObj.searchParams.get("lang") || urlObj.searchParams.get("target_lang");
 
   const room = getOrCreateRoom(roomId);
 
+  // Parse initial language selection from URL parameters
+  if (urlLang) {
+    room.targetOverlayLang = urlLang;
+    console.log(`[Room ${roomId}] Initialized target overlay language to: ${room.targetOverlayLang}`);
+  }
+
+  // Route matching logic
+  const isIngest = pathname === "/ws/ingest" || role === "presenter";
+  const isOverlay = pathname === "/ws/overlay" || role === "overlay";
+  const isAttendee = pathname.startsWith("/ws/attendee") || role === "attendee";
+
   // ROUTE A: Stage Microphones / Audio Ingest
-  if (pathname === "/ws/ingest") {
+  if (isIngest) {
     console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
 
     room.audioQueue = [];
     room.isDgReady = false;
 
-    // Create a room-specific Deepgram STT stream
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
       language: "en-US",
@@ -110,32 +143,47 @@ wss.on("connection", (ws, req) => {
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
 
-        // Translate if room target language is not English
-        if (room.targetOverlayLang !== "en" && isFinal) {
+        // Translate BOTH interim and final results to prevent raw English flashes
+        if (room.targetOverlayLang !== "en") {
           overlayText = await translateText(transcript, room.targetOverlayLang);
         }
 
+        // Standardized JSON payload supporting all frontend overlay requirements
         const overlayPayload = JSON.stringify({
+          type: "caption",
           text: overlayText,
+          translation: overlayText,
+          translations: {
+            [room.targetOverlayLang]: overlayText
+          },
           original: transcript,
-          isFinal,
+          isFinal: isFinal,
+          is_final: isFinal,
           lang: room.targetOverlayLang
         });
 
-        // Broadcast ONLY to overlays in THIS room
+        // Broadcast to overlays in THIS room
         room.overlays.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(overlayPayload);
           }
         });
 
-        // Broadcast ONLY to mobile attendees in THIS room
+        // Broadcast to mobile attendees in THIS room
         if (isFinal) {
           room.attendees.forEach(async (attendee) => {
             if (attendee.readyState === WebSocket.OPEN) {
-              const translated = await translateText(transcript, attendee.language || "en");
+              const targetLang = attendee.language || "en";
+              const translated = await translateText(transcript, targetLang);
               attendee.send(
-                JSON.stringify({ text: translated, original: transcript })
+                JSON.stringify({
+                  type: "caption",
+                  text: translated,
+                  translation: translated,
+                  translations: { [targetLang]: translated },
+                  original: transcript,
+                  isFinal: true
+                })
               );
             }
           });
@@ -144,19 +192,20 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("message", (message, isBinary) => {
-      // Handle JSON control messages (e.g. language change for this room)
       if (!isBinary) {
         try {
           const controlData = JSON.parse(message.toString());
-          if (controlData.type === "set_language") {
-            room.targetOverlayLang = controlData.lang;
-            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          if (controlData.type === "set_language" || controlData.type === "config") {
+            const newLang = controlData.lang || controlData.target_language;
+            if (newLang) {
+              room.targetOverlayLang = newLang;
+              console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+            }
           }
         } catch (e) {}
         return;
       }
 
-      // Handle binary microphone audio stream
       if (room.isDgReady && room.dgLive.getReadyState() === 1) {
         room.dgLive.send(message);
       } else {
@@ -175,9 +224,23 @@ wss.on("connection", (ws, req) => {
   }
 
   // ROUTE B: Stage Video Overlay (OBS / vMix)
-  else if (pathname === "/ws/overlay") {
+  else if (isOverlay) {
     console.log(`[Overlay] OBS connected to room: ${roomId}`);
     room.overlays.add(ws);
+
+    // Listen for language change events directly from overlay clients
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg.toString());
+        if (data.type === "set_language" || data.type === "config") {
+          const newLang = data.lang || data.target_language;
+          if (newLang) {
+            room.targetOverlayLang = newLang;
+            console.log(`[Room ${roomId}] Overlay updated language to: ${room.targetOverlayLang}`);
+          }
+        }
+      } catch (e) {}
+    });
 
     ws.on("close", () => {
       room.overlays.delete(ws);
@@ -186,7 +249,7 @@ wss.on("connection", (ws, req) => {
   }
 
   // ROUTE C: Mobile Audience (QR Code Viewers)
-  else if (pathname.startsWith("/ws/attendee")) {
+  else if (isAttendee) {
     console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
     ws.language = urlObj.searchParams.get("lang") || "en";
 
@@ -194,9 +257,9 @@ wss.on("connection", (ws, req) => {
 
     ws.on("message", (msg) => {
       try {
-        const data = JSON.parse(msg);
-        if (data.type === "set_language") {
-          ws.language = data.lang;
+        const data = JSON.parse(msg.toString());
+        if (data.type === "set_language" || data.type === "config") {
+          ws.language = data.lang || data.target_language;
         }
       } catch (e) {}
     });
