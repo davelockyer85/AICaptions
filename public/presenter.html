@@ -127,7 +127,6 @@
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
-          // Initial sanity check and subscription setup
           await fetchUserTimeAndSubscribe(currentUser.id);
         }
       } catch (err) {
@@ -140,18 +139,16 @@
       if (!userId) return;
 
       try {
-        // Fetch current baseline usage from DB
         const { data: user, error } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
-          .single();
+          .maybeSingle();
 
         if (!error && user) {
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
 
-        // Subscribe to real-time Postgres changes on the user row
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
@@ -192,7 +189,6 @@
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
 
-      // CUT-OFF CHECK
       if (currentRemainingSeconds <= 0) {
         if (isStreamingActive()) {
           cleanup();
@@ -219,15 +215,14 @@
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444'; // Red warning under 1 min
+        timerDisplay.style.color = '#ef4444';
       } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b'; // Amber warning under 5 mins
+        timerDisplay.style.color = '#f59e0b';
       } else {
-        timerDisplay.style.color = '#38bdf8'; // Blue normal
+        timerDisplay.style.color = '#38bdf8';
       }
     }
 
-    // Local 1-second ticker while active
     function startLocalCountdown() {
       stopLocalCountdown();
       localCountdownTimer = setInterval(() => {
@@ -252,16 +247,15 @@
       }
     }
 
-    // Sync accumulated usage to Supabase every 5 seconds
-    function startUsageSyncing(userId, roomId) {
+    function startUsageSyncing(userId) {
       stopUsageSyncing();
 
       syncTimer = setInterval(async () => {
-        await pushUsageToSupabase(userId, roomId, UPDATE_INTERVAL_SECONDS);
+        await pushUsageToSupabase(userId, UPDATE_INTERVAL_SECONDS);
       }, UPDATE_INTERVAL_SECONDS * 1000);
     }
 
-    async function pushUsageToSupabase(userId, roomId, secondsToAdd) {
+    async function pushUsageToSupabase(userId, secondsToAdd) {
       if (!userId) return;
 
       try {
@@ -269,7 +263,7 @@
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
-          .single();
+          .maybeSingle();
 
         if (userErr || !user) return;
 
@@ -290,27 +284,12 @@
           return;
         }
 
-        // Update user row
+        // Update user row only
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
 
-        // Update room row
-        if (roomId) {
-          const { data: room } = await supabaseClient
-            .from('rooms')
-            .select('streaming_seconds_used')
-            .eq('room_id', roomId)
-            .single();
-
-          if (room) {
-            await supabaseClient
-              .from('rooms')
-              .update({ streaming_seconds_used: (room.streaming_seconds_used || 0) + secondsToAdd })
-              .eq('room_id', roomId);
-          }
-        }
       } catch (err) {
         console.warn("Usage sync error:", err.message);
       }
@@ -507,10 +486,9 @@
           startBtn.disabled = true;
           stopBtn.disabled = false;
 
-          // Start local visual countdown and DB syncing loops
           startLocalCountdown();
           if (currentUser) {
-            startUsageSyncing(currentUser.id, room);
+            startUsageSyncing(currentUser.id);
           }
         };
 
