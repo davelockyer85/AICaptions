@@ -54,7 +54,7 @@ function cleanupRoom(roomId) {
 
 // Free Real-time Translation Helper (MyMemory API)
 async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
+  if (!targetLang || targetLang.startsWith("en")) return text;
   try {
     const res = await fetch(
       `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
@@ -70,21 +70,34 @@ async function translateText(text, targetLang) {
 wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const pathname = urlObj.pathname;
-  const roomId = urlObj.searchParams.get("room") || "default";
+  const roomId = urlObj.searchParams.get("room") || urlObj.searchParams.get("roomId") || "main-stage";
+  const role = urlObj.searchParams.get("role");
+  const spokenLang = urlObj.searchParams.get("lang") || "en-US";
 
   const room = getOrCreateRoom(roomId);
 
-  // ROUTE A: Stage Microphones / Audio Ingest
-  if (pathname === "/ws/ingest") {
-    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+  // Match via path or query role
+  const isIngest = pathname === "/ws/ingest" || role === "presenter" || role === "ingest";
+  const isOverlay = pathname === "/ws/overlay" || role === "overlay";
+  const isAttendee = pathname.startsWith("/ws/attendee") || role === "attendee" || role === "viewer";
+
+  // ROUTE A: Stage Microphones / Audio Ingest (Presenter)
+  if (isIngest) {
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId} (Lang: ${spokenLang})`);
+
+    // Clean up existing Deepgram instance if presenter reconnected
+    if (room.dgLive) {
+      try { room.dgLive.finish(); } catch (e) {}
+      room.dgLive = null;
+    }
 
     room.audioQueue = [];
     room.isDgReady = false;
 
-    // Create a room-specific Deepgram STT stream
+    // Create a room-specific Deepgram STT stream using spoken language from presenter
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
-      language: "en-US",
+      language: spokenLang,
       smart_format: true,
       interim_results: true,
       endpointing: 300
@@ -157,7 +170,7 @@ wss.on("connection", (ws, req) => {
       }
 
       // Handle binary microphone audio stream
-      if (room.isDgReady && room.dgLive.getReadyState() === 1) {
+      if (room.isDgReady && room.dgLive && room.dgLive.getReadyState() === 1) {
         room.dgLive.send(message);
       } else {
         room.audioQueue.push(message);
@@ -167,7 +180,7 @@ wss.on("connection", (ws, req) => {
     ws.on("close", () => {
       console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
       if (room.dgLive) {
-        room.dgLive.finish();
+        try { room.dgLive.finish(); } catch (e) {}
         room.dgLive = null;
       }
       cleanupRoom(roomId);
@@ -175,7 +188,7 @@ wss.on("connection", (ws, req) => {
   }
 
   // ROUTE B: Stage Video Overlay (OBS / vMix)
-  else if (pathname === "/ws/overlay") {
+  else if (isOverlay) {
     console.log(`[Overlay] OBS connected to room: ${roomId}`);
     room.overlays.add(ws);
 
@@ -186,7 +199,7 @@ wss.on("connection", (ws, req) => {
   }
 
   // ROUTE C: Mobile Audience (QR Code Viewers)
-  else if (pathname.startsWith("/ws/attendee")) {
+  else if (isAttendee) {
     console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
     ws.language = urlObj.searchParams.get("lang") || "en";
 
@@ -205,6 +218,8 @@ wss.on("connection", (ws, req) => {
       room.attendees.delete(ws);
       cleanupRoom(roomId);
     });
+  } else {
+    console.warn(`[WebSocket] Unrecognized connection route or role: pathname=${pathname}, role=${role}`);
   }
 });
 
