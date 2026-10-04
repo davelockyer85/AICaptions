@@ -119,7 +119,7 @@
     let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
     let maxLimit = 3600; // Default fallback (1 hour)
-    let currentRemainingSeconds = 3600; // Default fallback timer
+    let currentRemainingSeconds = 0;
 
     // Authenticate Presenter Session
     async function initPresenterAuth() {
@@ -284,6 +284,7 @@
           return;
         }
 
+        // Update user row only
         await supabaseClient
           .from('users')
           .update({ streaming_seconds_used: newTotal })
@@ -417,7 +418,6 @@
     const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
     if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
       maxLimit = parsedMaxLimit;
-      currentRemainingSeconds = maxLimit;
     }
     
     const urlToken = urlParams.get('token');
@@ -427,7 +427,6 @@
     const token = urlToken || localToken || '';
 
     document.getElementById('roomDisplay').innerText = room;
-    updateTimerDisplay(currentRemainingSeconds);
     initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
     initPresenterAuth();
 
