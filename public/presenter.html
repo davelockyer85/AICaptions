@@ -211,7 +211,7 @@
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
-          .single();
+          .maybesingle();
 
         if (!error && user) {
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
@@ -302,7 +302,7 @@
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
-          .single();
+          .();
 
         if (!user) return;
 
