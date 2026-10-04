@@ -1,118 +1,158 @@
-const WebSocket = require('ws');
-const http = require('http');
-const url = require('url');
-const { Translate } = require('@google-cloud/translate').v2;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AICaptions - Live OBS Overlay</title>
 
-const translate = new Translate(); // Or your preferred translation service
-const server = http.createServer();
-const wss = new WebSocket.Server({ server });
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-// Store active rooms and client roles
-// Map: roomId -> { presenters: Set, viewers: Set, targetLang: string, spokenLang: string }
-const rooms = new Map();
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #caption-container {
+      position: fixed;
+      bottom: 40px;
+      left: 5%;
+      right: 5%;
+      text-align: center;
+      pointer-events: none;
+    }
+    .caption-text {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), -2px -2px 4px rgba(0, 0, 0, 0.9);
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px 24px;
+      border-radius: 8px;
+      display: inline-block;
+      max-width: 90vw;
+      line-height: 1.3;
+      word-wrap: break-word;
+      transition: opacity 0.2s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+  <div id="caption-container">
+    <div id="captions" class="caption-text">Connecting to caption stream...</div>
+  </div>
 
-wss.on('connection', (ws, req) => {
-  const parsedUrl = url.parse(req.url, true);
-  const { room = 'main-stage', role = 'viewer', lang = 'en-US', target_lang = 'none' } = parsedUrl.query;
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // Initialize room state if it doesn't exist
-  if (!rooms.has(room)) {
-    rooms.set(room, {
-      presenters: new Set(),
-      viewers: new Set(),
-      spokenLang: lang,
-      targetLang: target_lang
-    });
-  }
+    // Read query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
 
-  const roomState = rooms.get(room);
+    // Priority: URL parameter -> localStorage -> default ('none')
+    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'none';
 
-  if (role === 'presenter') {
-    roomState.presenters.add(ws);
-    roomState.spokenLang = lang;
-    roomState.targetLang = target_lang;
-    console.log(`[Server] Presenter connected to room: ${room} (Spoken: ${lang}, Target: ${target_lang})`);
-  } else {
-    roomState.viewers.add(ws);
-    console.log(`[Server] Viewer/Overlay connected to room: ${room}`);
-  }
+    const captionsDiv = document.getElementById('captions');
+    let socket = null;
+    let roomBroadcastChannel = null;
+    let reconnectTimeout = null;
 
-  // Handle incoming data from Presenter or Overlay
-  ws.on('message', async (message) => {
-    // 1. Handle JSON Control / Config Messages (e.g. Tab Switching)
-    if (typeof message === 'string' || message instanceof Buffer && isJson(message)) {
-      try {
-        const payload = JSON.parse(message.toString());
-        
-        if (payload.type === 'config' && payload.targetLang) {
-          roomState.targetLang = payload.targetLang;
-          console.log(`[Server] Room ${room} target language updated to: ${payload.targetLang}`);
-          return;
-        }
-      } catch (e) {
-        // Not JSON config, treat as audio chunk
-      }
+    // 2. Listen to Presenter Live Language Broadcasts via Supabase Realtime
+    function subscribeToRoomChannel() {
+      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
+
+      roomBroadcastChannel = supabaseClient.channel(`room_${roomId}`);
+
+      roomBroadcastChannel
+        .on('broadcast', { event: 'target_lang_change' }, (payload) => {
+          if (payload.payload && payload.payload.targetLang) {
+            const newLang = payload.payload.targetLang;
+            
+            if (newLang !== activeTargetLang) {
+              activeTargetLang = newLang;
+              localStorage.setItem('target_lang', activeTargetLang);
+              console.log(`[Overlay] Presenter changed target language to: ${activeTargetLang}`);
+
+              // Reconnect WebSocket with new target_lang query param for server handshake
+              reconnectWebSocket();
+            }
+          }
+        })
+        .subscribe();
     }
 
-    // 2. If Presenter sends raw audio data, process transcription & translation
-    if (role === 'presenter') {
-      // --- STT & TRANSLATION PIPELINE HERE ---
-      // Example simulated flow once STT returns raw text:
-      const rawTranscript = "Hello and welcome to the live keynote speech."; 
-      
-      let translatedText = rawTranscript;
+    // 3. Connect WebSocket Stream
+    function connect() {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
 
-      // Translate if target language is selected and not 'none'
-      if (roomState.targetLang && roomState.targetLang !== 'none') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}&lang=${encodeURIComponent(activeTargetLang)}`;
+
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        console.log(`[Overlay] Connected to room: ${roomId} (Target Lang: ${activeTargetLang})`);
+        captionsDiv.innerText = "Waiting for live captions...";
+      };
+
+      socket.onmessage = (event) => {
         try {
-          // Standardize language code (e.g., 'es-ES' -> 'es')
-          const targetCode = roomState.targetLang.split('-')[0]; 
-          const [translation] = await translate.translate(rawTranscript, targetCode);
-          translatedText = translation;
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'caption' || data.type === 'translation') {
+            const shortLang = activeTargetLang.split('-')[0];
+
+            // Extract translation with short-code fallback (e.g., 'es' if 'es-ES' selected)
+            const displayText = 
+              (data.translations && data.translations[activeTargetLang]) ||
+              (data.translations && data.translations[shortLang]) ||
+              data.translation ||
+              data.translated_text ||
+              data.translatedText ||
+              data.text;
+
+            if (displayText) {
+              captionsDiv.innerText = displayText;
+            }
+          }
         } catch (err) {
-          console.error("[Server] Translation error:", err.message);
+          console.error("[Overlay] Failed to parse payload:", err);
         }
+      };
+
+      socket.onclose = () => {
+        console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
+        captionsDiv.innerText = "Reconnecting...";
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = (err) => {
+        console.error("[Overlay] WebSocket Error:", err);
+      };
+    }
+
+    function reconnectWebSocket() {
+      if (socket) {
+        socket.onclose = null; // Prevent duplicate reconnect loop
+        socket.close();
       }
-
-      // 3. Broadcast to all Viewers/Overlays in the room
-      const broadcastPayload = JSON.stringify({
-        type: 'caption',
-        text: rawTranscript,
-        translation: translatedText,
-        translations: {
-          [roomState.targetLang]: translatedText
-        }
-      });
-
-      roomState.viewers.forEach((viewerWs) => {
-        if (viewerWs.readyState === WebSocket.OPEN) {
-          viewerWs.send(broadcastPayload);
-        }
-      });
+      connect();
     }
-  });
 
-  ws.on('close', () => {
-    if (role === 'presenter') {
-      roomState.presenters.delete(ws);
-    } else {
-      roomState.viewers.delete(ws);
-    }
-    if (roomState.presenters.size === 0 && roomState.viewers.size === 0) {
-      rooms.delete(room);
-    }
-  });
-});
+    // Initialize subscriptions & connection
+    subscribeToRoomChannel();
+    connect();
 
-function isJson(buffer) {
-  try {
-    const str = buffer.toString();
-    return str.startsWith('{') && str.endsWith('}');
-  } catch {
-    return false;
-  }
-}
-
-server.listen(8080, () => {
-  console.log('[Server] Captions WebSocket server running on port 8080');
-});
+    window.addEventListener('beforeunload', () => {
+      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
+      if (socket) socket.close();
+    });
+  </script>
+</body>
+</html>
