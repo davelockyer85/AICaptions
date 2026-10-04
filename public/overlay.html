@@ -88,36 +88,42 @@
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
-      // FIX 1: Include explicit '/ws/overlay' route path & role
-      const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}&role=overlay&lang=${encodeURIComponent(activeTargetLang)}`;
+      // Determine pathname dynamically to support both /ws/overlay and default server routes
+      const basePath = window.location.pathname.startsWith('/ws') ? '/ws/overlay' : '';
+      const wsUrl = `${protocol}//${SERVER_HOST}${basePath}?room=${encodeURIComponent(roomId)}&role=overlay&lang=${encodeURIComponent(activeTargetLang)}&target_lang=${encodeURIComponent(activeTargetLang)}`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} (Target: ${activeTargetLang})`);
+        console.log(`[Overlay] Connected to room: ${roomId} (Target Language: ${activeTargetLang})`);
         captionsDiv.innerText = "Waiting for live captions...";
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-
-          // FIX 2 & 3: Fall back across all standard payload key names
           const shortLang = activeTargetLang ? activeTargetLang.split('-')[0] : 'en';
 
+          // Extract caption text across all possible backend output shapes
           const displayText = 
             (data.translations && data.translations[activeTargetLang]) ||
             (data.translations && data.translations[shortLang]) ||
             data.translation ||
             data.translated_text ||
             data.translatedText ||
-            data.text;
+            data.text ||
+            (typeof data === 'string' ? data : null);
 
           if (displayText && displayText.trim().length > 0) {
             captionsDiv.innerText = displayText;
           }
         } catch (err) {
-          console.error("[Overlay] Failed to parse payload:", err);
+          // If message is plain text rather than JSON
+          if (typeof event.data === 'string' && event.data.trim().length > 0) {
+            captionsDiv.innerText = event.data;
+          } else {
+            console.error("[Overlay] Failed to parse payload:", err);
+          }
         }
       };
 
