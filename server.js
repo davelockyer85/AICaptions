@@ -1,546 +1,214 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presenter Audio Ingest - AICaptions</title>
+import express from "express";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-  <!-- Supabase JS Client SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+dotenv.config();
 
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #111827;
-      color: #f3f4f6;
-      padding: 2rem;
-      text-align: center;
-      margin: 0;
-    }
-    .card {
-      max-width: 500px;
-      margin: 2rem auto;
-      background: #1f2937;
-      padding: 2rem;
-      border-radius: 12px;
-      border: 1px solid #374151;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-    }
-    h1 { margin-top: 0; color: #60a5fa; font-size: 1.75rem; }
-    p { color: #9ca3af; }
-    .room-badge {
-      display: inline-block;
-      background: #374151;
-      color: #93c5fd;
-      padding: 0.25rem 0.75rem;
-      border-radius: 9999px;
-      font-family: monospace;
-      font-weight: bold;
-      margin-bottom: 1rem;
-    }
-    .timer-badge {
-      display: block;
-      background: #111827;
-      border: 1px solid #374151;
-      color: #38bdf8;
-      font-size: 1.25rem;
-      font-weight: 700;
-      font-family: monospace;
-      padding: 0.6rem 1rem;
-      border-radius: 8px;
-      margin: 1rem 0;
-    }
-    .btn-group {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      margin-top: 1.5rem;
-    }
-    button {
-      padding: 0.85rem 1.75rem;
-      font-size: 1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    #startBtn { background: #2563eb; color: white; }
-    #startBtn:hover { background: #1d4ed8; }
-    #startBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #stopBtn { background: #dc2626; color: white; }
-    #stopBtn:hover { background: #b91c1c; }
-    #stopBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #status {
-      margin-top: 1.5rem;
-      font-weight: 600;
-      font-size: 1.1rem;
-      color: #9ca3af;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Stage Audio Transmitter</h1>
-    <p>Room Identifier:</p>
-    <div class="room-badge" id="roomDisplay">main-stage</div>
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
 
-    <!-- Real-Time Countdown Timer -->
-    <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
+app.use(express.static(path.join(__dirname, "public")));
 
-    <!-- Spoken / Ingest Language Selector -->
-    <div class="setting-group" style="margin-top: 1rem; text-align: left;">
-      <label for="languageSelect" style="display: block; font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 600;">
-        Spoken Language
-      </label>
-      <select id="languageSelect" style="width: 100%; padding: 0.6rem 0.8rem; background-color: #111827; color: #f3f4f6; border: 1px solid #374151; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
-        <!-- Populated dynamically by JS -->
-      </select>
-    </div>
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
-    <div class="btn-group">
-      <button id="startBtn">Start Streaming</button>
-      <button id="stopBtn" disabled>Stop</button>
-    </div>
+const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
+if (!DEEPGRAM_KEY) {
+  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
+}
+const deepgram = createClient(DEEPGRAM_KEY);
 
-    <p id="status">Status: Disconnected</p>
-  </div>
+// Multi-Tenant Rooms Store
+// Map<roomId, { targetOverlayLang, overlays: Set, attendees: Set, dgLive, audioQueue, isDgReady }>
+const rooms = new Map();
 
-  <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+function getOrCreateRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    console.log(`[Room Created] Initializing room: ${roomId}`);
+    rooms.set(roomId, {
+      targetOverlayLang: "en",
+      overlays: new Set(),
+      attendees: new Set(),
+      dgLive: null,
+      audioQueue: [],
+      isDgReady: false
+    });
+  }
+  return rooms.get(roomId);
+}
 
-    // State Variables for Live Usage Tracking
-    let currentUser = null;
-    let syncTimer = null;
-    let localCountdownTimer = null;
-    let realtimeChannel = null;
-    const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600; // Default fallback (1 hour)
-    let currentRemainingSeconds = 0;
+function cleanupRoom(roomId) {
+  const room = rooms.get(roomId);
+  if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
+    console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
+    rooms.delete(roomId);
+  }
+}
 
-    // Authenticate Presenter Session
-    async function initPresenterAuth() {
-      try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session && session.user) {
-          currentUser = session.user;
-          await fetchUserTimeAndSubscribe(currentUser.id);
-        }
-      } catch (err) {
-        console.warn("Could not retrieve Supabase session:", err.message);
+// Free Real-time Translation Helper (MyMemory API)
+async function translateText(text, targetLang) {
+  if (!targetLang || targetLang === "en") return text;
+  try {
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+    );
+    const data = await res.json();
+    return data.responseData?.translatedText || text;
+  } catch (err) {
+    console.error("[Translation Error]", err.message);
+    return text;
+  }
+}
+
+wss.on("connection", (ws, req) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = urlObj.pathname;
+  const roomId = urlObj.searchParams.get("room") || "default";
+
+  const room = getOrCreateRoom(roomId);
+
+  // ROUTE A: Stage Microphones / Audio Ingest
+  if (pathname === "/ws/ingest") {
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+
+    room.audioQueue = [];
+    room.isDgReady = false;
+
+    // Create a room-specific Deepgram STT stream
+    room.dgLive = deepgram.listen.live({
+      model: "nova-3",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      endpointing: 300
+    });
+
+    room.dgLive.on(LiveTranscriptionEvents.Open, () => {
+      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
+      room.isDgReady = true;
+
+      while (room.audioQueue.length > 0) {
+        room.dgLive.send(room.audioQueue.shift());
       }
-    }
+    });
 
-    // Initial Fetch & Realtime Push Subscription Setup (Strictly 'users' table)
-    async function fetchUserTimeAndSubscribe(userId) {
-      if (!userId) return;
+    room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
+      console.error(`[Deepgram Error - Room ${roomId}]`, err);
+    });
 
-      try {
-        const { data: user, error } = await supabaseClient
-          .from('users')
-          .select('streaming_seconds_used, max_streaming_seconds')
-          .eq('user_id', userId)
-          .maybeSingle();
+    room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+      const transcript = data.channel.alternatives[0]?.transcript;
+      const isFinal = data.is_final;
 
-        if (!error && user) {
-          applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
+      if (transcript && transcript.trim().length > 0) {
+        let overlayText = transcript;
+
+        // Translate if room target language is not English
+        if (room.targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, room.targetOverlayLang);
         }
 
-        subscribeToRealtimeUsage(userId);
-      } catch (e) {
-        console.warn("Initial user state fetch error:", e.message);
-      }
-    }
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: room.targetOverlayLang
+        });
 
-    // Subscribe to instant Supabase database updates on 'users' table
-    function subscribeToRealtimeUsage(userId) {
-      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-
-      realtimeChannel = supabaseClient
-        .channel(`presenter_time_${userId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'users',
-            filter: `user_id=eq.${userId}`
-          },
-          (payload) => {
-            if (payload.new) {
-              const used = payload.new.streaming_seconds_used || 0;
-              const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
-              applyTimeLimits(used, maxSecs);
-            }
-          }
-        )
-        .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR') {
-            console.warn("Realtime subscription error, falling back to polling:", err);
+        // Broadcast ONLY to overlays in THIS room
+        room.overlays.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(overlayPayload);
           }
         });
-    }
 
-    // Updates state, formats UI countdown, and cuts stream if limit is reached
-    function applyTimeLimits(usedSecs, allowedMaxSecs) {
-      currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
-      updateTimerDisplay(currentRemainingSeconds);
-
-      if (currentRemainingSeconds <= 0) {
-        if (isStreamingActive()) {
-          cleanup();
-          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-          status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit.`);
-        } else {
-          status.innerText = `Status: Time Limit Exceeded (${Math.floor(usedSecs/60)}/${Math.floor(allowedMaxSecs/60)} mins)`;
-          status.style.color = "#ef4444";
-          startBtn.disabled = true;
+        // Broadcast ONLY to mobile attendees in THIS room
+        if (isFinal) {
+          room.attendees.forEach(async (attendee) => {
+            if (attendee.readyState === WebSocket.OPEN) {
+              const translated = await translateText(transcript, attendee.language || "en");
+              attendee.send(
+                JSON.stringify({ text: translated, original: transcript })
+              );
+            }
+          });
         }
       }
-    }
+    });
 
-    // Format & Render visual timer badge (MM:SS)
-    function updateTimerDisplay(totalSeconds) {
-      const timerDisplay = document.getElementById('timerDisplay');
-      if (!timerDisplay) return;
-
-      const mins = Math.floor(totalSeconds / 60);
-      const secs = totalSeconds % 60;
-      const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-
-      timerDisplay.innerText = `Remaining Time: ${formatted}`;
-
-      if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444';
-      } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b';
-      } else {
-        timerDisplay.style.color = '#38bdf8';
-      }
-    }
-
-    function startLocalCountdown() {
-      stopLocalCountdown();
-      localCountdownTimer = setInterval(() => {
-        if (currentRemainingSeconds > 0) {
-          currentRemainingSeconds--;
-          updateTimerDisplay(currentRemainingSeconds);
-
-          if (currentRemainingSeconds <= 0) {
-            cleanup();
-            status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-            status.style.color = "#ef4444";
-            alert(`Stream stopped: You have run out of streaming time.`);
+    ws.on("message", (message, isBinary) => {
+      // Handle JSON control messages (e.g. language change for this room)
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            room.targetOverlayLang = controlData.lang;
+            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
           }
-        }
-      }, 1000);
-    }
-
-    function stopLocalCountdown() {
-      if (localCountdownTimer) {
-        clearInterval(localCountdownTimer);
-        localCountdownTimer = null;
-      }
-    }
-
-    function startUsageSyncing(userId) {
-      stopUsageSyncing();
-
-      syncTimer = setInterval(async () => {
-        await pushUsageToSupabase(userId, UPDATE_INTERVAL_SECONDS);
-      }, UPDATE_INTERVAL_SECONDS * 1000);
-    }
-
-    // Pushes usage updates solely to the 'users' table
-    async function pushUsageToSupabase(userId, secondsToAdd) {
-      if (!userId) return;
-
-      try {
-        const { data: user, error: userErr } = await supabaseClient
-          .from('users')
-          .select('streaming_seconds_used, max_streaming_seconds')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (userErr || !user) return;
-
-        const currentUsed = user.streaming_seconds_used || 0;
-        const allowedMax = user.max_streaming_seconds ?? maxLimit;
-        const newTotal = currentUsed + secondsToAdd;
-
-        if (newTotal >= allowedMax) {
-          await supabaseClient
-            .from('users')
-            .update({ streaming_seconds_used: allowedMax })
-            .eq('user_id', userId);
-
-          cleanup();
-          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-          status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit.`);
-          return;
-        }
-
-        // Update user row only
-        await supabaseClient
-          .from('users')
-          .update({ streaming_seconds_used: newTotal })
-          .eq('user_id', userId);
-
-      } catch (err) {
-        console.warn("Usage sync error:", err.message);
-      }
-    }
-
-    function stopUsageSyncing() {
-      if (syncTimer) {
-        clearInterval(syncTimer);
-        syncTimer = null;
-      }
-    }
-
-    function isStreamingActive() {
-      return mediaRecorder && mediaRecorder.state !== 'inactive';
-    }
-
-    // Supported Spoken Languages (BCP-47 Standard)
-    const SUPPORTED_LANGUAGES = [
-      { code: 'af-ZA', name: 'Afrikaans' },
-      { code: 'sq-AL', name: 'Albanian' },
-      { code: 'am-ET', name: 'Amharic' },
-      { code: 'ar-SA', name: 'Arabic' },
-      { code: 'hy-AM', name: 'Armenian' },
-      { code: 'az-AZ', name: 'Azerbaijani' },
-      { code: 'eu-ES', name: 'Basque' },
-      { code: 'be-BY', name: 'Belarusian' },
-      { code: 'bn-IN', name: 'Bengali' },
-      { code: 'bs-BA', name: 'Bosnian' },
-      { code: 'bg-BG', name: 'Bulgarian' },
-      { code: 'ca-ES', name: 'Catalan' },
-      { code: 'zh-CN', name: 'Chinese (Simplified)' },
-      { code: 'zh-TW', name: 'Chinese (Traditional)' },
-      { code: 'hr-HR', name: 'Croatian' },
-      { code: 'cs-CZ', name: 'Czech' },
-      { code: 'da-DK', name: 'Danish' },
-      { code: 'nl-NL', name: 'Dutch' },
-      { code: 'en-AU', name: 'English (Australia)' },
-      { code: 'en-GB', name: 'English (United Kingdom)' },
-      { code: 'en-US', name: 'English (United States)' },
-      { code: 'eo',    name: 'Esperanto' },
-      { code: 'et-EE', name: 'Estonian' },
-      { code: 'fil-PH', name: 'Filipino' },
-      { code: 'fi-FI', name: 'Finnish' },
-      { code: 'fr-CA', name: 'French (Canada)' },
-      { code: 'fr-FR', name: 'French (France)' },
-      { code: 'gl-ES', name: 'Galician' },
-      { code: 'ka-GE', name: 'Georgian' },
-      { code: 'de-DE', name: 'German' },
-      { code: 'el-GR', name: 'Greek' },
-      { code: 'gu-IN', name: 'Gujarati' },
-      { code: 'ht',    name: 'Haitian Creole' },
-      { code: 'ha-NG', name: 'Hausa' },
-      { code: 'he-IL', name: 'Hebrew' },
-      { code: 'hi-IN', name: 'Hindi' },
-      { code: 'hu-HU', name: 'Hungarian' },
-      { code: 'is-IS', name: 'Icelandic' },
-      { code: 'id-ID', name: 'Indonesian' },
-      { code: 'ga-IE', name: 'Irish' },
-      { code: 'it-IT', name: 'Italian' },
-      { code: 'ja-JP', name: 'Japanese' },
-      { code: 'jv-ID', name: 'Javanese' },
-      { code: 'kn-IN', name: 'Kannada' },
-      { code: 'kk-KZ', name: 'Kazakh' },
-      { code: 'km-KH', name: 'Khmer' },
-      { code: 'ko-KR', name: 'Korean' },
-      { code: 'lo-LA', name: 'Lao' },
-      { code: 'lv-LV', name: 'Latvian' },
-      { code: 'lt-LT', name: 'Lithuanian' },
-      { code: 'mk-MK', name: 'Macedonian' },
-      { code: 'ms-MY', name: 'Malay' },
-      { code: 'ml-IN', name: 'Malayalam' },
-      { code: 'mt-MT', name: 'Maltese' },
-      { code: 'mr-IN', name: 'Marathi' },
-      { code: 'mn-MN', name: 'Mongolian' },
-      { code: 'ne-NP', name: 'Nepali' },
-      { code: 'nb-NO', name: 'Norwegian' },
-      { code: 'fa-IR', name: 'Persian' },
-      { code: 'pl-PL', name: 'Polish' },
-      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-      { code: 'pt-PT', name: 'Portuguese (Portugal)' },
-      { code: 'pa-IN', name: 'Punjabi' },
-      { code: 'ro-RO', name: 'Romanian' },
-      { code: 'ru-RU', name: 'Russian' },
-      { code: 'sr-RS', name: 'Serbian' },
-      { code: 'si-LK', name: 'Sinhala' },
-      { code: 'sk-SK', name: 'Slovak' },
-      { code: 'sl-SI', name: 'Slovenian' },
-      { code: 'so-SO', name: 'Somali' },
-      { code: 'es-419', name: 'Spanish (Latin America)' },
-      { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'su-ID', name: 'Sundanese' },
-      { code: 'sw-KE', name: 'Swahili' },
-      { code: 'sv-SE', name: 'Swedish' },
-      { code: 'ta-IN', name: 'Tamil' },
-      { code: 'te-IN', name: 'Telugu' },
-      { code: 'th-TH', name: 'Thai' },
-      { code: 'tr-TR', name: 'Turkish' },
-      { code: 'uk-UA', name: 'Ukrainian' },
-      { code: 'ur-PK', name: 'Urdu' },
-      { code: 'uz-UZ', name: 'Uzbek' },
-      { code: 'vi-VN', name: 'Vietnamese' }
-    ];
-
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
-
-      selectElem.innerHTML = '';
-
-      SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) opt.selected = true;
-        selectElem.appendChild(opt);
-      });
-
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
-    }
-
-    // Read room & maxLimit from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
-    }
-    
-    const urlToken = urlParams.get('token');
-    const localToken = localStorage.getItem('supabase.auth.token') 
-      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
-      : null;
-    const token = urlToken || localToken || '';
-
-    document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
-    initPresenterAuth();
-
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
-
-    startBtn.onclick = async () => {
-      if (currentRemainingSeconds <= 0) {
-        alert("Cannot start streaming: Your maximum allowed streaming time has been reached.");
+        } catch (e) {}
         return;
       }
 
-      try {
-        status.innerText = "Status: Requesting Microphone Access...";
-        status.style.color = "#f59e0b";
-
-        audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
-        });
-
-        const selectedLang = document.getElementById('languageSelect')?.value || 'en-US';
-
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(room)}&role=presenter&lang=${encodeURIComponent(selectedLang)}`;
-        if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          status.innerText = "Status: Live & Streaming Stage Audio";
-          status.style.color = "#10b981";
-
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-          }
-
-          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
-            }
-          };
-
-          mediaRecorder.start(250);
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-
-          startLocalCountdown();
-          if (currentUser) {
-            startUsageSyncing(currentUser.id);
-          }
-        };
-
-        ws.onerror = (err) => {
-          console.error("WebSocket Error:", err);
-          status.innerText = "Status: Connection Error";
-          status.style.color = "#ef4444";
-        };
-
-        ws.onclose = (e) => {
-          if (status.innerText !== "Status: Terminated — Maximum Time Limit Reached") {
-            status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-            status.style.color = "#ef4444";
-          }
-          cleanup();
-        };
-
-      } catch (err) {
-        console.error("Microphone Access Error:", err);
-        status.innerText = "Status: Microphone Access Denied";
-        status.style.color = "#ef4444";
+      // Handle binary microphone audio stream
+      if (room.isDgReady && room.dgLive.getReadyState() === 1) {
+        room.dgLive.send(message);
+      } else {
+        room.audioQueue.push(message);
       }
-    };
-
-    stopBtn.onclick = () => {
-      cleanup();
-      status.innerText = "Status: Stopped";
-      status.style.color = "#9ca3af";
-    };
-
-    function cleanup() {
-      stopUsageSyncing();
-      stopLocalCountdown();
-
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      startBtn.disabled = currentRemainingSeconds <= 0;
-      stopBtn.disabled = true;
-    }
-
-    window.addEventListener('beforeunload', () => {
-      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-      cleanup();
     });
-  </script>
-</body>
-</html>
+
+    ws.on("close", () => {
+      console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
+      if (room.dgLive) {
+        room.dgLive.finish();
+        room.dgLive = null;
+      }
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE B: Stage Video Overlay (OBS / vMix)
+  else if (pathname === "/ws/overlay") {
+    console.log(`[Overlay] OBS connected to room: ${roomId}`);
+    room.overlays.add(ws);
+
+    ws.on("close", () => {
+      room.overlays.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (pathname.startsWith("/ws/attendee")) {
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+    ws.language = urlObj.searchParams.get("lang") || "en";
+
+    room.attendees.add(ws);
+
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+        }
+      } catch (e) {}
+    });
+
+    ws.on("close", () => {
+      room.attendees.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
