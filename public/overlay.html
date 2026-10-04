@@ -36,7 +36,11 @@
       max-width: 90vw;
       line-height: 1.3;
       word-wrap: break-word;
-      transition: opacity 0.2s ease-in-out;
+      transition: opacity 0.15s ease-in-out;
+    }
+    .interim {
+      opacity: 0.85;
+      font-style: italic;
     }
   </style>
 </head>
@@ -54,14 +58,15 @@
     // Read Query Parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'none';
+    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'en';
 
-    // Set Backend Host (Use explicit server URL if hosted separately on Render, e.g., 'your-api.onrender.com')
+    // Set Backend Host
     const SERVER_HOST = urlParams.get('server') || window.location.host;
 
     const captionsDiv = document.getElementById('captions');
     let socket = null;
     let roomBroadcastChannel = null;
+    let reconnectTimer = null;
 
     // 2. Listen for Live Language Switches from Presenter
     function subscribeToRoomChannel() {
@@ -84,16 +89,19 @@
         .subscribe();
     }
 
-    // 3. Connect to Render WebSocket Backend
+    // 3. Connect to WebSocket Backend (Configured with role=overlay)
     function connect() {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${SERVER_HOST}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}`;
+      const wsUrl = `${protocol}//${SERVER_HOST}?room=${encodeURIComponent(roomId)}&role=overlay&lang=${encodeURIComponent(activeTargetLang)}`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} (Target: ${activeTargetLang})`);
+        console.log(`[Overlay] Connected to room: ${roomId} as overlay`);
         captionsDiv.innerText = "Waiting for live captions...";
+        captionsDiv.classList.remove('interim');
       };
 
       socket.onmessage = (event) => {
@@ -108,7 +116,8 @@
       socket.onclose = () => {
         console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
         captionsDiv.innerText = "Reconnecting...";
-        setTimeout(connect, 3000);
+        captionsDiv.classList.remove('interim');
+        reconnectTimer = setTimeout(connect, 3000);
       };
 
       socket.onerror = (err) => {
@@ -116,46 +125,20 @@
       };
     }
 
-    // 4. Integrated Deepgram Video Block Frame Receiver
-    // Listens for cross-document window events if Deepgram translations are pushed via postMessage from a presenter shell
-    function initDeepgramFrameReceiver() {
-      window.addEventListener('message', (event) => {
-        // Optional security filter: uncomment if the presenter video block is hosted on an isolated domain
-        // if (event.origin !== 'https://your-presenter-domain.com') return;
-
-        try {
-          const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-          
-          // Checks if message matches standard Deepgram translation/caption schema structures
-          if (data && (data.type === 'caption' || data.type === 'translation' || data.channel?.alternatives)) {
-            processIncomingCaption(data);
-          }
-        } catch (err) {
-          // Non-critical: Ignore messages if parent frame emits unrelated string messages
-        }
-      });
-      console.log("[Overlay] Deepgram cross-frame event listener initialized.");
-    }
-
-    // 5. Shared Caption Text Parsing Core Engine
+    // 4. Process Normalized Caption Payloads from Server
     function processIncomingCaption(data) {
-      const shortLang = activeTargetLang.split('-')[0];
+      if (!data) return;
 
-      // Deepgram direct socket structure normalization fallback
-      const deepgramTranscript = data.channel?.alternatives?.[0]?.transcript;
+      const displayText = data.text || data.original || '';
 
-      // Extract translated text checking standard translation fields and Deepgram structure extensions
-      const displayText = 
-        (data.translations && data.translations[activeTargetLang]) ||
-        (data.translations && data.translations[shortLang]) ||
-        data.translation ||
-        data.translated_text ||
-        data.translatedText ||
-        deepgramTranscript ||
-        data.text;
-
-      if (displayText && displayText.trim() !== "") {
+      if (displayText.trim() !== '') {
         captionsDiv.innerText = displayText;
+
+        if (data.isFinal === false) {
+          captionsDiv.classList.add('interim');
+        } else {
+          captionsDiv.classList.remove('interim');
+        }
       }
     }
 
@@ -170,7 +153,6 @@
     // Initialization Pipelines
     subscribeToRoomChannel();
     connect();
-    initDeepgramFrameReceiver();
 
     window.addEventListener('beforeunload', () => {
       if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
