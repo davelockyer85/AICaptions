@@ -34,13 +34,61 @@
 
   <script>
     const box = document.getElementById("caption-box");
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/overlay`);
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      box.innerText = data.text;
-    };
+    // Read room and target translation language from URL query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get("room") || urlParams.get("roomId") || "main-stage";
+    const lang = urlParams.get("lang") || urlParams.get("target_lang") || "en";
+
+    let socket = null;
+
+    function connect() {
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      
+      // Construct WebSocket URL matching presenter parameters and path options
+      const basePath = location.pathname.startsWith('/ws') ? '/ws/overlay' : '';
+      const wsUrl = `${protocol}//${location.host}${basePath}?room=${encodeURIComponent(room)}&role=overlay&lang=${encodeURIComponent(lang)}`;
+
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        console.log(`[Overlay] Connected to room: ${room}`);
+        box.innerText = "Connected. Waiting for live captions...";
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Extract text across all server response formats
+          const displayText = 
+            (data.translations && data.translations[lang]) ||
+            data.translation ||
+            data.translated_text ||
+            data.text ||
+            (typeof data === "string" ? data : null);
+
+          if (displayText && displayText.trim().length > 0) {
+            box.innerText = displayText;
+          }
+        } catch (err) {
+          if (typeof event.data === "string" && event.data.trim().length > 0) {
+            box.innerText = event.data;
+          }
+        }
+      };
+
+      socket.onclose = () => {
+        box.innerText = "Reconnecting to stream...";
+        setTimeout(connect, 3000);
+      };
+
+      socket.onerror = (err) => {
+        console.error("Overlay WebSocket Error:", err);
+      };
+    }
+
+    connect();
   </script>
 </body>
 </html>
