@@ -54,9 +54,9 @@
     // Read Query Parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'none';
+    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'en';
 
-    // Set Backend Host (Use explicit server URL if hosted separately on Render, e.g., 'your-api.onrender.com')
+    // Set Backend Host
     const SERVER_HOST = urlParams.get('server') || window.location.host;
 
     const captionsDiv = document.getElementById('captions');
@@ -84,10 +84,12 @@
         .subscribe();
     }
 
-    // 3. Connect to Render WebSocket Backend
+    // 3. Connect to WebSocket Backend
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${SERVER_HOST}?room=${encodeURIComponent(roomId)}&role=viewer&target_lang=${encodeURIComponent(activeTargetLang)}`;
+      
+      // FIX 1: Include explicit '/ws/overlay' route path & role
+      const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}&role=overlay&lang=${encodeURIComponent(activeTargetLang)}`;
 
       socket = new WebSocket(wsUrl);
 
@@ -100,21 +102,19 @@
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === 'caption' || data.type === 'translation') {
-            const shortLang = activeTargetLang.split('-')[0];
+          // FIX 2 & 3: Fall back across all standard payload key names
+          const shortLang = activeTargetLang ? activeTargetLang.split('-')[0] : 'en';
 
-            // Render translated text if available; fallback to raw transcript
-            const displayText = 
-              (data.translations && data.translations[activeTargetLang]) ||
-              (data.translations && data.translations[shortLang]) ||
-              data.translation ||
-              data.translated_text ||
-              data.translatedText ||
-              data.text;
+          const displayText = 
+            (data.translations && data.translations[activeTargetLang]) ||
+            (data.translations && data.translations[shortLang]) ||
+            data.translation ||
+            data.translated_text ||
+            data.translatedText ||
+            data.text;
 
-            if (displayText) {
-              captionsDiv.innerText = displayText;
-            }
+          if (displayText && displayText.trim().length > 0) {
+            captionsDiv.innerText = displayText;
           }
         } catch (err) {
           console.error("[Overlay] Failed to parse payload:", err);
