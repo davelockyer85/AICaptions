@@ -29,7 +29,6 @@ const deepgram = createClient(DEEPGRAM_KEY);
 async function translateText(text, targetLang) {
   if (!targetLang || targetLang === "en") return text;
   try {
-    // Add external translation API call here if needed
     return text;
   } catch (err) {
     console.error("[Translation Error]", err);
@@ -103,7 +102,6 @@ wss.on("connection", (ws, req) => {
     });
 
     room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
-      // Safe access using optional chaining
       const transcript = data.channel?.alternatives?.[0]?.transcript;
       const isFinal = data.is_final;
 
@@ -129,14 +127,19 @@ wss.on("connection", (ws, req) => {
           }
         });
 
-        // Broadcast ONLY to mobile attendees in THIS room
+        // Broadcast to mobile attendees
         if (isFinal) {
           for (const attendee of room.attendees) {
             if (attendee.readyState === WebSocket.OPEN) {
               const lang = attendee.language || "en";
               const translated = lang === "en" ? transcript : await translateText(transcript, lang);
               attendee.send(
-                JSON.stringify({ text: translated, original: transcript })
+                JSON.stringify({
+                  text: translated,
+                  original: transcript,
+                  isFinal: true,
+                  lang: lang
+                })
               );
             }
           }
@@ -161,7 +164,6 @@ wss.on("connection", (ws, req) => {
       if (room.isDgReady && room.dgLive && room.dgLive.getReadyState() === 1) {
         room.dgLive.send(message);
       } else {
-        // Queue audio until Deepgram connection is OPEN
         if (room.audioQueue.length < 500) {
           room.audioQueue.push(message);
         }
