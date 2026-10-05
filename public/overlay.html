@@ -50,56 +50,29 @@
   </div>
 
   <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
     // Read Query Parameters
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    let activeTargetLang = urlParams.get('target_lang') || urlParams.get('lang') || localStorage.getItem('target_lang') || 'en';
 
     // Set Backend Host
     const SERVER_HOST = urlParams.get('server') || window.location.host;
 
     const captionsDiv = document.getElementById('captions');
     let socket = null;
-    let roomBroadcastChannel = null;
     let reconnectTimer = null;
 
-    // 2. Listen for Live Language Switches from Presenter
-    function subscribeToRoomChannel() {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
-
-      roomBroadcastChannel = supabaseClient.channel(`room_${roomId}`);
-
-      roomBroadcastChannel
-        .on('broadcast', { event: 'target_lang_change' }, (payload) => {
-          if (payload.payload && payload.payload.targetLang) {
-            const newLang = payload.payload.targetLang;
-            if (newLang !== activeTargetLang) {
-              activeTargetLang = newLang;
-              localStorage.setItem('target_lang', activeTargetLang);
-              console.log(`[Overlay] Target language updated to: ${activeTargetLang}`);
-              reconnectWebSocket();
-            }
-          }
-        })
-        .subscribe();
-    }
-
-    // 3. Connect to WebSocket Backend (Configured with role=overlay)
+    // Connect to WebSocket Backend (/ws/overlay route)
     function connect() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${SERVER_HOST}?room=${encodeURIComponent(roomId)}&role=overlay&lang=${encodeURIComponent(activeTargetLang)}`;
+      // Fixed: Explicitly connect to /ws/overlay route
+      const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} as overlay`);
+        console.log(`[Overlay] Connected to room: ${roomId} on /ws/overlay`);
         captionsDiv.innerText = "Waiting for live captions...";
         captionsDiv.classList.remove('interim');
       };
@@ -125,7 +98,7 @@
       };
     }
 
-    // 4. Process Normalized Caption Payloads from Server
+    // Process Normalized Caption Payloads from Server
     function processIncomingCaption(data) {
       if (!data) return;
 
@@ -142,20 +115,10 @@
       }
     }
 
-    function reconnectWebSocket() {
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
-      }
-      connect();
-    }
-
-    // Initialization Pipelines
-    subscribeToRoomChannel();
+    // Start Connection
     connect();
 
     window.addEventListener('beforeunload', () => {
-      if (roomBroadcastChannel) supabaseClient.removeChannel(roomBroadcastChannel);
       if (socket) socket.close();
     });
   </script>
