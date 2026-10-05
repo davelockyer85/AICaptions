@@ -10,6 +10,18 @@
   <link rel="preconnect" href="https://euopdmwtowuxdzczwbul.supabase.co" crossorigin>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- Google Translate Initialization -->
+  <script type="text/javascript">
+    function googleTranslateElementInit() {
+      new google.translate.TranslateElement({
+        pageLanguage: 'en',
+        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+      }, 'google_translate_element');
+    }
+  </script>
+  <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -34,340 +46,47 @@
       overflow: hidden;
     }
 
-    /* Top Navigation Bar */
-    header {
+    /* Top control bar layout */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
       background-color: var(--card-bg);
       border-bottom: 1px solid var(--border-color);
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-shrink: 0;
-      padding-top: max(12px, env(safe-area-inset-top));
     }
 
-    .brand {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: var(--primary);
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    /* Google Translate element positioning override */
+    #google_translate_element {
+      display: inline-block;
     }
 
-    .room-badge {
-      background-color: #0f172a;
-      border: 1px solid var(--border-color);
-      color: #93c5fd;
-      font-family: monospace;
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 20px;
+    /* Clean up default Google Translate widget styling */
+    .goog-te-gadget {
+      color: var(--text-muted) !important;
+      font-size: 0.85rem !important;
     }
 
-    .live-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      color: #10b981;
-    }
-
-    .live-dot {
-      width: 8px;
-      height: 8px;
-      background-color: #10b981;
-      border-radius: 50%;
-      box-shadow: 0 0 8px #10b981;
-      animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
-      0% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(1.2); }
-      100% { opacity: 1; transform: scale(1); }
-    }
-
-    /* Main Scrollable Captions Area */
-    .captions-container {
-      flex: 1;
-      padding: 20px 16px;
-      overflow-y: auto;
-      scroll-behavior: smooth;
-      -webkit-overflow-scrolling: touch;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .caption-segment {
-      font-size: var(--caption-size);
-      line-height: 1.6;
-      color: var(--text-main);
-      background-color: rgba(30, 41, 59, 0.4);
-      border-left: 3px solid var(--primary);
-      padding: 12px 16px;
-      border-radius: 0 8px 8px 0;
-      word-break: break-word;
-      animation: fadeIn 0.3s ease-in-out;
-    }
-
-    .caption-segment.interim {
-      color: var(--text-muted);
-      border-left-color: #f59e0b;
-      font-style: italic;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .placeholder-msg {
-      text-align: center;
-      color: var(--text-muted);
-      margin: auto 0;
-      font-size: 1rem;
-      padding: 20px;
-    }
-
-    /* Floating Audience Toolbar */
-    .toolbar {
-      background-color: rgba(30, 41, 59, 0.95);
-      backdrop-filter: blur(10px);
-      border-top: 1px solid var(--border-color);
-      padding: 10px 16px;
-      padding-bottom: max(10px, env(safe-area-inset-bottom));
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-shrink: 0;
-    }
-
-    .tool-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .btn-tool {
-      background-color: #0f172a;
+    .goog-te-gadget .goog-te-combo {
+      background-color: var(--bg-dark);
       color: var(--text-main);
       border: 1px solid var(--border-color);
-      padding: 8px 14px;
+      padding: 4px 8px;
       border-radius: 6px;
       font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      min-height: 40px;
-      touch-action: manipulation;
-      transition: background 0.2s;
+      outline: none;
     }
-
-    .btn-tool:hover { background-color: #334155; }
-    .btn-tool.active { background-color: var(--primary); color: #fff; border-color: var(--primary); }
-
-    .captions-container::-webkit-scrollbar { width: 4px; }
-    .captions-container::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
   </style>
 </head>
 <body>
 
-  <!-- Top Header Navigation -->
-  <header>
+  <!-- Top Header / Controls Container -->
+  <header class="top-bar">
     <div class="brand">🎙️ AICaptions</div>
-    <div class="room-badge" id="roomDisplay">main-stage</div>
-    <div class="live-indicator" id="statusIndicator">
-      <div class="live-dot"></div>
-      <span id="statusText">LIVE</span>
-    </div>
+    <div id="google_translate_element"></div>
   </header>
 
-  <!-- Main Scrollable Captions Output -->
-  <main class="captions-container" id="captionsBox">
-    <div class="placeholder-msg" id="placeholder">
-      Waiting for stage presenter to begin speaking...
-    </div>
-  </main>
+  <!-- Captions content area goes here -->
 
-  <!-- Audience Accessibility & Text Controls -->
-  <footer class="toolbar">
-    <div class="tool-group">
-      <button class="btn-tool" id="fontDownBtn" title="Decrease Text Size">A-</button>
-      <button class="btn-tool" id="fontUpBtn" title="Increase Text Size">A+</button>
-    </div>
-
-    <div class="tool-group">
-      <button class="btn-tool active" id="autoscrollBtn">Auto-Scroll: ON</button>
-      <button class="btn-tool" id="clearBtn">Clear</button>
-    </div>
-  </footer>
-
-  <script>
-    // 1. Supabase Client Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    // Parse Parameters from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const viewerLang = urlParams.get('lang') || urlParams.get('target_lang') || 'en';
-
-    // UI Element References
-    const roomDisplay = document.getElementById('roomDisplay');
-    const statusText = document.getElementById('statusText');
-    const captionsBox = document.getElementById('captionsBox');
-    const placeholder = document.getElementById('placeholder');
-    
-    const fontUpBtn = document.getElementById('fontUpBtn');
-    const fontDownBtn = document.getElementById('fontDownBtn');
-    const autoscrollBtn = document.getElementById('autoscrollBtn');
-    const clearBtn = document.getElementById('clearBtn');
-
-    let isAutoScrollEnabled = true;
-    let currentFontSizePx = 24;
-    let interimElement = null;
-    let ws = null;
-
-    roomDisplay.innerText = roomId;
-
-    // Extract caption text from incoming WebSocket or Supabase payloads
-    function extractCaptionData(data) {
-      if (!data) return null;
-
-      const text = data.text || data.transcript || data.original || data.caption || data.message;
-      const isFinal = data.isFinal ?? data.is_final ?? true;
-
-      return text ? { text, isFinal } : null;
-    }
-
-    // Connect to Direct WebSocket Stream
-    function connectToCaptionStream() {
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      // Fixed: Explicitly connect to /ws/attendee route with room & viewer language
-      const wsUrl = `${protocol}//${location.host}/ws/attendee?room=${encodeURIComponent(roomId)}&lang=${encodeURIComponent(viewerLang)}`;
-
-      try {
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          console.log(`[Viewer] Connected to room ${roomId} on /ws/attendee`);
-          statusText.innerText = "LIVE";
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            const extracted = extractCaptionData(data);
-            if (extracted && extracted.text) {
-              renderCaptionChunk(extracted.text, extracted.isFinal);
-            }
-          } catch (e) {
-            if (typeof event.data === 'string' && event.data.trim()) {
-              renderCaptionChunk(event.data, true);
-            }
-          }
-        };
-
-        ws.onerror = (err) => {
-          console.warn("[Viewer] WebSocket error:", err);
-          statusText.innerText = "RECONNECTING...";
-        };
-
-        ws.onclose = () => {
-          statusText.innerText = "DISCONNECTED";
-          setTimeout(connectToCaptionStream, 3000);
-        };
-      } catch (err) {
-        console.warn("[Viewer] Connection setup error:", err);
-      }
-
-      // Supabase Realtime Fallback
-      const channel = supabaseClient.channel(`room_${roomId}`, {
-        config: { broadcast: { ack: false } }
-      });
-
-      channel
-        .on('broadcast', { event: 'caption' }, (res) => {
-          const data = extractCaptionData(res.payload || res);
-          if (data) renderCaptionChunk(data.text, data.isFinal);
-        })
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'transcripts',
-          filter: `room_id=eq.${roomId}`
-        }, (payload) => {
-          if (payload.new) {
-            const text = payload.new.text || payload.new.transcript;
-            if (text) renderCaptionChunk(text, true);
-          }
-        })
-        .subscribe();
-    }
-
-    function renderCaptionChunk(text, isFinal = true) {
-      if (placeholder) placeholder.style.display = 'none';
-
-      if (!isFinal) {
-        if (!interimElement) {
-          interimElement = document.createElement('div');
-          interimElement.className = 'caption-segment interim';
-          captionsBox.appendChild(interimElement);
-        }
-        interimElement.innerText = text;
-      } else {
-        if (interimElement) {
-          interimElement.remove();
-          interimElement = null;
-        }
-
-        const segment = document.createElement('div');
-        segment.className = 'caption-segment';
-        segment.innerText = text;
-        captionsBox.appendChild(segment);
-      }
-
-      if (isAutoScrollEnabled) {
-        captionsBox.scrollTop = captionsBox.scrollHeight;
-      }
-    }
-
-    // UI Button Handlers
-    fontUpBtn.onclick = () => {
-      if (currentFontSizePx < 40) {
-        currentFontSizePx += 2;
-        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
-      }
-    };
-
-    fontDownBtn.onclick = () => {
-      if (currentFontSizePx > 16) {
-        currentFontSizePx -= 2;
-        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
-      }
-    };
-
-    autoscrollBtn.onclick = () => {
-      isAutoScrollEnabled = !isAutoScrollEnabled;
-      autoscrollBtn.classList.toggle('active', isAutoScrollEnabled);
-      autoscrollBtn.innerText = isAutoScrollEnabled ? 'Auto-Scroll: ON' : 'Auto-Scroll: OFF';
-      if (isAutoScrollEnabled) captionsBox.scrollTop = captionsBox.scrollHeight;
-    };
-
-    clearBtn.onclick = () => {
-      captionsBox.innerHTML = '';
-      if (placeholder) {
-        placeholder.style.display = 'block';
-        captionsBox.appendChild(placeholder);
-      }
-    };
-
-    connectToCaptionStream();
-  </script>
 </body>
 </html>
