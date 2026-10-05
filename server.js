@@ -25,10 +25,16 @@ if (!DEEPGRAM_KEY) {
 }
 const deepgram = createClient(DEEPGRAM_KEY);
 
-// Translation Helper (Stub / Replace with your translation provider like Google Translate, OpenAI, or DeepL)
+// Working Translation Helper using Google Translate single endpoint
 async function translateText(text, targetLang) {
   if (!targetLang || targetLang === "en") return text;
   try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (Array.isArray(data) && Array.isArray(data[0])) {
+      return data[0].map((item) => item[0]).join('');
+    }
     return text;
   } catch (err) {
     console.error("[Translation Error]", err);
@@ -71,22 +77,23 @@ wss.on("connection", (ws, req) => {
 
   // ROUTE A: Stage Microphones / Audio Ingest
   if (pathname === "/ws/ingest") {
-    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+    const spokenLang = urlObj.searchParams.get("spokenLang") || urlObj.searchParams.get("lang") || "en-US";
+    console.log(`[Ingest] Presenter connected to room: ${roomId} (Spoken Language: ${spokenLang})`);
 
     room.audioQueue = [];
     room.isDgReady = false;
 
-    // Create room-specific Deepgram STT stream
+    // Create room-specific Deepgram STT stream using spoken language from presenter
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
-      language: "en-US",
+      language: spokenLang,
       smart_format: true,
       interim_results: true,
       endpointing: 300
     });
 
     room.dgLive.on(LiveTranscriptionEvents.Open, () => {
-      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
+      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing audio queue...`);
       room.isDgReady = true;
 
       while (room.audioQueue.length > 0) {
@@ -108,7 +115,7 @@ wss.on("connection", (ws, req) => {
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
 
-        // Translate if room target language is not English
+        // Translate overlay text if room target language is not English and result is final
         if (room.targetOverlayLang !== "en" && isFinal) {
           overlayText = await translateText(transcript, room.targetOverlayLang);
         }
@@ -120,14 +127,14 @@ wss.on("connection", (ws, req) => {
           lang: room.targetOverlayLang
         });
 
-        // Broadcast ONLY to overlays in THIS room
+        // Broadcast to all stage overlays in this room
         room.overlays.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(overlayPayload);
           }
         });
 
-        // Broadcast to mobile attendees
+        // Broadcast to all mobile audience viewers in this room
         if (isFinal) {
           for (const attendee of room.attendees) {
             if (attendee.readyState === WebSocket.OPEN) {
@@ -148,13 +155,25 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("message", (message, isBinary) => {
-      // Handle JSON control messages
+      // Handle JSON control messages (language switching, etc.)
       if (!isBinary) {
         try {
           const controlData = JSON.parse(message.toString());
           if (controlData.type === "set_language") {
             room.targetOverlayLang = controlData.lang;
             console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+
+            // Broadcast language switch event to overlay clients
+            const langNotifyPayload = JSON.stringify({
+              type: "language_changed",
+              lang: room.targetOverlayLang
+            });
+
+            room.overlays.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(langNotifyPayload);
+              }
+            });
           }
         } catch (e) {}
         return;
@@ -194,8 +213,9 @@ wss.on("connection", (ws, req) => {
 
   // ROUTE C: Mobile Audience (QR Code Viewers)
   else if (pathname.startsWith("/ws/attendee")) {
-    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
-    ws.language = urlObj.searchParams.get("lang") || "en";
+    const viewerLang = urlObj.searchParams.get("lang") || "en";
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId} (Lang: ${viewerLang})`);
+    ws.language = viewerLang;
 
     room.attendees.add(ws);
 
