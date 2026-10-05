@@ -80,7 +80,7 @@
       outline: none;
     }
 
-    /* Main Caption Display Container */
+    /* Main Caption Container */
     #caption-container {
       flex: 1;
       padding: 2rem;
@@ -121,13 +121,13 @@
   </main>
 
   <script>
-    // 1. Extract Room ID from URL query string
+    // 1. Get Room ID from URL
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || 'default';
 
     // 2. Initialize Supabase Client
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB'; // Replace with your public Anon key
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // Ensure your project's anon key is set here
 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const container = document.getElementById('caption-container');
@@ -135,18 +135,29 @@
 
     let interimElement = null;
 
-    // 3. Connect to Supabase Realtime WebSocket Channel
+    // 3. Connect & Listen to Wildcard Broadcast Events
     const channel = supabaseClient.channel(`room:${roomId}`)
-      .on('broadcast', { event: 'caption' }, (payload) => {
-        console.log('Broadcast event received:', payload); // Debug log in browser F12 console
+      .on('broadcast', { event: '*' }, (payload) => {
+        console.log('Received Broadcast Event:', payload);
         if (statusMsg) statusMsg.remove();
 
-        // Extract text from text, transcript, or message properties
-        const data = payload.payload || payload;
-        const text = data.text || data.transcript || data.message || '';
-        const isFinal = data.is_final ?? data.isFinal ?? true;
+        // Extract raw payload data
+        const rawData = payload.payload !== undefined ? payload.payload : payload;
+        
+        let text = '';
+        let isFinal = true;
 
-        if (!text.trim()) return;
+        // Extract text from string, text, transcript, message, or caption properties
+        if (typeof rawData === 'string') {
+          text = rawData;
+        } else if (typeof rawData === 'object' && rawData !== null) {
+          text = rawData.text || rawData.transcript || rawData.message || rawData.caption || rawData.content || '';
+          
+          if (rawData.is_final !== undefined) isFinal = Boolean(rawData.is_final);
+          else if (rawData.isFinal !== undefined) isFinal = Boolean(rawData.isFinal);
+        }
+
+        if (!text || !text.trim()) return;
 
         if (isFinal) {
           if (interimElement) {
