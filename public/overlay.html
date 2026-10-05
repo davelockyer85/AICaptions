@@ -58,10 +58,10 @@
     const SERVER_HOST = urlParams.get('server') || window.location.host;
 
     const captionsDiv = document.getElementById('captions');
-    let socket = null;
+    let  = null;
     let reconnectTimer = null;
 
-    // Connect to WebSocket Backend (/ws/overlay route)
+    // Connect to Web Backend (/ws/overlay route)
     function connect() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
 
@@ -69,9 +69,9 @@
       // Fixed: Explicitly connect to /ws/overlay route
       const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}`;
 
-      socket = new WebSocket(wsUrl);
+       = new Web(wsUrl);
 
-      socket.onopen = () => {
+      .onopen = () => {
         console.log(`[Overlay] Connected to room: ${roomId} on /ws/overlay`);
         captionsDiv.innerText = "Waiting for live captions...";
         captionsDiv.classList.remove('interim');
@@ -86,16 +86,22 @@
         }
       };
 
-      socket.onclose = () => {
-        console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
-        captionsDiv.innerText = "Reconnecting...";
-        captionsDiv.classList.remove('interim');
-        reconnectTimer = setTimeout(connect, 3000);
-      };
+socket.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
 
-      socket.onerror = (err) => {
-        console.error("[Overlay] WebSocket Error:", err);
-      };
+    // 1. Handle Language Switch Notification from Server
+    if (data.type === "language_changed") {
+      console.log(`[Overlay] Target language switched to: ${data.lang}`);
+      return;
+    }
+
+    // 2. Process Caption Text Payloads
+    processIncomingCaption(data);
+  } catch (err) {
+    console.error("[Overlay] Failed to parse WebSocket payload:", err);
+  }
+};
     }
 
     // Process Normalized Caption Payloads from Server
