@@ -30,7 +30,7 @@
       --primary: #3b82f6;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
-      --caption-size: 1.5rem;
+      --caption-size: 1.75rem;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,7 +46,6 @@
       overflow: hidden;
     }
 
-    /* Top control bar layout */
     .top-bar {
       display: flex;
       justify-content: space-between;
@@ -54,14 +53,18 @@
       padding: 0.75rem 1rem;
       background-color: var(--card-bg);
       border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
     }
 
-    /* Google Translate element positioning override */
+    .brand {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
     #google_translate_element {
       display: inline-block;
     }
 
-    /* Clean up default Google Translate widget styling */
     .goog-te-gadget {
       color: var(--text-muted) !important;
       font-size: 0.85rem !important;
@@ -76,17 +79,102 @@
       font-size: 0.85rem;
       outline: none;
     }
+
+    /* Main Caption Display Container */
+    #caption-container {
+      flex: 1;
+      padding: 2rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      font-size: var(--caption-size);
+      line-height: 1.6;
+    }
+
+    .caption-line {
+      animation: fadeIn 0.2s ease-in-out;
+      word-wrap: break-word;
+    }
+
+    .caption-interim {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
 
-  <!-- Top Header / Controls Container -->
   <header class="top-bar">
     <div class="brand">🎙️ AICaptions</div>
     <div id="google_translate_element"></div>
   </header>
 
-  <!-- Captions content area goes here -->
+  <!-- Live Caption Display Window -->
+  <main id="caption-container">
+    <div id="status-message" class="caption-line caption-interim">Connecting to caption room...</div>
+  </main>
 
+  <script>
+    // 1. Extract Room ID from URL query string
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || 'default';
+
+    // 2. Initialize Supabase Client
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // Replace with your public Anon key
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const container = document.getElementById('caption-container');
+    const statusMsg = document.getElementById('status-message');
+
+    let interimElement = null;
+
+    // 3. Connect to Supabase Realtime WebSocket Channel
+    const channel = supabaseClient.channel(`room:${roomId}`)
+      .on('broadcast', { event: 'caption' }, (payload) => {
+        if (statusMsg) statusMsg.remove(); // Clear initial status message
+
+        const text = payload.payload?.text || payload.text || '';
+        const isFinal = payload.payload?.is_final ?? payload.is_final ?? true;
+
+        if (!text.trim()) return;
+
+        if (isFinal) {
+          // Remove interim line if present
+          if (interimElement) {
+            interimElement.remove();
+            interimElement = null;
+          }
+
+          // Append finalized caption line
+          const line = document.createElement('div');
+          line.className = 'caption-line';
+          line.textContent = text;
+          container.appendChild(line);
+        } else {
+          // Render or update live interim text
+          if (!interimElement) {
+            interimElement = document.createElement('div');
+            interimElement.className = 'caption-line caption-interim';
+            container.appendChild(interimElement);
+          }
+          interimElement.textContent = text;
+        }
+
+        // Auto-scroll to bottom on new transcripts
+        container.scrollTop = container.scrollHeight;
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          if (statusMsg) statusMsg.textContent = `Connected to room: ${roomId}. Waiting for speech...`;
+        }
+      });
+  </script>
 </body>
 </html>
