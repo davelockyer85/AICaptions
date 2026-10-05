@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Live OBS Overlay</title>
 
-  <!-- Supabase JS Client SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     body {
       margin: 0;
@@ -58,20 +55,19 @@
     const SERVER_HOST = urlParams.get('server') || window.location.host;
 
     const captionsDiv = document.getElementById('captions');
-    let  = null;
+    let socket = null;
     let reconnectTimer = null;
 
-    // Connect to Web Backend (/ws/overlay route)
+    // Connect to WebSocket Backend (/ws/overlay)
     function connect() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // Fixed: Explicitly connect to /ws/overlay route
       const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}`;
 
-       = new Web(wsUrl);
+      socket = new WebSocket(wsUrl);
 
-      .onopen = () => {
+      socket.onopen = () => {
         console.log(`[Overlay] Connected to room: ${roomId} on /ws/overlay`);
         captionsDiv.innerText = "Waiting for live captions...";
         captionsDiv.classList.remove('interim');
@@ -80,31 +76,33 @@
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // 1. Handle Language Switch Event
+          if (data.type === "language_changed") {
+            console.log(`[Overlay] Target language updated to: ${data.lang}`);
+            return;
+          }
+
+          // 2. Process Caption Payloads
           processIncomingCaption(data);
         } catch (err) {
           console.error("[Overlay] Failed to parse WebSocket payload:", err);
         }
       };
 
-socket.onmessage = (event) => {
-  try {
-    const data = JSON.parse(event.data);
+      socket.onclose = () => {
+        console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
+        captionsDiv.innerText = "Reconnecting...";
+        captionsDiv.classList.remove('interim');
+        reconnectTimer = setTimeout(connect, 3000);
+      };
 
-    // 1. Handle Language Switch Notification from Server
-    if (data.type === "language_changed") {
-      console.log(`[Overlay] Target language switched to: ${data.lang}`);
-      return;
+      socket.onerror = (err) => {
+        console.error("[Overlay] WebSocket Error:", err);
+      };
     }
 
-    // 2. Process Caption Text Payloads
-    processIncomingCaption(data);
-  } catch (err) {
-    console.error("[Overlay] Failed to parse WebSocket payload:", err);
-  }
-};
-    }
-
-    // Process Normalized Caption Payloads from Server
+    // Render Caption Payloads
     function processIncomingCaption(data) {
       if (!data) return;
 
