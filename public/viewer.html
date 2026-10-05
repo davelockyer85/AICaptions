@@ -138,27 +138,26 @@
     // 3. Connect to Supabase Realtime WebSocket Channel
     const channel = supabaseClient.channel(`room:${roomId}`)
       .on('broadcast', { event: 'caption' }, (payload) => {
-        if (statusMsg) statusMsg.remove(); // Clear initial status message
+        console.log('Broadcast event received:', payload); // Debug log in browser F12 console
+        if (statusMsg) statusMsg.remove();
 
-        const text = payload.payload?.text || payload.text || '';
-        const isFinal = payload.payload?.is_final ?? payload.is_final ?? true;
+        // Extract text from text, transcript, or message properties
+        const data = payload.payload || payload;
+        const text = data.text || data.transcript || data.message || '';
+        const isFinal = data.is_final ?? data.isFinal ?? true;
 
         if (!text.trim()) return;
 
         if (isFinal) {
-          // Remove interim line if present
           if (interimElement) {
             interimElement.remove();
             interimElement = null;
           }
-
-          // Append finalized caption line
           const line = document.createElement('div');
           line.className = 'caption-line';
           line.textContent = text;
           container.appendChild(line);
         } else {
-          // Render or update live interim text
           if (!interimElement) {
             interimElement = document.createElement('div');
             interimElement.className = 'caption-line caption-interim';
@@ -167,7 +166,6 @@
           interimElement.textContent = text;
         }
 
-        // Auto-scroll to bottom on new transcripts
         container.scrollTop = container.scrollHeight;
       })
       .subscribe((status) => {
