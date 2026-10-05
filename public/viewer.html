@@ -309,7 +309,6 @@
         })
         .subscribe();
     }
-     
 
     function renderCaptionChunk(text, isFinal = true) {
       if (placeholder) placeholder.style.display = 'none';
@@ -367,16 +366,6 @@
         captionsBox.appendChild(placeholder);
       }
     };
-    
-    <!-- Google Translate Initialization -->
-  <script type="text/javascript">
-    function googleTranslateElementInit() {
-      new google.translate.TranslateElement({
-        pageLanguage: 'en',
-        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-      }, 'google_translate_element');
-    }
 
     connectToCaptionStream();
   </script>
