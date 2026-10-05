@@ -285,16 +285,6 @@
       } catch (err) {
         console.warn("[Viewer] Connection setup error:", err);
       }
-        
-      <!-- Google Translate Initialization -->
-  <script type="text/javascript">
-    function googleTranslateElementInit() {
-      new google.translate.TranslateElement({
-        pageLanguage: 'en',
-        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-      }, 'google_translate_element');
-    }
 
       // Supabase Realtime Fallback
       const channel = supabaseClient.channel(`room_${roomId}`, {
@@ -318,6 +308,15 @@
           }
         })
         .subscribe();
+    }
+     <!-- Google Translate Initialization -->
+  <script type="text/javascript">
+    function googleTranslateElementInit() {
+      new google.translate.TranslateElement({
+        pageLanguage: 'en',
+        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+      }, 'google_translate_element');
     }
 
     function renderCaptionChunk(text, isFinal = true) {
