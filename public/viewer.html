@@ -170,7 +170,6 @@
     .btn-tool:hover { background-color: #334155; }
     .btn-tool.active { background-color: var(--primary); color: #fff; border-color: var(--primary); }
 
-    /* Custom scrollbar */
     .captions-container::-webkit-scrollbar { width: 4px; }
     .captions-container::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
   </style>
@@ -213,9 +212,10 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Parse Room Parameter from URL
+    // Parse Parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const viewerLang = urlParams.get('lang') || urlParams.get('target_lang') || 'en';
 
     // UI Element References
     const roomDisplay = document.getElementById('roomDisplay');
@@ -229,38 +229,33 @@
     const clearBtn = document.getElementById('clearBtn');
 
     let isAutoScrollEnabled = true;
-    let currentFontSizePx = 24; // Default font size (1.5rem)
+    let currentFontSizePx = 24;
     let interimElement = null;
     let ws = null;
 
     roomDisplay.innerText = roomId;
 
-    // Helper to safely extract text & final state from payloads
-    function extractCaptionData(response) {
-      if (!response) return null;
+    // Extract caption text from incoming WebSocket or Supabase payloads
+    function extractCaptionData(data) {
+      if (!data) return null;
 
-      const body = response.payload || response;
-      let text = body.text || body.transcript || body.caption || body.message || body.words;
-      
-      if (!text && body.channel && body.channel.alternatives && body.channel.alternatives[0]) {
-        text = body.channel.alternatives[0].transcript;
-      }
-
-      const isFinal = body.isFinal ?? body.is_final ?? body.final ?? true;
+      const text = data.text || data.transcript || data.original || data.caption || data.message;
+      const isFinal = data.isFinal ?? data.is_final ?? true;
 
       return text ? { text, isFinal } : null;
     }
 
-    // 2. Connect to Direct WebSocket Stream & Supabase Fallback
+    // Connect to Direct WebSocket Stream
     function connectToCaptionStream() {
-      // Connect directly to backend WebSocket server
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${location.host}?room=${encodeURIComponent(roomId)}&role=viewer`;
+      // Fixed: Explicitly connect to /ws/attendee route with room & viewer language
+      const wsUrl = `${protocol}//${location.host}/ws/attendee?room=${encodeURIComponent(roomId)}&lang=${encodeURIComponent(viewerLang)}`;
 
       try {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          console.log(`[Viewer] Connected to room ${roomId} on /ws/attendee`);
           statusText.innerText = "LIVE";
         };
 
@@ -270,8 +265,6 @@
             const extracted = extractCaptionData(data);
             if (extracted && extracted.text) {
               renderCaptionChunk(extracted.text, extracted.isFinal);
-            } else if (typeof data === 'string' && data.trim()) {
-              renderCaptionChunk(data, true);
             }
           } catch (e) {
             if (typeof event.data === 'string' && event.data.trim()) {
@@ -281,16 +274,16 @@
         };
 
         ws.onerror = (err) => {
-          console.warn("WebSocket error, falling back to Supabase Realtime:", err);
+          console.warn("[Viewer] WebSocket error:", err);
           statusText.innerText = "RECONNECTING...";
         };
 
         ws.onclose = () => {
           statusText.innerText = "DISCONNECTED";
-          setTimeout(connectToCaptionStream, 3000); // Reconnect handler
+          setTimeout(connectToCaptionStream, 3000);
         };
       } catch (err) {
-        console.warn("WebSocket connection init error:", err);
+        console.warn("[Viewer] Connection setup error:", err);
       }
 
       // Supabase Realtime Fallback
@@ -300,15 +293,7 @@
 
       channel
         .on('broadcast', { event: 'caption' }, (res) => {
-          const data = extractCaptionData(res);
-          if (data) renderCaptionChunk(data.text, data.isFinal);
-        })
-        .on('broadcast', { event: 'transcript' }, (res) => {
-          const data = extractCaptionData(res);
-          if (data) renderCaptionChunk(data.text, data.isFinal);
-        })
-        .on('broadcast', { event: '*' }, (res) => {
-          const data = extractCaptionData(res);
+          const data = extractCaptionData(res.payload || res);
           if (data) renderCaptionChunk(data.text, data.isFinal);
         })
         .on('postgres_changes', {
@@ -318,19 +303,17 @@
           filter: `room_id=eq.${roomId}`
         }, (payload) => {
           if (payload.new) {
-            const text = payload.new.text || payload.new.transcript || payload.new.content;
+            const text = payload.new.text || payload.new.transcript;
             if (text) renderCaptionChunk(text, true);
           }
         })
         .subscribe();
     }
 
-    // Render incoming text to the screen
     function renderCaptionChunk(text, isFinal = true) {
       if (placeholder) placeholder.style.display = 'none';
 
       if (!isFinal) {
-        // Handle streaming interim (partial) transcript
         if (!interimElement) {
           interimElement = document.createElement('div');
           interimElement.className = 'caption-segment interim';
@@ -338,7 +321,6 @@
         }
         interimElement.innerText = text;
       } else {
-        // Handle finalized sentence block
         if (interimElement) {
           interimElement.remove();
           interimElement = null;
@@ -350,13 +332,12 @@
         captionsBox.appendChild(segment);
       }
 
-      // Auto-scroll to bottom if enabled
       if (isAutoScrollEnabled) {
         captionsBox.scrollTop = captionsBox.scrollHeight;
       }
     }
 
-    // 3. User Interface Control Handlers
+    // UI Button Handlers
     fontUpBtn.onclick = () => {
       if (currentFontSizePx < 40) {
         currentFontSizePx += 2;
@@ -371,20 +352,13 @@
       }
     };
 
-    // Toggle Auto-Scroll Mode
     autoscrollBtn.onclick = () => {
       isAutoScrollEnabled = !isAutoScrollEnabled;
-      if (isAutoScrollEnabled) {
-        autoscrollBtn.classList.add('active');
-        autoscrollBtn.innerText = 'Auto-Scroll: ON';
-        captionsBox.scrollTop = captionsBox.scrollHeight;
-      } else {
-        autoscrollBtn.classList.remove('active');
-        autoscrollBtn.innerText = 'Auto-Scroll: OFF';
-      }
+      autoscrollBtn.classList.toggle('active', isAutoScrollEnabled);
+      autoscrollBtn.innerText = isAutoScrollEnabled ? 'Auto-Scroll: ON' : 'Auto-Scroll: OFF';
+      if (isAutoScrollEnabled) captionsBox.scrollTop = captionsBox.scrollHeight;
     };
 
-    // Clear Captions Display
     clearBtn.onclick = () => {
       captionsBox.innerHTML = '';
       if (placeholder) {
@@ -393,7 +367,6 @@
       }
     };
 
-    // Initialize Connection
     connectToCaptionStream();
   </script>
 </body>
