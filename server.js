@@ -25,11 +25,17 @@ if (!DEEPGRAM_KEY) {
 }
 const deepgram = createClient(DEEPGRAM_KEY);
 
-// Working Translation Helper using Google Translate single endpoint
+// Translation Helper with Language Code Normalization
 async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
+  if (!text || !targetLang || targetLang === "en") return text;
+
+  // Normalize language codes (e.g. 'es-ES' -> 'es', preserving 'zh-CN')
+  const baseLang = targetLang.includes("-") && !targetLang.startsWith("zh") 
+    ? targetLang.split("-")[0] 
+    : targetLang;
+
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(baseLang)}&dt=t&q=${encodeURIComponent(text)}`;
     const res = await fetch(url);
     const data = await res.json();
     if (Array.isArray(data) && Array.isArray(data[0])) {
@@ -37,7 +43,7 @@ async function translateText(text, targetLang) {
     }
     return text;
   } catch (err) {
-    console.error("[Translation Error]", err);
+    console.error(`[Translation Error - ${targetLang}]`, err);
     return text;
   }
 }
@@ -115,8 +121,8 @@ wss.on("connection", (ws, req) => {
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
 
-        // Translate overlay text if room target language is not English and result is final
-        if (room.targetOverlayLang !== "en" && isFinal) {
+        // Translate overlay text in real-time (both interim and final results)
+        if (room.targetOverlayLang !== "en") {
           overlayText = await translateText(transcript, room.targetOverlayLang);
         }
 
@@ -134,7 +140,7 @@ wss.on("connection", (ws, req) => {
           }
         });
 
-        // Broadcast to all mobile audience viewers in this room
+        // Broadcast final sentences to mobile audience viewers in this room
         if (isFinal) {
           for (const attendee of room.attendees) {
             if (attendee.readyState === WebSocket.OPEN) {
