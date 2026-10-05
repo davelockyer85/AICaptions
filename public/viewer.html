@@ -10,16 +10,6 @@
   <link rel="preconnect" href="https://euopdmwtowuxdzczwbul.supabase.co" crossorigin>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Google Translate Initialization -->
-  <script type="text/javascript">
-    function googleTranslateElementInit() {
-      new google.translate.TranslateElement({
-        pageLanguage: 'en',
-        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-      }, 'google_translate_element');
-    }
-
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -295,6 +285,16 @@
       } catch (err) {
         console.warn("[Viewer] Connection setup error:", err);
       }
+        
+      <!-- Google Translate Initialization -->
+  <script type="text/javascript">
+    function googleTranslateElementInit() {
+      new google.translate.TranslateElement({
+        pageLanguage: 'en',
+        includedLanguages: 'es,fr,de,zh-CN,ja,ar',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+      }, 'google_translate_element');
+    }
 
       // Supabase Realtime Fallback
       const channel = supabaseClient.channel(`room_${roomId}`, {
