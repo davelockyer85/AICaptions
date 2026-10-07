@@ -29,6 +29,41 @@
       justify-content: space-between;
       align-items: center;
     }
+    
+    /* Header Navigation Links */
+.nav-links {
+  display: flex;
+  list-style: none;
+  gap: 24px;
+  align-items: center;
+}
+
+.nav-links a {
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: color 0.2s ease-in-out;
+}
+
+.nav-links a:hover {
+  color: #f8fafc;
+}
+
+/* Styled Pricing Button Link */
+.nav-links .nav-pricing-btn {
+  color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all 0.2s ease-in-out;
+}
+
+.nav-links .nav-pricing-btn:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
 
     .logo {
       font-size: 1.25rem;
