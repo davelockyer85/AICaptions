@@ -1,247 +1,318 @@
-import express from "express";
-import { createServer } from "http";
-import { WebSocketServer, WebSocket } from "ws";
-import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
+import express from 'express';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
+import Stripe from 'stripe';
+import { createClient as createDeepgramClient, LiveTranscriptionEvents } from '@deepgram/sdk';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const server = createServer(app);
+const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.static(path.join(__dirname, "public")));
+// Initialize Clients
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
-if (!DEEPGRAM_KEY) {
-  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
-}
-const deepgram = createClient(DEEPGRAM_KEY);
-
-// Translation Helper with Language Code Normalization
-async function translateText(text, targetLang) {
-  if (!text || !targetLang || targetLang === "en") return text;
-
-  // Normalize language codes (e.g. 'es-ES' -> 'es', preserving 'zh-CN')
-  const baseLang = targetLang.includes("-") && !targetLang.startsWith("zh") 
-    ? targetLang.split("-")[0] 
-    : targetLang;
-
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(baseLang)}&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (Array.isArray(data) && Array.isArray(data[0])) {
-      return data[0].map((item) => item[0]).join('');
-    }
-    return text;
-  } catch (err) {
-    console.error(`[Translation Error - ${targetLang}]`, err);
-    return text;
-  }
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("❌ CRITICAL: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
 }
 
-// Multi-Tenant Rooms Store
+const deepgram = createDeepgramClient(DEEPGRAM_API_KEY);
+const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- Room state -------------------------------------------------------
+// roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket> }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
   if (!rooms.has(roomId)) {
-    console.log(`[Room Created] Initializing room: ${roomId}`);
-    rooms.set(roomId, {
-      targetOverlayLang: "en",
-      overlays: new Set(),
-      attendees: new Set(),
-      dgLive: null,
-      audioQueue: [],
-      isDgReady: false
-    });
+    rooms.set(roomId, { presenterWs: null, presenterUserId: null, viewers: new Set() });
   }
   return rooms.get(roomId);
 }
 
-function cleanupRoom(roomId) {
-  const room = rooms.get(roomId);
-  if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
-    console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
-    rooms.delete(roomId);
+// --- Per-account concurrent-room tracking ------------------------------
+// userId -> Set<roomId> of rooms this account currently has a live
+// presenter in. This is what `allowed_rooms` (plan-tier concurrent stage
+// limit) is checked against.
+const activeRoomsByUser = new Map();
+
+function addUserRoom(userId, roomId) {
+  if (!activeRoomsByUser.has(userId)) activeRoomsByUser.set(userId, new Set());
+  activeRoomsByUser.get(userId).add(roomId);
+}
+
+function removeUserRoom(userId, roomId) {
+  const set = activeRoomsByUser.get(userId);
+  if (!set) return;
+  set.delete(roomId);
+  if (set.size === 0) activeRoomsByUser.delete(userId);
+}
+
+function safeSend(ws, payload) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(payload);
   }
 }
 
-wss.on("connection", (ws, req) => {
-  const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = urlObj.pathname;
-  const roomId = urlObj.searchParams.get("room") || "default";
+app.use(express.json());
+app.use(express.static('public'));
+
+// Render Health Check
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Stripe Checkout Endpoint
+app.post('/create-checkout-session', async (req, res) => {
+  try {
+    const { priceId, userId } = req.body;
+    if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
+
+    const oneTimePrices = [
+      process.env.EVENT_PASS_PRICE_ID,
+      process.env.PRO_EVENT_PASS_PRICE_ID
+    ].filter(Boolean);
+
+    const isOneTime = oneTimePrices.includes(priceId);
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: isOneTime ? 'payment' : 'subscription',
+      client_reference_id: userId || null,
+      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
+      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe Checkout Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// WebSocket Handler
+wss.on('connection', async (ws, req) => {
+  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
+  // dashboard.html sends `room=`, not `roomId=` - accept both so a client
+  // using either name works instead of every session silently defaulting
+  // to 'main-stage'.
+  const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+  const role = urlParams.get('role') || 'viewer';
+  const token = urlParams.get('token');
+  const lang = urlParams.get('lang') || 'en-US';
 
   const room = getOrCreateRoom(roomId);
 
-  // ROUTE A: Stage Microphones / Audio Ingest
-  if (pathname === "/ws/ingest") {
-    const spokenLang = urlObj.searchParams.get("spokenLang") || urlObj.searchParams.get("lang") || "en-US";
-    console.log(`[Ingest] Presenter connected to room: ${roomId} (Spoken Language: ${spokenLang})`);
+  if (role === 'presenter') {
+    if (!token) {
+      ws.close(4003, 'Authentication token required');
+      return;
+    }
 
-    room.audioQueue = [];
-    room.isDgReady = false;
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      ws.close(4003, 'Invalid authentication token');
+      return;
+    }
 
-    // Create room-specific Deepgram STT stream using spoken language from presenter
-    room.dgLive = deepgram.listen.live({
-      model: "nova-3",
-      language: spokenLang,
-      smart_format: true,
-      interim_results: true,
-      endpointing: 300
-    });
+    // Load the account's plan/usage record. This is the source of truth
+    // for whether this session is allowed to start at all.
+    const { data: dbUser, error: dbError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
 
-    room.dgLive.on(LiveTranscriptionEvents.Open, () => {
-      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing audio queue...`);
-      room.isDgReady = true;
+    if (dbError || !dbUser) {
+      console.error('Failed to load user account record:', dbError);
+      ws.close(4003, 'No account record found');
+      return;
+    }
 
-      while (room.audioQueue.length > 0) {
-        const chunk = room.audioQueue.shift();
-        if (room.dgLive && room.dgLive.getReadyState() === 1) {
-          room.dgLive.send(chunk);
-        }
-      }
-    });
-
-    room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
-      console.error(`[Deepgram Error - Room ${roomId}]`, err);
-    });
-
-    room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
-      const transcript = data.channel?.alternatives?.[0]?.transcript;
-      const isFinal = data.is_final;
-
-      if (transcript && transcript.trim().length > 0) {
-        let overlayText = transcript;
-
-        // Translate overlay text in real-time (both interim and final results)
-        if (room.targetOverlayLang !== "en") {
-          overlayText = await translateText(transcript, room.targetOverlayLang);
-        }
-
-        const overlayPayload = JSON.stringify({
-          text: overlayText,
-          original: transcript,
-          isFinal,
-          lang: room.targetOverlayLang
-        });
-
-        // Broadcast to all stage overlays in this room
-        room.overlays.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(overlayPayload);
-          }
-        });
-
-        // Broadcast final sentences to mobile audience viewers in this room
-        if (isFinal) {
-          for (const attendee of room.attendees) {
-            if (attendee.readyState === WebSocket.OPEN) {
-              const lang = attendee.language || "en";
-              const translated = lang === "en" ? transcript : await translateText(transcript, lang);
-              attendee.send(
-                JSON.stringify({
-                  text: translated,
-                  original: transcript,
-                  isFinal: true,
-                  lang: lang
-                })
-              );
-            }
-          }
-        }
-      }
-    });
-
-    ws.on("message", (message, isBinary) => {
-      // Handle JSON control messages (language switching, etc.)
-      if (!isBinary) {
-        try {
-          const controlData = JSON.parse(message.toString());
-          if (controlData.type === "set_language") {
-            room.targetOverlayLang = controlData.lang;
-            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
-
-            // Broadcast language switch event to overlay clients
-            const langNotifyPayload = JSON.stringify({
-              type: "language_changed",
-              lang: room.targetOverlayLang
-            });
-
-            room.overlays.forEach((client) => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(langNotifyPayload);
-              }
-            });
-          }
-        } catch (e) {}
+    // Event Pass expiry - one-time plans only. Fails closed: a missing or
+    // unparsable expiry is treated as expired rather than as unlimited.
+    if (dbUser.plan_tier === 'one_time') {
+      const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
+      if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+        ws.close(4005, 'Event Pass has expired');
         return;
       }
+    }
 
-      // Handle binary microphone audio stream
-      if (room.isDgReady && room.dgLive && room.dgLive.getReadyState() === 1) {
-        room.dgLive.send(message);
+    // Streaming quota - applies to every plan. `max_streaming_seconds` of
+    // null/undefined means unlimited; 0 means no allowance at all.
+    const usedSeconds = dbUser.streaming_seconds_used || 0;
+    if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
+      ws.close(4006, 'Monthly streaming quota exhausted');
+      return;
+    }
+
+    // Concurrent-stage limit (allowed_rooms). Reconnecting to a room this
+    // account already owns doesn't count as a new room, so it never
+    // trips this check.
+    const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
+    if (!userAlreadyOwnsThisRoom) {
+      const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
+      const allowedRooms = dbUser.allowed_rooms ?? 1;
+      if (currentRoomCount >= allowedRooms) {
+        ws.close(4004, 'Maximum concurrent stages limit reached');
+        return;
+      }
+    }
+
+    // Guard: if a DIFFERENT authenticated user already owns this room's
+    // active presenter slot, refuse the connection instead of silently
+    // kicking the legitimate presenter off. The same user reconnecting
+    // (page refresh, dropped connection) is still allowed to take over.
+    const existingPresenter = room.presenterWs;
+    if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
+      if (room.presenterUserId && room.presenterUserId !== user.id) {
+        ws.close(4009, 'This room already has an active presenter');
+        return;
+      }
+      existingPresenter.close(4000, 'Replaced by your new session');
+    }
+
+    room.presenterWs = ws;
+    room.presenterUserId = user.id;
+    addUserRoom(user.id, roomId);
+
+    const sessionStart = Date.now();
+
+    let deepgramLive = null;
+    let deepgramReady = false;
+    const audioQueue = [];
+
+    try {
+      deepgramLive = deepgram.listen.live({
+        model: 'nova-2',
+        language: lang,
+        smart_format: true,
+        encoding: 'webm/opus',
+        sample_rate: 48000,
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Open, () => {
+        deepgramReady = true;
+        // Flush any audio chunks that arrived before Deepgram finished connecting
+        while (audioQueue.length > 0) {
+          deepgramLive.send(audioQueue.shift());
+        }
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Transcript, (data) => {
+        const sentence = data.channel?.alternatives?.[0]?.transcript;
+        if (sentence && sentence.trim() !== '') {
+          const payload = JSON.stringify({
+            type: 'caption',
+            text: sentence,
+            isFinal: data.is_final
+          });
+
+          safeSend(ws, payload);
+          room.viewers.forEach((viewer) => safeSend(viewer, payload));
+        }
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Error, (err) => {
+        console.error(`Deepgram Error [room=${roomId}]:`, err);
+        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
+      });
+
+      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+        deepgramReady = false;
+        console.warn(`Deepgram connection closed [room=${roomId}]`);
+      });
+    } catch (err) {
+      console.error('Failed to initialize Deepgram:', err);
+      safeSend(ws, JSON.stringify({ type: 'error', message: 'Failed to start captioning session.' }));
+    }
+
+    ws.on('message', (message) => {
+      if (typeof message === 'string') return; // control/text frames, not audio
+      if (!deepgramLive) return;
+
+      if (deepgramReady && deepgramLive.getReadyState() === 1) {
+        deepgramLive.send(message);
       } else {
-        if (room.audioQueue.length < 500) {
-          room.audioQueue.push(message);
-        }
+        // Buffer briefly instead of dropping audio while Deepgram connects
+        audioQueue.push(message);
       }
     });
 
-    ws.on("close", () => {
-      console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
-      if (room.dgLive) {
-        room.dgLive.finish();
-        room.dgLive = null;
+    ws.on('close', () => {
+      if (deepgramLive) {
+        try { deepgramLive.finish(); } catch (e) { /* already closed */ }
       }
-      room.isDgReady = false;
-      cleanupRoom(roomId);
+
+      // Only clear the room's presenter slot if this socket is STILL the
+      // registered presenter. Without this check, a replaced (kicked)
+      // socket's delayed 'close' event can wipe out a newer presenter's
+      // active session for the same room - this was the root cause of
+      // sessions breaking when a second user connected.
+      if (room.presenterWs === ws) {
+        room.presenterWs = null;
+        room.presenterUserId = null;
+      }
+      removeUserRoom(user.id, roomId);
+
+      if (!room.presenterWs && room.viewers.size === 0) {
+        rooms.delete(roomId);
+      }
+
+      // Record usage. We re-read the current value rather than reusing the
+      // snapshot taken at connect time, because a Pro account can run
+      // several concurrent sessions (that's the whole point of
+      // allowed_rooms > 1) - reusing a stale value would let simultaneous
+      // sessions clobber each other's usage as they each close. This
+      // narrows the race but doesn't fully eliminate it; a Postgres
+      // increment function/RPC would be the bulletproof fix if you want
+      // one - happy to write that if it'd help.
+      const elapsedSeconds = Math.round((Date.now() - sessionStart) / 1000);
+      if (elapsedSeconds > 0) {
+        supabase
+          .from('users')
+          .select('streaming_seconds_used')
+          .eq('id', user.id)
+          .single()
+          .then(({ data: freshUser, error: readErr }) => {
+            if (readErr || !freshUser) {
+              console.error('Failed to read current usage before update:', readErr);
+              return null;
+            }
+            return supabase
+              .from('users')
+              .update({ streaming_seconds_used: (freshUser.streaming_seconds_used || 0) + elapsedSeconds })
+              .eq('id', user.id);
+          })
+          .then((res) => {
+            if (res?.error) console.error('Failed to update streaming_seconds_used:', res.error);
+          })
+          .catch((e) => console.error('Usage tracking failed:', e));
+      }
     });
-  }
 
-  // ROUTE B: Stage Video Overlay (OBS / vMix)
-  else if (pathname === "/ws/overlay") {
-    console.log(`[Overlay] OBS connected to room: ${roomId}`);
-    room.overlays.add(ws);
+  } else {
+    // Viewer / OBS Overlay / Mobile View
+    room.viewers.add(ws);
 
-    ws.on("close", () => {
-      room.overlays.delete(ws);
-      cleanupRoom(roomId);
-    });
-  }
-
-  // ROUTE C: Mobile Audience (QR Code Viewers)
-  else if (pathname.startsWith("/ws/attendee")) {
-    const viewerLang = urlObj.searchParams.get("lang") || "en";
-    console.log(`[Attendee] Mobile viewer connected to room: ${roomId} (Lang: ${viewerLang})`);
-    ws.language = viewerLang;
-
-    room.attendees.add(ws);
-
-    ws.on("message", (msg) => {
-      try {
-        const data = JSON.parse(msg);
-        if (data.type === "set_language") {
-          ws.language = data.lang;
-        }
-      } catch (e) {}
-    });
-
-    ws.on("close", () => {
-      room.attendees.delete(ws);
-      cleanupRoom(roomId);
+    ws.on('close', () => {
+      room.viewers.delete(ws);
+      if (!room.presenterWs && room.viewers.size === 0) {
+        rooms.delete(roomId);
+      }
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
