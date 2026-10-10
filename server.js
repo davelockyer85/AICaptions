@@ -37,9 +37,7 @@ function getOrCreateRoom(roomId) {
 }
 
 // --- Per-account concurrent-room tracking ------------------------------
-// userId -> Set<roomId> of rooms this account currently has a live
-// presenter in. This is what `allowed_rooms` (plan-tier concurrent stage
-// limit) is checked against.
+// userId -> Set<roomId> of rooms this account currently has a live presenter in.
 const activeRoomsByUser = new Map();
 
 function addUserRoom(userId, roomId) {
@@ -60,6 +58,64 @@ function safeSend(ws, payload) {
   }
 }
 
+// ==========================================
+// 1. STRIPE WEBHOOK ENDPOINT (Must be BEFORE express.json())
+// ==========================================
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error(`Webhook signature verification failed: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle successful checkout completion
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.client_reference_id || session.metadata?.userId;
+    const mode = session.mode; // 'payment' or 'subscription'
+
+    if (userId) {
+      // Determine values based on whether it's a one-time event pass or subscription
+      const isOneTime = mode === 'payment';
+      const planTier = isOneTime ? 'one_time' : 'subscriber';
+      
+      // Calculate expiration for one-time event pass (e.g., 30 days from now) or grant allowances
+      const expiresAt = isOneTime ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+      const maxStreamingSeconds = isOneTime ? 36000 : null; // e.g., 10 hours for one-time, null (unlimited) for subscribers
+      const allowedRooms = isOneTime ? 1 : 3; // Subscribers get more concurrent rooms if applicable
+
+      // Update the 'users' table in Supabase
+      const { error } = await supabase
+        .from('users')
+        .update({
+          plan_tier: planTier,
+          event_pass_expires_at: expiresAt,
+          max_streaming_seconds: maxStreamingSeconds,
+          allowed_rooms: allowedRooms,
+          stripe_customer_id: session.customer,
+          stripe_subscription_id: session.subscription || null,
+          updated_at: new Date()
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Error updating user plan in Supabase from webhook:', error.message);
+      } else {
+        console.log(`Successfully updated user ${userId} to tier: ${planTier} (mode: ${mode})`);
+      }
+    } else {
+      console.warn('Webhook received checkout.session.completed, but no userId found in metadata/client_reference_id.');
+    }
+  }
+
+  res.json({ received: true });
+});
+
+// Standard Middleware
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -94,6 +150,9 @@ app.post('/create-checkout-session', async (req, res) => {
       line_items: [{ price: priceId.trim(), quantity: 1 }],
       mode: sessionMode, // 'payment' or 'subscription'
       client_reference_id: userId || null,
+      metadata: {
+        userId: userId || ''
+      },
       success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
       cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
     });
@@ -109,9 +168,6 @@ app.post('/create-checkout-session', async (req, res) => {
 // WebSocket Handler
 wss.on('connection', async (ws, req) => {
   const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  // dashboard.html sends `room=`, not `roomId=` - accept both so a client
-  // using either name works instead of every session silently defaulting
-  // to 'main-stage'.
   const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
   const role = urlParams.get('role') || 'viewer';
   const token = urlParams.get('token');
@@ -131,8 +187,7 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    // Load the account's plan/usage record. This is the source of truth
-    // for whether this session is allowed to start at all.
+    // Load the account's plan/usage record from the 'users' table
     const { data: dbUser, error: dbError } = await supabase
       .from('users')
       .select('*')
@@ -145,8 +200,7 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    // Event Pass expiry - one-time plans only. Fails closed: a missing or
-    // unparsable expiry is treated as expired rather than as unlimited.
+    // Event Pass expiry - one-time plans only.
     if (dbUser.plan_tier === 'one_time') {
       const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
       if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
@@ -155,17 +209,14 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
-    // Streaming quota - applies to every plan. `max_streaming_seconds` of
-    // null/undefined means unlimited; 0 means no allowance at all.
+    // Streaming quota check
     const usedSeconds = dbUser.streaming_seconds_used || 0;
     if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
       ws.close(4006, 'Monthly streaming quota exhausted');
       return;
     }
 
-    // Concurrent-stage limit (allowed_rooms). Reconnecting to a room this
-    // account already owns doesn't count as a new room, so it never
-    // trips this check.
+    // Concurrent-stage limit (allowed_rooms)
     const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
     if (!userAlreadyOwnsThisRoom) {
       const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
@@ -176,10 +227,6 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
-    // Guard: if a DIFFERENT authenticated user already owns this room's
-    // active presenter slot, refuse the connection instead of silently
-    // kicking the legitimate presenter off. The same user reconnecting
-    // (page refresh, dropped connection) is still allowed to take over.
     const existingPresenter = room.presenterWs;
     if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
       if (room.presenterUserId && room.presenterUserId !== user.id) {
@@ -210,7 +257,6 @@ wss.on('connection', async (ws, req) => {
 
       deepgramLive.on(LiveTranscriptionEvents.Open, () => {
         deepgramReady = true;
-        // Flush any audio chunks that arrived before Deepgram finished connecting
         while (audioQueue.length > 0) {
           deepgramLive.send(audioQueue.shift());
         }
@@ -245,13 +291,12 @@ wss.on('connection', async (ws, req) => {
     }
 
     ws.on('message', (message) => {
-      if (typeof message === 'string') return; // control/text frames, not audio
+      if (typeof message === 'string') return;
       if (!deepgramLive) return;
 
       if (deepgramReady && deepgramLive.getReadyState() === 1) {
         deepgramLive.send(message);
       } else {
-        // Buffer briefly instead of dropping audio while Deepgram connects
         audioQueue.push(message);
       }
     });
@@ -261,11 +306,6 @@ wss.on('connection', async (ws, req) => {
         try { deepgramLive.finish(); } catch (e) { /* already closed */ }
       }
 
-      // Only clear the room's presenter slot if this socket is STILL the
-      // registered presenter. Without this check, a replaced (kicked)
-      // socket's delayed 'close' event can wipe out a newer presenter's
-      // active session for the same room - this was the root cause of
-      // sessions breaking when a second user connected.
       if (room.presenterWs === ws) {
         room.presenterWs = null;
         room.presenterUserId = null;
@@ -276,14 +316,6 @@ wss.on('connection', async (ws, req) => {
         rooms.delete(roomId);
       }
 
-      // Record usage. We re-read the current value rather than reusing the
-      // snapshot taken at connect time, because a Pro account can run
-      // several concurrent sessions (that's the whole point of
-      // allowed_rooms > 1) - reusing a stale value would let simultaneous
-      // sessions clobber each other's usage as they each close. This
-      // narrows the race but doesn't fully eliminate it; a Postgres
-      // increment function/RPC would be the bulletproof fix if you want
-      // one - happy to write that if it'd help.
       const elapsedSeconds = Math.round((Date.now() - sessionStart) / 1000);
       if (elapsedSeconds > 0) {
         supabase
@@ -309,7 +341,6 @@ wss.on('connection', async (ws, req) => {
     });
 
   } else {
-    // Viewer / OBS Overlay / Mobile View
     room.viewers.add(ws);
 
     ws.on('close', () => {
