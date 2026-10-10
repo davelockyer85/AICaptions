@@ -71,20 +71,28 @@ app.get('/health', (req, res) => {
 // Stripe Checkout Endpoint
 app.post('/create-checkout-session', async (req, res) => {
   try {
-    const { priceId, userId } = req.body;
+    const { priceId, userId, mode } = req.body;
     if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
 
+    // 1. Determine mode: prioritize mode sent from frontend, fallback to checking env vars
     const oneTimePrices = [
       process.env.EVENT_PASS_PRICE_ID,
       process.env.PRO_EVENT_PASS_PRICE_ID
     ].filter(Boolean);
 
-    const isOneTime = oneTimePrices.includes(priceId);
+    let sessionMode = mode;
+
+    if (!sessionMode) {
+      sessionMode = oneTimePrices.includes(priceId.trim()) ? 'payment' : 'subscription';
+    }
+
+    // 2. Debug log to verify what is being sent to Stripe
+    console.log(`Creating session for priceId: ${priceId} with mode: ${sessionMode}`);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: isOneTime ? 'payment' : 'subscription',
+      line_items: [{ price: priceId.trim(), quantity: 1 }],
+      mode: sessionMode, // 'payment' or 'subscription'
       client_reference_id: userId || null,
       success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
       cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
@@ -92,8 +100,9 @@ app.post('/create-checkout-session', async (req, res) => {
 
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Stripe Checkout Error:', error);
-    res.status(500).json({ error: error.message });
+    // Log error details clearly in server console
+    console.error('Stripe Checkout Error:', error.raw ? error.raw.message : error.message);
+    res.status(400).json({ error: error.message });
   }
 });
 
