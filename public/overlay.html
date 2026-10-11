@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Live OBS Overlay</title>
-
   <style>
     body {
       margin: 0;
@@ -22,7 +21,7 @@
       pointer-events: none;
     }
     .caption-text {
-      font-size: 2.2rem;
+      font-size: 32px;
       font-weight: 700;
       color: #ffffff;
       text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), -2px -2px 4px rgba(0, 0, 0, 0.9);
@@ -33,98 +32,76 @@
       max-width: 90vw;
       line-height: 1.3;
       word-wrap: break-word;
-      transition: opacity 0.15s ease-in-out;
+      transition: all 0.15s ease-in-out;
     }
-    .interim {
-      opacity: 0.85;
-      font-style: italic;
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
     }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .anim-bounce { animation: bounce 0.6s ease infinite; }
+    .anim-fade { animation: fadeIn 0.3s ease; }
   </style>
 </head>
 <body>
   <div id="caption-container">
-    <div id="captions" class="caption-text">Connecting to caption stream...</div>
+    <div id="captionBox" class="caption-text">Waiting for captions...</div>
   </div>
 
   <script>
-    // Read Query Parameters
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const roomId = urlParams.get('room') || 'main-stage';
 
-    // Set Backend Host
-    const SERVER_HOST = urlParams.get('server') || window.location.host;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl = `${wsProtocol}${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
 
-    const captionsDiv = document.getElementById('captions');
-    let socket = null;
-    let reconnectTimer = null;
+    const captionBox = document.getElementById('captionBox');
 
-    // Connect to WebSocket Backend (/ws/overlay)
-    function connect() {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+    function connectOverlayWebSocket() {
+      const ws = new WebSocket(wsUrl);
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${SERVER_HOST}/ws/overlay?room=${encodeURIComponent(roomId)}`;
-
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        console.log(`[Overlay] Connected to room: ${roomId} on /ws/overlay`);
-        captionsDiv.innerText = "Waiting for live captions...";
-        captionsDiv.classList.remove('interim');
-      };
-
-      socket.onmessage = (event) => {
+      ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
 
-          // 1. Handle Language Switch Event
-          if (data.type === "language_changed") {
-            console.log(`[Overlay] Target language updated to: ${data.lang}`);
-            return;
+          // 1. Handle incoming text captions
+          if (data.text) {
+            captionBox.textContent = data.text;
           }
 
-          // 2. Process Caption Payloads
-          processIncomingCaption(data);
-        } catch (err) {
-          console.error("[Overlay] Failed to parse WebSocket payload:", err);
+          // 2. Handle incoming style updates
+          const styles = data.styles || (data.type === 'styles_update' ? data.styles : null);
+          if (styles) {
+            captionBox.style.fontSize = styles.fontSize || '32px';
+            captionBox.style.fontFamily = styles.fontFamily || 'sans-serif';
+            captionBox.style.fontWeight = styles.fontWeight || 'normal';
+            captionBox.style.fontStyle = styles.fontStyle || 'normal';
+            captionBox.style.color = styles.textColor || '#ffffff';
+
+            // Handle animations
+            captionBox.className = 'caption-text';
+            if (styles.animation === 'bounce') {
+              captionBox.classList.add('anim-bounce');
+            } else if (styles.animation === 'fade') {
+              captionBox.classList.add('anim-fade');
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing overlay message:", e);
         }
       };
 
-      socket.onclose = () => {
-        console.warn("[Overlay] Disconnected. Reconnecting in 3 seconds...");
-        captionsDiv.innerText = "Reconnecting...";
-        captionsDiv.classList.remove('interim');
-        reconnectTimer = setTimeout(connect, 3000);
-      };
-
-      socket.onerror = (err) => {
-        console.error("[Overlay] WebSocket Error:", err);
+      ws.onclose = () => {
+        setTimeout(connectOverlayWebSocket, 3000);
       };
     }
 
-    // Render Caption Payloads
-    function processIncomingCaption(data) {
-      if (!data) return;
-
-      const displayText = data.text || data.original || '';
-
-      if (displayText.trim() !== '') {
-        captionsDiv.innerText = displayText;
-
-        if (data.isFinal === false) {
-          captionsDiv.classList.add('interim');
-        } else {
-          captionsDiv.classList.remove('interim');
-        }
-      }
-    }
-
-    // Start Connection
-    connect();
-
-    window.addEventListener('beforeunload', () => {
-      if (socket) socket.close();
-    });
+    connectOverlayWebSocket();
   </script>
 </body>
 </html>
