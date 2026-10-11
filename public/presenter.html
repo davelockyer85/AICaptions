@@ -226,7 +226,7 @@
     let localCountdownTimer = null;
     let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600; // Default fallback (1 hour)
+    let maxLimit = 3600;
     let currentRemainingSeconds = 0;
     let targetOutputLang = 'en';
 
@@ -277,11 +277,7 @@
             applyTimeLimits(used, maxSecs);
           }
         })
-        .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR') {
-            console.warn("Realtime subscription error:", err);
-          }
-        });
+        .subscribe();
     }
 
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
@@ -295,7 +291,7 @@
           status.style.color = "#ef4444";
           alert(`Stream stopped: You have reached your maximum streaming limit.`);
         } else {
-          status.innerText = `Status: Time Limit Exceeded (${Math.floor(usedSecs/60)}/${Math.floor(allowedMaxSecs/60)} mins)`;
+          status.innerText = `Status: Time Limit Exceeded`;
           status.style.color = "#ef4444";
           startBtn.disabled = true;
         }
@@ -307,16 +303,7 @@
       if (!timerDisplay) return;
       const mins = Math.floor(totalSeconds / 60);
       const secs = totalSeconds % 60;
-      const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-      timerDisplay.innerText = `Remaining Time: ${formatted}`;
-
-      if (totalSeconds <= 60) {
-        timerDisplay.style.color = '#ef4444';
-      } else if (totalSeconds <= 300) {
-        timerDisplay.style.color = '#f59e0b';
-      } else {
-        timerDisplay.style.color = '#38bdf8';
-      }
+      timerDisplay.innerText = `Remaining Time: ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
 
     function startLocalCountdown() {
@@ -352,27 +339,20 @@
     async function pushUsageToSupabase(userId, secondsToAdd) {
       if (!userId) return;
       try {
-        const { data: user, error: userErr } = await supabaseClient
+        const { data: user } = await supabaseClient
           .from('users')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .maybeSingle();
 
-        if (userErr || !user) return;
-
-        const currentUsed = user.streaming_seconds_used || 0;
+        if (!user) return;
+        const newTotal = (user.streaming_seconds_used || 0) + secondsToAdd;
         const allowedMax = user.max_streaming_seconds ?? maxLimit;
-        const newTotal = currentUsed + secondsToAdd;
 
         if (newTotal >= allowedMax) {
-          await supabaseClient
-            .from('users')
-            .update({ streaming_seconds_used: allowedMax })
-            .eq('user_id', userId);
           cleanup();
           status.innerText = "Status: Terminated — Maximum Time Limit Reached";
           status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit.`);
           return;
         }
 
@@ -396,23 +376,14 @@
       return mediaRecorder && mediaRecorder.state !== 'inactive';
     }
 
-    // Supported Spoken Languages (BCP-47 Standard)
     const SUPPORTED_LANGUAGES = [
       { code: 'en-US', name: 'English (United States)' },
       { code: 'en-AU', name: 'English (Australia)' },
       { code: 'en-GB', name: 'English (United Kingdom)' },
       { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'es-419', name: 'Spanish (Latin America)' },
       { code: 'fr-FR', name: 'French (France)' },
       { code: 'de-DE', name: 'German' },
-      { code: 'zh-CN', name: 'Chinese (Simplified)' },
-      { code: 'zh-TW', name: 'Chinese (Traditional)' },
-      { code: 'ar-SA', name: 'Arabic' },
-      { code: 'hi-IN', name: 'Hindi' },
-      { code: 'ja-JP', name: 'Japanese' },
-      { code: 'pt-BR', name: 'Portuguese (Brazil)' },
-      { code: 'ru-RU', name: 'Russian' },
-      { code: 'it-IT', name: 'Italian' }
+      { code: 'zh-CN', name: 'Chinese (Simplified)' }
     ];
 
     function initLanguageSelector(defaultCode = 'en-US') {
@@ -426,12 +397,8 @@
         if (lang.code === defaultCode) opt.selected = true;
         selectElem.appendChild(opt);
       });
-      selectElem.addEventListener('change', (e) => {
-        localStorage.setItem('presenter_lang', e.target.value);
-      });
     }
 
-    // Output Language Tabs Control
     function initOutputLangTabs() {
       const tabs = document.querySelectorAll('#outputLangTabs .lang-tab');
       tabs.forEach((tab) => {
@@ -446,7 +413,6 @@
       });
     }
 
-    // Push style updates to server/overlay
     function updateStyles() {
       const styles = {
         fontSize: document.getElementById('fontSizeInput').value + 'px',
@@ -458,4 +424,119 @@
       };
 
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type:
+        ws.send(JSON.stringify({ type: 'update_styles', styles }));
+      }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+      maxLimit = parsedMaxLimit;
+    }
+
+    const urlToken = urlParams.get('token');
+    const localToken = localStorage.getItem('supabase.auth.token') ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token : null;
+    const token = urlToken || localToken || '';
+
+    document.getElementById('roomDisplay').innerText = room;
+    initLanguageSelector('en-US');
+    initOutputLangTabs();
+    initPresenterAuth();
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+
+    let ws = null;
+    let mediaRecorder = null;
+    let audioStream = null;
+
+    startBtn.onclick = async () => {
+      try {
+        status.innerText = "Status: Requesting Microphone Access...";
+        status.style.color = "#f59e0b";
+
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+
+        const spokenLang = document.getElementById('languageSelect')?.value || 'en-US';
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        let wsUrl = `${protocol}//${location.host}/ws/ingest?room=${encodeURIComponent(room)}&spokenLang=${encodeURIComponent(spokenLang)}`;
+        if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          status.innerText = "Status: Live & Streaming Stage Audio";
+          status.style.color = "#10b981";
+
+          ws.send(JSON.stringify({ type: "set_language", lang: targetOutputLang }));
+          updateStyles();
+
+          let mimeType = 'audio/webm;codecs=opus';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+          }
+
+          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(e.data);
+            }
+          };
+          mediaRecorder.start(250);
+
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          startLocalCountdown();
+
+          if (currentUser) {
+            startUsageSyncing(currentUser.id);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.error("WebSocket Error:", err);
+          status.innerText = "Status: Connection Error";
+          status.style.color = "#ef4444";
+        };
+
+        ws.onclose = (e) => {
+          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
+          status.style.color = "#ef4444";
+          cleanup();
+        };
+
+      } catch (err) {
+        console.error("Microphone Access Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+      }
+    };
+
+    stopBtn.onclick = () => {
+      cleanup();
+      status.innerText = "Status: Stopped";
+      status.style.color = "#9ca3af";
+    };
+
+    function cleanup() {
+      stopUsageSyncing();
+      stopLocalCountdown();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+  </script>
+</body>
+</html>
