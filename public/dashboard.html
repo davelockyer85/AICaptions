@@ -395,7 +395,7 @@
       const { data: profile, error } = await supabaseClient
         .from('users')
         .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms')
-        .eq('user_id', currentUser.id)
+        .eq('id', currentUser.id) // FIXED: changed from user_id to id
         .single();
 
       if (error) throw error;
@@ -470,7 +470,7 @@
           event: 'UPDATE',
           schema: 'public',
           table: 'users',
-          filter: `user_id=eq.${currentUser.id}`
+          filter: `id=eq.${currentUser.id}` // FIXED: changed from user_id to id
         },
         (payload) => {
           if (payload.new) {
@@ -530,8 +530,8 @@
         { 
           room_id: roomId, 
           name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0
+          user_id: currentUser.id
+          // FIXED: removed streaming_seconds_used: 0 as it doesn't belong in rooms table
         }
       ]);
 
