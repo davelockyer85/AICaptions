@@ -4,10 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Presenter Audio Ingest - AICaptions</title>
-
   <!-- Supabase JS Client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -18,7 +16,7 @@
       margin: 0;
     }
     .card {
-      max-width: 520px;
+      max-width: 600px;
       margin: 2rem auto;
       background: #1f2937;
       padding: 2rem;
@@ -26,8 +24,14 @@
       border: 1px solid #374151;
       box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
     }
-    h1 { margin-top: 0; color: #60a5fa; font-size: 1.75rem; }
-    p { color: #9ca3af; }
+    h1 {
+      margin-top: 0;
+      color: #60a5fa;
+      font-size: 1.75rem;
+    }
+    p {
+      color: #9ca3af;
+    }
     .room-badge {
       display: inline-block;
       background: #374151;
@@ -61,7 +65,7 @@
       margin-bottom: 0.5rem;
       font-weight: 600;
     }
-    select {
+    select, input[type="range"] {
       width: 100%;
       padding: 0.6rem 0.8rem;
       background-color: #111827;
@@ -157,6 +161,51 @@
       </div>
     </div>
 
+    <!-- Overlay Style Controls -->
+    <div class="setting-group" style="background: #111827; padding: 1rem; border-radius: 8px; border: 1px solid #374151;">
+      <label style="color: #60a5fa; margin-bottom: 0.75rem;">Overlay Style Controls</label>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+        <div>
+          <label style="font-size: 0.75rem;">Font Size (<span id="fontSizeVal">32</span>px)</label>
+          <input type="range" id="fontSizeInput" min="16" max="96" value="32" oninput="document.getElementById('fontSizeVal').innerText = this.value" onchange="updateStyles()">
+        </div>
+        <div>
+          <label style="font-size: 0.75rem;">Font Family</label>
+          <select id="fontFamilyInput" onchange="updateStyles()">
+            <option value="sans-serif">Sans-Serif</option>
+            <option value="serif">Serif</option>
+            <option value="monospace">Monospace</option>
+            <option value="'Bungee', cursive">Bungee</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+        <div>
+          <label style="font-size: 0.75rem;">Animation</label>
+          <select id="animationInput" onchange="updateStyles()">
+            <option value="none">None</option>
+            <option value="bounce">Bounce</option>
+            <option value="fade">Fade In</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem;">Text Color</label>
+          <input type="color" id="textColorInput" value="#ffffff" onchange="updateStyles()" style="width: 100%; height: 38px; background: #111827; border: 1px solid #374151; border-radius: 6px; cursor: pointer; padding: 0;">
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.5rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: #f3f4f6;">
+          <input type="checkbox" id="boldInput" onchange="updateStyles()"> Bold
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: #f3f4f6;">
+          <input type="checkbox" id="italicInput" onchange="updateStyles()"> Italic
+        </label>
+      </div>
+    </div>
+
     <div class="btn-group">
       <button id="startBtn" class="action-btn">Start Streaming</button>
       <button id="stopBtn" class="action-btn" disabled>Stop</button>
@@ -196,7 +245,6 @@
 
     async function fetchUserTimeAndSubscribe(userId) {
       if (!userId) return;
-
       try {
         const { data: user, error } = await supabaseClient
           .from('users')
@@ -207,7 +255,6 @@
         if (!error && user) {
           applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
         }
-
         subscribeToRealtimeUsage(userId);
       } catch (e) {
         console.warn("Initial user state fetch error:", e.message);
@@ -216,25 +263,20 @@
 
     function subscribeToRealtimeUsage(userId) {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-
       realtimeChannel = supabaseClient
         .channel(`presenter_time_${userId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'users',
-            filter: `user_id=eq.${userId}`
-          },
-          (payload) => {
-            if (payload.new) {
-              const used = payload.new.streaming_seconds_used || 0;
-              const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
-              applyTimeLimits(used, maxSecs);
-            }
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `user_id=eq.${userId}`
+        }, (payload) => {
+          if (payload.new) {
+            const used = payload.new.streaming_seconds_used || 0;
+            const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
+            applyTimeLimits(used, maxSecs);
           }
-        )
+        })
         .subscribe((status, err) => {
           if (status === 'CHANNEL_ERROR') {
             console.warn("Realtime subscription error:", err);
@@ -263,11 +305,9 @@
     function updateTimerDisplay(totalSeconds) {
       const timerDisplay = document.getElementById('timerDisplay');
       if (!timerDisplay) return;
-
       const mins = Math.floor(totalSeconds / 60);
       const secs = totalSeconds % 60;
       const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-
       timerDisplay.innerText = `Remaining Time: ${formatted}`;
 
       if (totalSeconds <= 60) {
@@ -285,7 +325,6 @@
         if (currentRemainingSeconds > 0) {
           currentRemainingSeconds--;
           updateTimerDisplay(currentRemainingSeconds);
-
           if (currentRemainingSeconds <= 0) {
             cleanup();
             status.innerText = "Status: Terminated — Maximum Time Limit Reached";
@@ -312,7 +351,6 @@
 
     async function pushUsageToSupabase(userId, secondsToAdd) {
       if (!userId) return;
-
       try {
         const { data: user, error: userErr } = await supabaseClient
           .from('users')
@@ -331,7 +369,6 @@
             .from('users')
             .update({ streaming_seconds_used: allowedMax })
             .eq('user_id', userId);
-
           cleanup();
           status.innerText = "Status: Terminated — Maximum Time Limit Reached";
           status.style.color = "#ef4444";
@@ -343,7 +380,6 @@
           .from('users')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
-
       } catch (err) {
         console.warn("Usage sync error:", err.message);
       }
@@ -382,7 +418,6 @@
     function initLanguageSelector(defaultCode = 'en-US') {
       const selectElem = document.getElementById('languageSelect');
       if (!selectElem) return;
-
       selectElem.innerHTML = '';
       SUPPORTED_LANGUAGES.forEach((lang) => {
         const opt = document.createElement('option');
@@ -391,7 +426,6 @@
         if (lang.code === defaultCode) opt.selected = true;
         selectElem.appendChild(opt);
       });
-
       selectElem.addEventListener('change', (e) => {
         localStorage.setItem('presenter_lang', e.target.value);
       });
@@ -405,8 +439,6 @@
           tabs.forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           targetOutputLang = tab.dataset.lang;
-
-          // Notify server of target overlay language switch
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "set_language", lang: targetOutputLang }));
           }
@@ -414,139 +446,16 @@
       });
     }
 
-    // Read room & maxLimit parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
-    }
-    
-    const urlToken = urlParams.get('token');
-    const localToken = localStorage.getItem('supabase.auth.token') 
-      ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token 
-      : null;
-    const token = urlToken || localToken || '';
+    // Push style updates to server/overlay
+    function updateStyles() {
+      const styles = {
+        fontSize: document.getElementById('fontSizeInput').value + 'px',
+        fontFamily: document.getElementById('fontFamilyInput').value,
+        fontWeight: document.getElementById('boldInput').checked ? 'bold' : 'normal',
+        fontStyle: document.getElementById('italicInput').checked ? 'italic' : 'normal',
+        animation: document.getElementById('animationInput').value,
+        textColor: document.getElementById('textColorInput').value
+      };
 
-    document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector(localStorage.getItem('presenter_lang') || 'en-US');
-    initOutputLangTabs();
-    initPresenterAuth();
-
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
-
-    startBtn.onclick = async () => {
-      if (currentRemainingSeconds <= 0) {
-        alert("Cannot start streaming: Your maximum allowed streaming time has been reached.");
-        return;
-      }
-
-      try {
-        status.innerText = "Status: Requesting Microphone Access...";
-        status.style.color = "#f59e0b";
-
-        audioStream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
-        });
-
-        const spokenLang = document.getElementById('languageSelect')?.value || 'en-US';
-
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        // Connect specifically to /ws/ingest endpoint with room and spokenLang
-        let wsUrl = `${protocol}//${location.host}/ws/ingest?room=${encodeURIComponent(room)}&spokenLang=${encodeURIComponent(spokenLang)}`;
-        if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          status.innerText = "Status: Live & Streaming Stage Audio";
-          status.style.color = "#10b981";
-
-          // Send initial output language preference
-          ws.send(JSON.stringify({ type: "set_language", lang: targetOutputLang }));
-
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-          }
-
-          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
-            }
-          };
-
-          mediaRecorder.start(250);
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-
-          startLocalCountdown();
-          if (currentUser) {
-            startUsageSyncing(currentUser.id);
-          }
-        };
-
-        ws.onerror = (err) => {
-          console.error("WebSocket Error:", err);
-          status.innerText = "Status: Connection Error";
-          status.style.color = "#ef4444";
-        };
-
-        ws.onclose = (e) => {
-          if (status.innerText !== "Status: Terminated — Maximum Time Limit Reached") {
-            status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-            status.style.color = "#ef4444";
-          }
-          cleanup();
-        };
-
-      } catch (err) {
-        console.error("Microphone Access Error:", err);
-        status.innerText = "Status: Microphone Access Denied";
-        status.style.color = "#ef4444";
-      }
-    };
-
-    stopBtn.onclick = () => {
-      cleanup();
-      status.innerText = "Status: Stopped";
-      status.style.color = "#9ca3af";
-    };
-
-    function cleanup() {
-      stopUsageSyncing();
-      stopLocalCountdown();
-
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      startBtn.disabled = currentRemainingSeconds <= 0;
-      stopBtn.disabled = true;
-    }
-
-    window.addEventListener('beforeunload', () => {
-      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-      cleanup();
-    });
-  </script>
-</body>
-</html>
+        ws.send(JSON.stringify({ type:
