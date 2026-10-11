@@ -5,27 +5,31 @@ import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import Stripe from "stripe";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.static(path.join(__dirname, "public")));
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
+// --- Client & API Initialization ---------------------------------------
 const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
 if (!DEEPGRAM_KEY) {
   console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
 }
 const deepgram = createClient(DEEPGRAM_KEY);
 
-// Translation Helper (Stub / Replace with your translation provider like Google Translate, OpenAI, or DeepL)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const supabase = createSupabaseClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+);
+
+// --- Translation Helper ------------------------------------------------
 async function translateText(text, targetLang) {
   if (!targetLang || targetLang === "en") return text;
   try {
@@ -36,7 +40,7 @@ async function translateText(text, targetLang) {
   }
 }
 
-// Multi-Tenant Rooms Store
+// --- Multi-Tenant Rooms Store ------------------------------------------
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
@@ -62,21 +66,128 @@ function cleanupRoom(roomId) {
   }
 }
 
+// ==========================================
+// 1. STRIPE WEBHOOK ENDPOINT
+// (Must be defined BEFORE app.use(express.json()))
+// ==========================================
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error(`Webhook signature verification failed: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle successful checkout completion
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.client_reference_id || session.metadata?.userId;
+    const mode = session.mode; // 'payment' (one-time) or 'subscription'
+
+    if (userId) {
+      const isOneTime = mode === 'payment';
+      const planTier = isOneTime ? 'one_time' : 'subscriber';
+      
+      const expiresAt = isOneTime ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+      const maxStreamingSeconds = isOneTime ? 36000 : null; // e.g. 10 hours for pass
+      const allowedRooms = isOneTime ? 1 : 3;
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          plan_tier: planTier,
+          event_pass_expires_at: expiresAt,
+          max_streaming_seconds: maxStreamingSeconds,
+          allowed_rooms: allowedRooms,
+          stripe_customer_id: session.customer,
+          stripe_subscription_id: session.subscription || null,
+          updated_at: new Date()
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Error updating user plan in Supabase from webhook:', error.message);
+      } else {
+        console.log(`Successfully updated user ${userId} to tier: ${planTier} (mode: ${mode})`);
+      }
+    } else {
+      console.warn('Webhook received checkout.session.completed, but no userId found.');
+    }
+  }
+
+  res.json({ received: true });
+});
+
+// --- Standard Express Middleware & Static Files ------------------------
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// ==========================================
+// 2. STRIPE CHECKOUT SESSION ENDPOINT
+// ==========================================
+app.post('/create-checkout-session', async (req, res) => {
+  try {
+    const { priceId, userId, mode } = req.body;
+    if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
+
+    // Define one-time event pass price IDs in your .env to automatically select 'payment' mode
+    const oneTimePrices = [
+      process.env.EVENT_PASS_PRICE_ID,
+      process.env.PRO_EVENT_PASS_PRICE_ID
+    ].filter(Boolean);
+
+    let sessionMode = mode;
+    if (!sessionMode) {
+      sessionMode = oneTimePrices.includes(priceId.trim()) ? 'payment' : 'subscription';
+    }
+
+    console.log(`Creating Stripe checkout session for priceId: ${priceId} with mode: ${sessionMode}`);
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId.trim(), quantity: 1 }],
+      mode: sessionMode, // 'payment' for one-time passes or 'subscription' for recurring
+      client_reference_id: userId || null,
+      metadata: {
+        userId: userId || ''
+      },
+      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
+      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe Checkout Error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// 3. WEBSOCKET HANDLERS (Captions & Rooms)
+// ==========================================
 wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const pathname = urlObj.pathname;
   const roomId = urlObj.searchParams.get("room") || "default";
-
   const room = getOrCreateRoom(roomId);
 
   // ROUTE A: Stage Microphones / Audio Ingest
   if (pathname === "/ws/ingest") {
     console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
-
     room.audioQueue = [];
     room.isDgReady = false;
 
-    // Create room-specific Deepgram STT stream
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
       language: "en-US",
@@ -88,7 +199,6 @@ wss.on("connection", (ws, req) => {
     room.dgLive.on(LiveTranscriptionEvents.Open, () => {
       console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
       room.isDgReady = true;
-
       while (room.audioQueue.length > 0) {
         const chunk = room.audioQueue.shift();
         if (room.dgLive && room.dgLive.getReadyState() === 1) {
@@ -107,8 +217,6 @@ wss.on("connection", (ws, req) => {
 
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
-
-        // Translate if room target language is not English
         if (room.targetOverlayLang !== "en" && isFinal) {
           overlayText = await translateText(transcript, room.targetOverlayLang);
         }
@@ -133,14 +241,12 @@ wss.on("connection", (ws, req) => {
             if (attendee.readyState === WebSocket.OPEN) {
               const lang = attendee.language || "en";
               const translated = lang === "en" ? transcript : await translateText(transcript, lang);
-              attendee.send(
-                JSON.stringify({
-                  text: translated,
-                  original: transcript,
-                  isFinal: true,
-                  lang: lang
-                })
-              );
+              attendee.send(JSON.stringify({
+                text: translated,
+                original: transcript,
+                isFinal: true,
+                lang: lang
+              }));
             }
           }
         }
@@ -148,7 +254,6 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("message", (message, isBinary) => {
-      // Handle JSON control messages
       if (!isBinary) {
         try {
           const controlData = JSON.parse(message.toString());
@@ -160,7 +265,6 @@ wss.on("connection", (ws, req) => {
         return;
       }
 
-      // Handle binary microphone audio stream
       if (room.isDgReady && room.dgLive && room.dgLive.getReadyState() === 1) {
         room.dgLive.send(message);
       } else {
@@ -196,7 +300,6 @@ wss.on("connection", (ws, req) => {
   else if (pathname.startsWith("/ws/attendee")) {
     console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
     ws.language = urlObj.searchParams.get("lang") || "en";
-
     room.attendees.add(ws);
 
     ws.on("message", (msg) => {
@@ -216,6 +319,6 @@ wss.on("connection", (ws, req) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
