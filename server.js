@@ -41,7 +41,6 @@ async function translateText(text, targetLang) {
 }
 
 // --- Room State & Tracking ---------------------------------------------
-// roomId -> { presenterWs, presenterUserId, viewers: Set<WebSocket>, targetOverlayLang, dgLive, audioQueue, isDgReady }
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
@@ -106,7 +105,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const userId = session.client_reference_id || session.metadata?.userId;
-    const mode = session.mode; // 'payment' or 'subscription'
+    const mode = session.mode;
 
     if (userId) {
       const isOneTime = mode === 'payment';
@@ -216,7 +215,6 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    // Load account record from 'users' table
     const { data: dbUser, error: dbError } = await supabase
       .from('users')
       .select('*')
@@ -229,7 +227,6 @@ wss.on('connection', async (ws, req) => {
       return;
     }
 
-    // Event Pass expiry check
     if (dbUser.plan_tier === 'one_time') {
       const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
       if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
@@ -238,14 +235,12 @@ wss.on('connection', async (ws, req) => {
       }
     }
 
-    // Streaming quota check
     const usedSeconds = dbUser.streaming_seconds_used || 0;
     if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
       ws.close(4006, 'Monthly streaming quota exhausted');
       return;
     }
 
-    // Concurrent-stage limit check
     const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
     if (!userAlreadyOwnsThisRoom) {
       const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
@@ -365,7 +360,6 @@ wss.on('connection', async (ws, req) => {
     });
 
   } else {
-    // Viewer / Overlay role
     room.viewers.add(ws);
 
     ws.on('close', () => {
