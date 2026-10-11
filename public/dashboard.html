@@ -1,379 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - AICaptions</title>
-
-  <!-- Supabase JS SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- QRCode.js CDN for audience QR code generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
-      min-height: 100vh;
-      padding-bottom: 60px;
-    }
-
-    /* Top Navigation Header */
-    header {
-      background-color: #1e293b;
-      border-bottom: 1px solid #334155;
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    /* Header Navigation Links */
-.nav-links {
-  display: flex;
-  list-style: none;
-  gap: 24px;
-  align-items: center;
-}
-
-.nav-links a {
-  color: #94a3b8;
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition: color 0.2s ease-in-out;
-}
-
-.nav-links a:hover {
-  color: #f8fafc;
-}
-
-/* Styled Pricing Button Link */
-.nav-links .nav-pricing-btn {
-  color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  padding: 6px 14px;
-  border-radius: 6px;
-  transition: all 0.2s ease-in-out;
-}
-
-.nav-links .nav-pricing-btn:hover {
-  background-color: #3b82f6;
-  color: #ffffff;
-}
-
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #3b82f6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .user-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .user-email {
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .btn-secondary {
-      background-color: #334155;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      transition: background 0.2s;
-    }
-
-    .btn-secondary:hover { background-color: #475569; }
-
-    /* Main Container */
-    .container {
-      max-width: 1000px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
-
-    /* Status Bar Container */
-    .status-bar {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 28px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 24px;
-      align-items: center;
-    }
-
-    .status-item {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .status-label {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-    }
-
-    .status-value {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-
-    /* Progress Bar Components */
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #06b6d4);
-      width: 0%;
-      transition: width 0.4s ease;
-    }
-
-    /* Events Section */
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
-
-    .btn-primary {
-      background-color: #3b82f6;
-      color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s, opacity 0.2s;
-    }
-
-    .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
-    
-    .btn-primary:disabled {
-      background-color: #475569;
-      color: #94a3b8;
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-
-    .event-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #334155;
-    }
-
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
-
-    .links-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-    }
-
-    .link-box {
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-
-    .link-box label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .link-action {
-      display: flex;
-      gap: 8px;
-    }
-
-    .link-action input {
-      flex: 1;
-      background: none;
-      border: none;
-      color: #cbd5e1;
-      font-size: 0.85rem;
-      outline: none;
-      font-family: monospace;
-    }
-
-    .btn-copy {
-      background-color: #334155;
-      color: #3b82f6;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
-    /* Modal for Event Creation */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal-card {
-      background-color: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 28px;
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .modal-card h3 { margin-bottom: 16px; }
-
-    .modal-card input {
-      width: 100%;
-      padding: 10px 14px;
-      background-color: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #f8fafc;
-      font-size: 0.95rem;
-      margin-bottom: 20px;
-      outline: none;
-    }
-
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px;
-      background-color: #1e293b;
-      border: 1px dashed #334155;
-      border-radius: 12px;
-      color: #94a3b8;
-    }
-  </style>
-</head>
-<body>
-
-  <header>
-    <div class="logo">🎙️ AICaptions</div>
-    <div class="user-controls">
-      <span class="user-email" id="userEmail">Loading...</span>
-      <button class="btn-secondary" id="logoutBtn">Sign Out</button>
-    </div>
-  </header>
-
-  <div class="container">
-    
-    <!-- Status & Usage Bar -->
-    <div class="status-bar" id="statusBar">
-      <div class="status-item">
-        <span class="status-label">Current Plan</span>
-        <span class="status-value" id="statusPlan">Loading...</span>
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">Remaining Time</span>
-        <span class="status-value" id="statusMins">-- mins</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="minsProgress" style="width: 0%;"></div>
-        </div>
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">Room Allocation</span>
-        <span class="status-value" id="statusRooms">0 / 0 Rooms</span>
-        <div class="progress-track">
-          <div class="progress-fill" id="roomsProgress" style="width: 0%;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Events Management Header -->
-    <div class="section-header">
-      <h3>Active Event Rooms</h3>
-      <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
-    </div>
-
-    <!-- Events List Container -->
-    <div id="eventsContainer">
-      <!-- Event cards will be dynamically injected here -->
-    </div>
-
-  </div>
-
-  <!-- Create Event Modal -->
-  <div class="modal-overlay" id="eventModal">
-    <div class="modal-card">
-      <h3>Create Event Room</h3>
-      <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px;">Event Name</label>
-      <input type="text" id="eventNameInput" placeholder="e.g. Keynote 2026" autofocus>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="closeModalBtn">Cancel</button>
-        <button class="btn-primary" id="createEventBtn">Create</button>
-      </div>
-    </div>
-  </div>
-
- <script>
+<script>
   // 1. Supabase Initialization
   const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
@@ -422,7 +47,7 @@
     subscribeToLiveUserUpdates();
   }
 
-  // 3. Load Subscription & Account Details from Supabase
+  // 3. Load Subscription & Account Details from Supabase (Fixed to use 'id')
   async function loadUserProfile() {
     if (!currentUser) return;
 
@@ -430,7 +55,7 @@
       const { data: profile, error } = await supabaseClient
         .from('users')
         .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms')
-        .eq('user_id', currentUser.id)
+        .eq('id', currentUser.id) // 👈 CORRECTION: changed from user_id to id
         .single();
 
       if (error) throw error;
@@ -489,7 +114,7 @@
     }
   }
 
-  // 4. Realtime Subscription for Live Usage Syncing
+  // 4. Realtime Subscription for Live Usage Syncing (Fixed filter to use 'id')
   function subscribeToLiveUserUpdates() {
     if (!currentUser) return;
 
@@ -505,7 +130,7 @@
           event: 'UPDATE',
           schema: 'public',
           table: 'users',
-          filter: `user_id=eq.${currentUser.id}`
+          filter: `id=eq.${currentUser.id}` // 👈 CORRECTION: changed from user_id to id
         },
         (payload) => {
           if (payload.new) {
@@ -565,8 +190,7 @@
         { 
           room_id: roomId, 
           name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0
+          user_id: currentUser.id
         }
       ]);
 
@@ -722,5 +346,3 @@
   // Execute Init
   checkUserSession();
 </script>
-</body>
-</html>
