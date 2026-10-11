@@ -52,7 +52,15 @@ function getOrCreateRoom(roomId) {
       attendees: new Set(),
       dgLive: null,
       audioQueue: [],
-      isDgReady: false
+      isDgReady: false,
+      overlayStyles: {
+        fontSize: '32px',
+        fontFamily: 'sans-serif',
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        animation: 'none',
+        textColor: '#ffffff'
+      }
     });
   }
   return rooms.get(roomId);
@@ -141,7 +149,6 @@ app.post('/create-checkout-session', async (req, res) => {
     const { priceId, userId, mode } = req.body;
     if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
 
-    // Define one-time event pass price IDs in your .env to automatically select 'payment' mode
     const oneTimePrices = [
       process.env.EVENT_PASS_PRICE_ID,
       process.env.PRO_EVENT_PASS_PRICE_ID
@@ -157,7 +164,7 @@ app.post('/create-checkout-session', async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId.trim(), quantity: 1 }],
-      mode: sessionMode, // 'payment' for one-time passes or 'subscription' for recurring
+      mode: sessionMode,
       client_reference_id: userId || null,
       metadata: {
         userId: userId || ''
@@ -174,7 +181,7 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 // ==========================================
-// 3. WEBSOCKET HANDLERS (Captions & Rooms)
+// 3. WEBSOCKET HANDLERS (Captions, Rooms & Styles)
 // ==========================================
 wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
@@ -182,7 +189,7 @@ wss.on("connection", (ws, req) => {
   const roomId = urlObj.searchParams.get("room") || "default";
   const room = getOrCreateRoom(roomId);
 
-  // ROUTE A: Stage Microphones / Audio Ingest
+  // ROUTE A: Stage Microphones / Audio Ingest & Style Controls
   if (pathname === "/ws/ingest") {
     console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
     room.audioQueue = [];
@@ -225,7 +232,8 @@ wss.on("connection", (ws, req) => {
           text: overlayText,
           original: transcript,
           isFinal,
-          lang: room.targetOverlayLang
+          lang: room.targetOverlayLang,
+          styles: room.overlayStyles
         });
 
         // Broadcast ONLY to overlays in THIS room
@@ -260,6 +268,17 @@ wss.on("connection", (ws, req) => {
           if (controlData.type === "set_language") {
             room.targetOverlayLang = controlData.lang;
             console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          } else if (controlData.type === "update_styles") {
+            room.overlayStyles = controlData.styles;
+            console.log(`[Room ${roomId}] Updated overlay styles:`, room.overlayStyles);
+            
+            // Broadcast style update to all overlays in this room
+            const stylePayload = JSON.stringify({ type: 'styles_update', styles: room.overlayStyles });
+            room.overlays.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(stylePayload);
+              }
+            });
           }
         } catch (e) {}
         return;
@@ -289,6 +308,11 @@ wss.on("connection", (ws, req) => {
   else if (pathname === "/ws/overlay") {
     console.log(`[Overlay] OBS connected to room: ${roomId}`);
     room.overlays.add(ws);
+
+    // Send current styles immediately upon connection so overlay syncs right away
+    if (room.overlayStyles) {
+      ws.send(JSON.stringify({ type: 'styles_update', styles: room.overlayStyles }));
+    }
 
     ws.on("close", () => {
       room.overlays.delete(ws);
