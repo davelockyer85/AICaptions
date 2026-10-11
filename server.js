@@ -5,31 +5,27 @@ import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import Stripe from "stripe";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-// --- Environment & Client Initialization -------------------------------
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
 if (!DEEPGRAM_KEY) {
   console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
 }
 const deepgram = createClient(DEEPGRAM_KEY);
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const supabase = createSupabaseClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-);
-
-// --- Translation Helper ------------------------------------------------
+// Translation Helper (Stub / Replace with your translation provider like Google Translate, OpenAI, or DeepL)
 async function translateText(text, targetLang) {
   if (!targetLang || targetLang === "en") return text;
   try {
@@ -40,17 +36,16 @@ async function translateText(text, targetLang) {
   }
 }
 
-// --- Room State & Tracking ---------------------------------------------
+// Multi-Tenant Rooms Store
 const rooms = new Map();
 
 function getOrCreateRoom(roomId) {
   if (!rooms.has(roomId)) {
     console.log(`[Room Created] Initializing room: ${roomId}`);
     rooms.set(roomId, {
-      presenterWs: null,
-      presenterUserId: null,
-      viewers: new Set(),
       targetOverlayLang: "en",
+      overlays: new Set(),
+      attendees: new Set(),
       dgLive: null,
       audioQueue: [],
       isDgReady: false
@@ -61,315 +56,166 @@ function getOrCreateRoom(roomId) {
 
 function cleanupRoom(roomId) {
   const room = rooms.get(roomId);
-  if (room && room.viewers.size === 0 && !room.presenterWs && !room.dgLive) {
+  if (room && room.overlays.size === 0 && room.attendees.size === 0 && !room.dgLive) {
     console.log(`[Room Destroyed] Cleaning up empty room: ${roomId}`);
     rooms.delete(roomId);
   }
 }
 
-// --- Per-account concurrent-room tracking ------------------------------
-const activeRoomsByUser = new Map();
-
-function addUserRoom(userId, roomId) {
-  if (!activeRoomsByUser.has(userId)) activeRoomsByUser.set(userId, new Set());
-  activeRoomsByUser.get(userId).add(roomId);
-}
-
-function removeUserRoom(userId, roomId) {
-  const set = activeRoomsByUser.get(userId);
-  if (!set) return;
-  set.delete(roomId);
-  if (set.size === 0) activeRoomsByUser.delete(userId);
-}
-
-function safeSend(ws, payload) {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(payload);
-  }
-}
-
-// ==========================================
-// 1. STRIPE WEBHOOK ENDPOINT (Must be BEFORE express.json())
-// ==========================================
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const userId = session.client_reference_id || session.metadata?.userId;
-    const mode = session.mode;
-
-    if (userId) {
-      const isOneTime = mode === 'payment';
-      const planTier = isOneTime ? 'one_time' : 'subscriber';
-      
-      const expiresAt = isOneTime ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
-      const maxStreamingSeconds = isOneTime ? 36000 : null;
-      const allowedRooms = isOneTime ? 1 : 3;
-
-      const { error } = await supabase
-        .from('users')
-        .update({
-          plan_tier: planTier,
-          event_pass_expires_at: expiresAt,
-          max_streaming_seconds: maxStreamingSeconds,
-          allowed_rooms: allowedRooms,
-          stripe_customer_id: session.customer,
-          stripe_subscription_id: session.subscription || null,
-          updated_at: new Date()
-        })
-        .eq('id', userId);
-
-      if (error) {
-        console.error('Error updating user plan in Supabase from webhook:', error.message);
-      } else {
-        console.log(`Successfully updated user ${userId} to tier: ${planTier} (mode: ${mode})`);
-      }
-    } else {
-      console.warn('Webhook received checkout.session.completed, but no userId found in metadata/client_reference_id.');
-    }
-  }
-
-  res.json({ received: true });
-});
-
-// Standard Middleware & Static Files
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Render Health Check
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
-
-// Stripe Checkout Endpoint
-app.post('/create-checkout-session', async (req, res) => {
-  try {
-    const { priceId, userId, mode } = req.body;
-    if (!priceId) return res.status(400).json({ error: 'Missing priceId' });
-
-    const oneTimePrices = [
-      process.env.EVENT_PASS_PRICE_ID,
-      process.env.PRO_EVENT_PASS_PRICE_ID
-    ].filter(Boolean);
-
-    let sessionMode = mode;
-    if (!sessionMode) {
-      sessionMode = oneTimePrices.includes(priceId.trim()) ? 'payment' : 'subscription';
-    }
-
-    console.log(`Creating session for priceId: ${priceId} with mode: ${sessionMode}`);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId.trim(), quantity: 1 }],
-      mode: sessionMode,
-      client_reference_id: userId || null,
-      metadata: {
-        userId: userId || ''
-      },
-      success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
-      cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
-    });
-
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error('Stripe Checkout Error:', error.raw ? error.raw.message : error.message);
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// ==========================================
-// WebSocket Handler (Presenters, Viewers & Deepgram Captions)
-// ==========================================
-wss.on('connection', async (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-  const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-  const role = urlParams.get('role') || 'viewer';
-  const token = urlParams.get('token');
-  const lang = urlParams.get('lang') || 'en-US';
+wss.on("connection", (ws, req) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = urlObj.pathname;
+  const roomId = urlObj.searchParams.get("room") || "default";
 
   const room = getOrCreateRoom(roomId);
 
-  if (role === 'presenter') {
-    if (!token) {
-      ws.close(4003, 'Authentication token required');
-      return;
-    }
+  // ROUTE A: Stage Microphones / Audio Ingest
+  if (pathname === "/ws/ingest") {
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
 
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      ws.close(4003, 'Invalid authentication token');
-      return;
-    }
+    room.audioQueue = [];
+    room.isDgReady = false;
 
-    const { data: dbUser, error: dbError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    // Create room-specific Deepgram STT stream
+    room.dgLive = deepgram.listen.live({
+      model: "nova-3",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      endpointing: 300
+    });
 
-    if (dbError || !dbUser) {
-      console.error('Failed to load user account record:', dbError);
-      ws.close(4003, 'No account record found');
-      return;
-    }
+    room.dgLive.on(LiveTranscriptionEvents.Open, () => {
+      console.log(`[Deepgram] Room ${roomId} STT connected. Flushing queue...`);
+      room.isDgReady = true;
 
-    if (dbUser.plan_tier === 'one_time') {
-      const expiresAt = dbUser.event_pass_expires_at ? new Date(dbUser.event_pass_expires_at) : null;
-      if (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
-        ws.close(4005, 'Event Pass has expired');
-        return;
-      }
-    }
-
-    const usedSeconds = dbUser.streaming_seconds_used || 0;
-    if (dbUser.max_streaming_seconds != null && usedSeconds >= dbUser.max_streaming_seconds) {
-      ws.close(4006, 'Monthly streaming quota exhausted');
-      return;
-    }
-
-    const userAlreadyOwnsThisRoom = activeRoomsByUser.get(user.id)?.has(roomId) || false;
-    if (!userAlreadyOwnsThisRoom) {
-      const currentRoomCount = activeRoomsByUser.get(user.id)?.size || 0;
-      const allowedRooms = dbUser.allowed_rooms ?? 1;
-      if (currentRoomCount >= allowedRooms) {
-        ws.close(4004, 'Maximum concurrent stages limit reached');
-        return;
-      }
-    }
-
-    const existingPresenter = room.presenterWs;
-    if (existingPresenter && existingPresenter.readyState === WebSocket.OPEN) {
-      if (room.presenterUserId && room.presenterUserId !== user.id) {
-        ws.close(4009, 'This room already has an active presenter');
-        return;
-      }
-      existingPresenter.close(4000, 'Replaced by your new session');
-    }
-
-    room.presenterWs = ws;
-    room.presenterUserId = user.id;
-    addUserRoom(user.id, roomId);
-
-    const sessionStart = Date.now();
-
-    try {
-      room.dgLive = deepgram.listen.live({
-        model: 'nova-2',
-        language: lang,
-        smart_format: true,
-        encoding: 'webm/opus',
-        sample_rate: 48000,
-      });
-
-      room.dgLive.on(LiveTranscriptionEvents.Open, () => {
-        room.isDgReady = true;
-        while (room.audioQueue.length > 0) {
-          room.dgLive.send(room.audioQueue.shift());
+      while (room.audioQueue.length > 0) {
+        const chunk = room.audioQueue.shift();
+        if (room.dgLive && room.dgLive.getReadyState() === 1) {
+          room.dgLive.send(chunk);
         }
-      });
+      }
+    });
 
-      room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
-        const sentence = data.channel?.alternatives?.[0]?.transcript;
-        if (sentence && sentence.trim() !== '') {
-          const translatedText = await translateText(sentence, room.targetOverlayLang);
-          const payload = JSON.stringify({
-            type: 'caption',
-            text: translatedText,
-            isFinal: data.is_final
-          });
+    room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
+      console.error(`[Deepgram Error - Room ${roomId}]`, err);
+    });
 
-          safeSend(ws, payload);
-          room.viewers.forEach((viewer) => safeSend(viewer, payload));
+    room.dgLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
+      const isFinal = data.is_final;
+
+      if (transcript && transcript.trim().length > 0) {
+        let overlayText = transcript;
+
+        // Translate if room target language is not English
+        if (room.targetOverlayLang !== "en" && isFinal) {
+          overlayText = await translateText(transcript, room.targetOverlayLang);
         }
-      });
 
-      room.dgLive.on(LiveTranscriptionEvents.Error, (err) => {
-        console.error(`Deepgram Error [room=${roomId}]:`, err);
-        safeSend(ws, JSON.stringify({ type: 'error', message: 'Speech-to-text error occurred.' }));
-      });
+        const overlayPayload = JSON.stringify({
+          text: overlayText,
+          original: transcript,
+          isFinal,
+          lang: room.targetOverlayLang
+        });
 
-      room.dgLive.on(LiveTranscriptionEvents.Close, () => {
-        room.isDgReady = false;
-        console.warn(`Deepgram connection closed [room=${roomId}]`);
-      });
-    } catch (err) {
-      console.error('Failed to initialize Deepgram:', err);
-      safeSend(ws, JSON.stringify({ type: 'error', message: 'Failed to start captioning session.' }));
-    }
+        // Broadcast ONLY to overlays in THIS room
+        room.overlays.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(overlayPayload);
+          }
+        });
 
-    ws.on('message', (message) => {
-      if (typeof message === 'string') return;
-      if (!room.dgLive) return;
+        // Broadcast to mobile attendees
+        if (isFinal) {
+          for (const attendee of room.attendees) {
+            if (attendee.readyState === WebSocket.OPEN) {
+              const lang = attendee.language || "en";
+              const translated = lang === "en" ? transcript : await translateText(transcript, lang);
+              attendee.send(
+                JSON.stringify({
+                  text: translated,
+                  original: transcript,
+                  isFinal: true,
+                  lang: lang
+                })
+              );
+            }
+          }
+        }
+      }
+    });
 
-      if (room.isDgReady && room.dgLive.getReadyState() === 1) {
+    ws.on("message", (message, isBinary) => {
+      // Handle JSON control messages
+      if (!isBinary) {
+        try {
+          const controlData = JSON.parse(message.toString());
+          if (controlData.type === "set_language") {
+            room.targetOverlayLang = controlData.lang;
+            console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          }
+        } catch (e) {}
+        return;
+      }
+
+      // Handle binary microphone audio stream
+      if (room.isDgReady && room.dgLive && room.dgLive.getReadyState() === 1) {
         room.dgLive.send(message);
       } else {
-        room.audioQueue.push(message);
+        if (room.audioQueue.length < 500) {
+          room.audioQueue.push(message);
+        }
       }
     });
 
-    ws.on('close', () => {
+    ws.on("close", () => {
+      console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
       if (room.dgLive) {
-        try { room.dgLive.finish(); } catch (e) { /* already closed */ }
+        room.dgLive.finish();
         room.dgLive = null;
       }
-
-      if (room.presenterWs === ws) {
-        room.presenterWs = null;
-        room.presenterUserId = null;
-      }
-      removeUserRoom(user.id, roomId);
+      room.isDgReady = false;
       cleanupRoom(roomId);
+    });
+  }
 
-      const elapsedSeconds = Math.round((Date.now() - sessionStart) / 1000);
-      if (elapsedSeconds > 0) {
-        supabase
-          .from('users')
-          .select('streaming_seconds_used')
-          .eq('id', user.id)
-          .single()
-          .then(({ data: freshUser, error: readErr }) => {
-            if (readErr || !freshUser) {
-              console.error('Failed to read current usage before update:', readErr);
-              return null;
-            }
-            return supabase
-              .from('users')
-              .update({ streaming_seconds_used: (freshUser.streaming_seconds_used || 0) + elapsedSeconds })
-              .eq('id', user.id);
-          })
-          .then((res) => {
-            if (res?.error) console.error('Failed to update streaming_seconds_used:', res.error);
-          })
-          .catch((e) => console.error('Usage tracking failed:', e));
-      }
+  // ROUTE B: Stage Video Overlay (OBS / vMix)
+  else if (pathname === "/ws/overlay") {
+    console.log(`[Overlay] OBS connected to room: ${roomId}`);
+    room.overlays.add(ws);
+
+    ws.on("close", () => {
+      room.overlays.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
+
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (pathname.startsWith("/ws/attendee")) {
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+    ws.language = urlObj.searchParams.get("lang") || "en";
+
+    room.attendees.add(ws);
+
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+        }
+      } catch (e) {}
     });
 
-  } else {
-    room.viewers.add(ws);
-
-    ws.on('close', () => {
-      room.viewers.delete(ws);
+    ws.on("close", () => {
+      room.attendees.delete(ws);
       cleanupRoom(roomId);
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
