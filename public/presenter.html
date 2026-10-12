@@ -76,33 +76,6 @@
       outline: none;
       cursor: pointer;
     }
-    /* 5-Language Target Output Tabs */
-    .lang-tabs {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-    }
-    .lang-tab {
-      flex: 1;
-      padding: 0.5rem;
-      background: #111827;
-      border: 1px solid #374151;
-      color: #9ca3af;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .lang-tab:hover {
-      border-color: #60a5fa;
-      color: #f3f4f6;
-    }
-    .lang-tab.active {
-      background: #2563eb;
-      color: #ffffff;
-      border-color: #3b82f6;
-    }
     .btn-group {
       display: flex;
       gap: 1rem;
@@ -147,18 +120,6 @@
       <select id="languageSelect">
         <!-- Populated dynamically by JS -->
       </select>
-    </div>
-
-    <!-- 5 Output Language Target Tabs (Overlay & Broadcast) -->
-    <div class="setting-group">
-      <label>Caption Output Language (Overlay & Viewers)</label>
-      <div class="lang-tabs" id="outputLangTabs">
-        <button class="lang-tab active" data-lang="en">English</button>
-        <button class="lang-tab" data-lang="es">Español</button>
-        <button class="lang-tab" data-lang="fr">Français</button>
-        <button class="lang-tab" data-lang="de">Deutsch</button>
-        <button class="lang-tab" data-lang="zh">中文</button>
-      </div>
     </div>
 
     <!-- Overlay Style Controls -->
@@ -220,7 +181,7 @@
     const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // State Variables for Live Usage Tracking & Output Language
+    // State Variables for Live Usage Tracking
     let currentUser = null;
     let syncTimer = null;
     let localCountdownTimer = null;
@@ -228,7 +189,6 @@
     const UPDATE_INTERVAL_SECONDS = 5;
     let maxLimit = 3600;
     let currentRemainingSeconds = 0;
-    let targetOutputLang = 'en';
 
     // Authenticate Presenter Session
     async function initPresenterAuth() {
@@ -399,20 +359,6 @@
       });
     }
 
-    function initOutputLangTabs() {
-      const tabs = document.querySelectorAll('#outputLangTabs .lang-tab');
-      tabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          tabs.forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          targetOutputLang = tab.dataset.lang;
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "set_language", lang: targetOutputLang }));
-          }
-        });
-      });
-    }
-
     function updateStyles() {
       const styles = {
         fontSize: document.getElementById('fontSizeInput').value + 'px',
@@ -441,7 +387,6 @@
 
     document.getElementById('roomDisplay').innerText = room;
     initLanguageSelector('en-US');
-    initOutputLangTabs();
     initPresenterAuth();
 
     const startBtn = document.getElementById('startBtn');
@@ -472,7 +417,6 @@
           status.innerText = "Status: Live & Streaming Stage Audio";
           status.style.color = "#10b981";
 
-          ws.send(JSON.stringify({ type: "set_language", lang: targetOutputLang }));
           updateStyles();
 
           let mimeType = 'audio/webm;codecs=opus';
