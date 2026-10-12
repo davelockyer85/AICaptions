@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Live Captions - AICaptions</title>
+  <title>Live Captions - AICaptions Viewer</title>
   
   <!-- Preconnect & Supabase JS SDK -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -105,8 +105,9 @@
   <header>
     <div class="logo">AICaptions Viewer</div>
     <div class="language-picker">
-      <label for="language-select">Translate to:</label>
+      <label for="language-select">Language:</label>
       <select id="language-select">
+        <option value="en" selected>English</option>
         <option value="es">Spanish</option>
         <option value="fr">French</option>
         <option value="de">German</option>
@@ -118,11 +119,11 @@
 
   <!-- Main Caption Display Area -->
   <div class="container">
-    <div id="translated-output">Waiting for captions...</div>
+    <div id="translated-output">Connecting to room...</div>
   </div>
 
-  <!-- Status Bar for Model Download/Loading Feedback -->
-  <div id="status-bar" class="status">Initializing translation engine...</div>
+  <!-- Status Bar for Model Download & Connection Feedback -->
+  <div id="status-bar" class="status">Initializing connection...</div>
 
   <script type="module">
     import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
@@ -131,15 +132,28 @@
     let activeLang = document.getElementById('language-select').value;
     let isSwitching = false;
     const statusBar = document.getElementById('status-bar');
+    const outputElement = document.getElementById('translated-output');
+
+    // Extract room parameter from URL (e.g. ?room=main-stage)
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
 
     // Function to load or switch the translation model via Transformers.js
     async function loadTranslator(lang) {
       if (isSwitching) return;
       isSwitching = true;
+
+      // If English is selected, clear translator so raw text displays directly
+      if (lang === 'en') {
+        currentTranslator = null;
+        statusBar.innerText = `Connected (Showing English)`;
+        isSwitching = false;
+        return;
+      }
+
       statusBar.innerText = `Loading model for English -> ${lang.toUpperCase()}...`;
       
       try {
-        // Automatically downloads and caches the Hugging Face Opus-MT model on first selection
         currentTranslator = await pipeline('translation', `Xenova/opus-mt-en-${lang}`);
         statusBar.innerText = `Ready (Translating live to ${lang.toUpperCase()})`;
       } catch (error) {
@@ -150,7 +164,7 @@
       }
     }
 
-    // Initial model load on startup
+    // Initial load on startup
     await loadTranslator(activeLang);
 
     // Listen for user changes in the dropdown
@@ -159,30 +173,50 @@
       await loadTranslator(activeLang);
     });
 
-    /* 
-      ==================================================
-      WebSocket / Data Source Handler Integration Example
-      ==================================================
-      Replace or integrate this listener with your active 
-      WebSocket or Supabase subscription stream:
-    */
-    
-    // const socket = new WebSocket('wss://your-websocket-url');
-    // socket.onmessage = async (event) => {
-    //   const rawText = event.data;
-    //   let displayText = rawText;
-    //
-    //   if (currentTranslator && !isSwitching) {
-    //     try {
-    //       const output = await currentTranslator(rawText);
-    //       displayText = output[0].translation_text;
-    //     } catch (err) {
-    //       console.error('Translation error:', err);
-    //     }
-    //   }
-    //
-    //   document.getElementById('translated-output').innerText = displayText;
-    // };
+    // Establish WebSocket Connection to the Viewer Stream
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${location.host}/ws/viewer?room=${encodeURIComponent(room)}`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      statusBar.innerText = activeLang === 'en' ? 'Connected (Showing English)' : `Ready (Translating live to ${activeLang.toUpperCase()})`;
+      outputElement.innerText = "Waiting for captions...";
+    };
+
+    socket.onmessage = async (event) => {
+      let rawText = event.data;
+
+      // Parse JSON if messages are sent as structured objects
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.text) rawText = parsed.text;
+      } catch (e) {
+        // Fallback for plain text messages
+      }
+
+      let displayText = rawText;
+
+      // Translate if a target language is chosen and translator is ready
+      if (currentTranslator && !isSwitching && activeLang !== 'en') {
+        try {
+          const output = await currentTranslator(rawText);
+          displayText = output[0].translation_text;
+        } catch (err) {
+          console.error('Translation error:', err);
+        }
+      }
+
+      outputElement.innerText = displayText;
+    };
+
+    socket.onerror = (err) => {
+      console.error("WebSocket Error:", err);
+      statusBar.innerText = "Connection Error";
+    };
+
+    socket.onclose = () => {
+      statusBar.innerText = "Disconnected from server";
+    };
   </script>
 </body>
 </html>
