@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Live Captions - AICaptions Viewer</title>
-  
+  <title>Live Captions - AICaptions</title>
+
   <!-- Preconnect & Supabase JS SDK -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://euopdmwtowuxdzczwbul.supabase.co" crossorigin>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  
+
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -20,13 +20,9 @@
       --text-muted: #94a3b8;
       --caption-size: 1.5rem;
     }
-    
-    * { 
-      box-sizing: border-box; 
-      margin: 0; 
-      padding: 0; 
-    }
-    
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       background-color: var(--bg-dark);
@@ -38,185 +34,340 @@
       overflow: hidden;
     }
 
+    /* Top Navigation Bar */
     header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 20px;
-      background-color: var(--card-bg);
-      border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
+      padding-top: max(12px, env(safe-area-inset-top));
     }
 
-    .logo {
-      font-weight: 600;
+    .brand {
       font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .language-picker {
+    .room-badge {
+      background-color: #0f172a;
+      border: 1px solid var(--border-color);
+      color: #93c5fd;
+      font-family: monospace;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #10b981;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Main Scrollable Captions Area */
+    .captions-container {
+      flex: 1;
+      padding: 20px 16px;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .caption-segment {
+      font-size: var(--caption-size);
+      line-height: 1.6;
+      color: var(--text-main);
+      background-color: rgba(30, 41, 59, 0.4);
+      border-left: 3px solid var(--primary);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      word-break: break-word;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    .caption-segment.interim {
+      color: var(--text-muted);
+      border-left-color: #f59e0b;
+      font-style: italic;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .placeholder-msg {
+      text-align: center;
+      color: var(--text-muted);
+      margin: auto 0;
+      font-size: 1rem;
+      padding: 20px;
+    }
+
+    /* Floating Audience Toolbar */
+    .toolbar {
+      background-color: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border-color);
+      padding: 10px 16px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .tool-group {
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    .language-picker label {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-
-    .language-picker select {
-      background: var(--bg-dark);
+    .btn-tool {
+      background-color: #0f172a;
       color: var(--text-main);
       border: 1px solid var(--border-color);
-      padding: 6px 12px;
+      padding: 8px 14px;
       border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-
-    .container {
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 24px;
-      text-align: center;
-    }
-
-    #translated-output {
-      font-size: var(--caption-size);
-      line-height: 1.6;
-      max-width: 800px;
-      word-break: break-word;
-    }
-
-    .status {
       font-size: 0.85rem;
-      color: var(--text-muted);
-      padding: 8px 16px;
-      text-align: center;
-      border-top: 1px solid var(--border-color);
-      background-color: var(--card-bg);
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 40px;
+      touch-action: manipulation;
+      transition: background 0.2s;
     }
+
+    .btn-tool:hover { background-color: #334155; }
+    .btn-tool.active { background-color: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .captions-container::-webkit-scrollbar { width: 4px; }
+    .captions-container::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
   </style>
 </head>
 <body>
 
-  <!-- Header with Title and Language Switcher -->
+  <!-- Top Header Navigation -->
   <header>
-    <div class="logo">AICaptions Viewer</div>
-    <div class="language-picker">
-      <label for="language-select">Language:</label>
-      <select id="language-select">
-        <option value="en" selected>English</option>
-        <option value="es">Spanish</option>
-        <option value="fr">French</option>
-        <option value="de">German</option>
-        <option value="it">Italian</option>
-        <option value="pt">Portuguese</option>
-      </select>
+    <div class="brand">🎙️ AICaptions</div>
+    <div class="room-badge" id="roomDisplay">main-stage</div>
+    <div class="live-indicator" id="statusIndicator">
+      <div class="live-dot"></div>
+      <span id="statusText">LIVE</span>
     </div>
   </header>
 
-  <!-- Main Caption Display Area -->
-  <div class="container">
-    <div id="translated-output">Connecting to room...</div>
-  </div>
+  <!-- Main Scrollable Captions Output -->
+  <main class="captions-container" id="captionsBox">
+    <div class="placeholder-msg" id="placeholder">
+      Waiting for stage presenter to begin speaking...
+    </div>
+  </main>
 
-  <!-- Status Bar for Model Download & Connection Feedback -->
-  <div id="status-bar" class="status">Initializing connection...</div>
+  <!-- Audience Accessibility & Text Controls -->
+  <footer class="toolbar">
+    <div class="tool-group">
+      <button class="btn-tool" id="fontDownBtn" title="Decrease Text Size">A-</button>
+      <button class="btn-tool" id="fontUpBtn" title="Increase Text Size">A+</button>
+    </div>
 
-  <script type="module">
-    import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+    <div class="tool-group">
+      <button class="btn-tool active" id="autoscrollBtn">Auto-Scroll: ON</button>
+      <button class="btn-tool" id="clearBtn">Clear</button>
+    </div>
+  </footer>
 
-    let currentTranslator = null;
-    let activeLang = document.getElementById('language-select').value;
-    let isSwitching = false;
-    const statusBar = document.getElementById('status-bar');
-    const outputElement = document.getElementById('translated-output');
+  <script>
+    // 1. Supabase Client Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Extract room parameter from URL (e.g. ?room=main-stage)
+    // Parse Parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const viewerLang = urlParams.get('lang') || urlParams.get('target_lang') || 'en';
 
-    // Function to load or switch the translation model via Transformers.js
-    async function loadTranslator(lang) {
-      if (isSwitching) return;
-      isSwitching = true;
+    // UI Element References
+    const roomDisplay = document.getElementById('roomDisplay');
+    const statusText = document.getElementById('statusText');
+    const captionsBox = document.getElementById('captionsBox');
+    const placeholder = document.getElementById('placeholder');
+    
+    const fontUpBtn = document.getElementById('fontUpBtn');
+    const fontDownBtn = document.getElementById('fontDownBtn');
+    const autoscrollBtn = document.getElementById('autoscrollBtn');
+    const clearBtn = document.getElementById('clearBtn');
 
-      // If English is selected, clear translator so raw text displays directly
-      if (lang === 'en') {
-        currentTranslator = null;
-        statusBar.innerText = `Connected (Showing English)`;
-        isSwitching = false;
-        return;
+    let isAutoScrollEnabled = true;
+    let currentFontSizePx = 24;
+    let interimElement = null;
+    let ws = null;
+
+    roomDisplay.innerText = roomId;
+
+    // Extract caption text from incoming WebSocket or Supabase payloads
+    function extractCaptionData(data) {
+      if (!data) return null;
+
+      const text = data.text || data.transcript || data.original || data.caption || data.message;
+      const isFinal = data.isFinal ?? data.is_final ?? true;
+
+      return text ? { text, isFinal } : null;
+    }
+
+    // Connect to Direct WebSocket Stream
+    function connectToCaptionStream() {
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      // Fixed: Explicitly connect to /ws/attendee route with room & viewer language
+      const wsUrl = `${protocol}//${location.host}/ws/attendee?room=${encodeURIComponent(roomId)}&lang=${encodeURIComponent(viewerLang)}`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log(`[Viewer] Connected to room ${roomId} on /ws/attendee`);
+          statusText.innerText = "LIVE";
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const extracted = extractCaptionData(data);
+            if (extracted && extracted.text) {
+              renderCaptionChunk(extracted.text, extracted.isFinal);
+            }
+          } catch (e) {
+            if (typeof event.data === 'string' && event.data.trim()) {
+              renderCaptionChunk(event.data, true);
+            }
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.warn("[Viewer] WebSocket error:", err);
+          statusText.innerText = "RECONNECTING...";
+        };
+
+        ws.onclose = () => {
+          statusText.innerText = "DISCONNECTED";
+          setTimeout(connectToCaptionStream, 3000);
+        };
+      } catch (err) {
+        console.warn("[Viewer] Connection setup error:", err);
       }
 
-      statusBar.innerText = `Loading model for English -> ${lang.toUpperCase()}...`;
-      
-      try {
-        currentTranslator = await pipeline('translation', `Xenova/opus-mt-en-${lang}`);
-        statusBar.innerText = `Ready (Translating live to ${lang.toUpperCase()})`;
-      } catch (error) {
-        console.error('Failed to load translation model:', error);
-        statusBar.innerText = `Error loading model for ${lang.toUpperCase()}`;
-      } finally {
-        isSwitching = false;
+      // Supabase Realtime Fallback
+      const channel = supabaseClient.channel(`room_${roomId}`, {
+        config: { broadcast: { ack: false } }
+      });
+
+      channel
+        .on('broadcast', { event: 'caption' }, (res) => {
+          const data = extractCaptionData(res.payload || res);
+          if (data) renderCaptionChunk(data.text, data.isFinal);
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transcripts',
+          filter: `room_id=eq.${roomId}`
+        }, (payload) => {
+          if (payload.new) {
+            const text = payload.new.text || payload.new.transcript;
+            if (text) renderCaptionChunk(text, true);
+          }
+        })
+        .subscribe();
+    }
+
+    function renderCaptionChunk(text, isFinal = true) {
+      if (placeholder) placeholder.style.display = 'none';
+
+      if (!isFinal) {
+        if (!interimElement) {
+          interimElement = document.createElement('div');
+          interimElement.className = 'caption-segment interim';
+          captionsBox.appendChild(interimElement);
+        }
+        interimElement.innerText = text;
+      } else {
+        if (interimElement) {
+          interimElement.remove();
+          interimElement = null;
+        }
+
+        const segment = document.createElement('div');
+        segment.className = 'caption-segment';
+        segment.innerText = text;
+        captionsBox.appendChild(segment);
+      }
+
+      if (isAutoScrollEnabled) {
+        captionsBox.scrollTop = captionsBox.scrollHeight;
       }
     }
 
-    // Initial load on startup
-    await loadTranslator(activeLang);
-
-    // Listen for user changes in the dropdown
-    document.getElementById('language-select').addEventListener('change', async (event) => {
-      activeLang = event.target.value;
-      await loadTranslator(activeLang);
-    });
-
-    // Establish WebSocket Connection to the Viewer Stream
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${location.host}/ws/viewer?room=${encodeURIComponent(room)}`;
-    const socket = new WebSocket(wsUrl);
-
-    socket.onopen = () => {
-      statusBar.innerText = activeLang === 'en' ? 'Connected (Showing English)' : `Ready (Translating live to ${activeLang.toUpperCase()})`;
-      outputElement.innerText = "Waiting for captions...";
-    };
-
-    socket.onmessage = async (event) => {
-      let rawText = event.data;
-
-      // Parse JSON if messages are sent as structured objects
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.text) rawText = parsed.text;
-      } catch (e) {
-        // Fallback for plain text messages
+    // UI Button Handlers
+    fontUpBtn.onclick = () => {
+      if (currentFontSizePx < 40) {
+        currentFontSizePx += 2;
+        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
       }
+    };
 
-      let displayText = rawText;
-
-      // Translate if a target language is chosen and translator is ready
-      if (currentTranslator && !isSwitching && activeLang !== 'en') {
-        try {
-          const output = await currentTranslator(rawText);
-          displayText = output[0].translation_text;
-        } catch (err) {
-          console.error('Translation error:', err);
-        }
+    fontDownBtn.onclick = () => {
+      if (currentFontSizePx > 16) {
+        currentFontSizePx -= 2;
+        document.documentElement.style.setProperty('--caption-size', `${currentFontSizePx / 16}rem`);
       }
-
-      outputElement.innerText = displayText;
     };
 
-    socket.onerror = (err) => {
-      console.error("WebSocket Error:", err);
-      statusBar.innerText = "Connection Error";
+    autoscrollBtn.onclick = () => {
+      isAutoScrollEnabled = !isAutoScrollEnabled;
+      autoscrollBtn.classList.toggle('active', isAutoScrollEnabled);
+      autoscrollBtn.innerText = isAutoScrollEnabled ? 'Auto-Scroll: ON' : 'Auto-Scroll: OFF';
+      if (isAutoScrollEnabled) captionsBox.scrollTop = captionsBox.scrollHeight;
     };
 
-    socket.onclose = () => {
-      statusBar.innerText = "Disconnected from server";
+    clearBtn.onclick = () => {
+      captionsBox.innerHTML = '';
+      if (placeholder) {
+        placeholder.style.display = 'block';
+        captionsBox.appendChild(placeholder);
+      }
     };
+
+    connectToCaptionStream();
   </script>
 </body>
 </html>
