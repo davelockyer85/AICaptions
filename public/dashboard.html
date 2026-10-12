@@ -4,12 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - AICaptions</title>
-
   <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- QRCode.js CDN for audience QR code generation -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -19,7 +17,6 @@
       min-height: 100vh;
       padding-bottom: 60px;
     }
-
     /* Top Navigation Header */
     header {
       background-color: #1e293b;
@@ -29,7 +26,6 @@
       justify-content: space-between;
       align-items: center;
     }
-
     .logo {
       font-size: 1.25rem;
       font-weight: 700;
@@ -38,18 +34,15 @@
       align-items: center;
       gap: 8px;
     }
-
     .user-controls {
       display: flex;
       align-items: center;
       gap: 16px;
     }
-
     .user-email {
       font-size: 0.9rem;
       color: #94a3b8;
     }
-
     .btn-secondary {
       background-color: #334155;
       color: #f8fafc;
@@ -64,16 +57,15 @@
       align-items: center;
       transition: background 0.2s;
     }
-
-    .btn-secondary:hover { background-color: #475569; }
-
+    .btn-secondary:hover {
+      background-color: #475569;
+    }
     /* Main Container */
     .container {
       max-width: 1000px;
       margin: 40px auto;
       padding: 0 20px;
     }
-
     /* Status Bar Container */
     .status-bar {
       background-color: #1e293b;
@@ -86,13 +78,11 @@
       gap: 24px;
       align-items: center;
     }
-
     .status-item {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-
     .status-label {
       font-size: 0.8rem;
       color: #94a3b8;
@@ -100,13 +90,11 @@
       letter-spacing: 0.05em;
       font-weight: 600;
     }
-
     .status-value {
       font-size: 1.25rem;
       font-weight: 700;
       color: #f8fafc;
     }
-
     /* Progress Bar Components */
     .progress-track {
       width: 100%;
@@ -117,14 +105,12 @@
       overflow: hidden;
       margin-top: 4px;
     }
-
     .progress-fill {
       height: 100%;
       background: linear-gradient(90deg, #38bdf8, #06b6d4);
       width: 0%;
       transition: width 0.4s ease;
     }
-
     /* Events Section */
     .section-header {
       display: flex;
@@ -132,9 +118,10 @@
       align-items: center;
       margin-bottom: 20px;
     }
-
-    .section-header h3 { font-size: 1.25rem; font-weight: 700; }
-
+    .section-header h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
     .btn-primary {
       background-color: #3b82f6;
       color: #ffffff;
@@ -146,16 +133,15 @@
       cursor: pointer;
       transition: background 0.2s, opacity 0.2s;
     }
-
-    .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
-    
+    .btn-primary:hover:not(:disabled) {
+      background-color: #2563eb;
+    }
     .btn-primary:disabled {
       background-color: #475569;
       color: #94a3b8;
       cursor: not-allowed;
       opacity: 0.6;
     }
-
     .event-card {
       background-color: #1e293b;
       border: 1px solid #334155;
@@ -163,7 +149,6 @@
       padding: 24px;
       margin-bottom: 20px;
     }
-
     .event-card-header {
       display: flex;
       justify-content: space-between;
@@ -172,23 +157,27 @@
       padding-bottom: 12px;
       border-bottom: 1px solid #334155;
     }
-
-    .event-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; }
-    .event-id { font-size: 0.85rem; color: #64748b; font-family: monospace; }
-
+    .event-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+    .event-id {
+      font-size: 0.85rem;
+      color: #64748b;
+      font-family: monospace;
+    }
     .links-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
     }
-
     .link-box {
       background-color: #0f172a;
       border: 1px solid #334155;
       border-radius: 8px;
       padding: 12px 16px;
     }
-
     .link-box label {
       display: block;
       font-size: 0.75rem;
@@ -197,12 +186,10 @@
       text-transform: uppercase;
       margin-bottom: 8px;
     }
-
     .link-action {
       display: flex;
       gap: 8px;
     }
-
     .link-action input {
       flex: 1;
       background: none;
@@ -212,7 +199,6 @@
       outline: none;
       font-family: monospace;
     }
-
     .btn-copy {
       background-color: #334155;
       color: #3b82f6;
@@ -223,9 +209,10 @@
       font-weight: 600;
       cursor: pointer;
     }
-
-    .btn-copy:hover { background-color: #475569; color: #ffffff; }
-
+    .btn-copy:hover {
+      background-color: #475569;
+      color: #ffffff;
+    }
     /* Modal for Event Creation */
     .modal-overlay {
       position: fixed;
@@ -236,7 +223,6 @@
       align-items: center;
       z-index: 1000;
     }
-
     .modal-card {
       background-color: #1e293b;
       border: 1px solid #334155;
@@ -245,9 +231,7 @@
       width: 100%;
       max-width: 400px;
     }
-
     .modal-card h3 { margin-bottom: 16px; }
-
     .modal-card input {
       width: 100%;
       padding: 10px 14px;
@@ -259,13 +243,11 @@
       margin-bottom: 20px;
       outline: none;
     }
-
     .modal-actions {
       display: flex;
       justify-content: flex-end;
       gap: 12px;
     }
-
     .empty-state {
       text-align: center;
       padding: 40px;
@@ -277,7 +259,6 @@
   </style>
 </head>
 <body>
-
   <header>
     <div class="logo">🎙️ AICaptions</div>
     <div class="user-controls">
@@ -287,14 +268,12 @@
   </header>
 
   <div class="container">
-    
     <!-- Status & Usage Bar -->
     <div class="status-bar" id="statusBar">
       <div class="status-item">
         <span class="status-label">Current Plan</span>
         <span class="status-value" id="statusPlan">Loading...</span>
       </div>
-
       <div class="status-item">
         <span class="status-label">Remaining Time</span>
         <span class="status-value" id="statusMins">-- mins</span>
@@ -302,7 +281,6 @@
           <div class="progress-fill" id="minsProgress" style="width: 0%;"></div>
         </div>
       </div>
-
       <div class="status-item">
         <span class="status-label">Room Allocation</span>
         <span class="status-value" id="statusRooms">0 / 0 Rooms</span>
@@ -310,6 +288,15 @@
           <div class="progress-fill" id="roomsProgress" style="width: 0%;"></div>
         </div>
       </div>
+    </div>
+
+    <!-- Visual Technical Workflow Diagram Section -->
+    <div class="event-card" style="margin-bottom: 28px; text-align: center;">
+      <h3 style="margin-bottom: 8px; color: #60a5fa;">Technical Setup Workflow</h3>
+      <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 16px;">
+        Overview of audio routing from the presenter microphone and mixer into your ingest laptop, projector screen overlay, and audience mobile translations.
+      </p>
+      <img src="workflow-diagram.png" alt="AICaptions Live Workflow Diagram" style="width: 100%; max-width: 850px; height: auto; border-radius: 8px; border: 1px solid #334155;">
     </div>
 
     <!-- Events Management Header -->
@@ -322,7 +309,6 @@
     <div id="eventsContainer">
       <!-- Event cards will be dynamically injected here -->
     </div>
-
   </div>
 
   <!-- Create Event Modal -->
@@ -338,354 +324,305 @@
     </div>
   </div>
 
- <script>
-  // 1. Supabase Initialization
-  const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // UI Elements
-  const userEmailSpan = document.getElementById('userEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const eventsContainer = document.getElementById('eventsContainer');
-  
-  const eventModal = document.getElementById('eventModal');
-  const openModalBtn = document.getElementById('openModalBtn');
-  const closeModalBtn = document.getElementById('closeModalBtn');
-  const createEventBtn = document.getElementById('createEventBtn');
-  const eventNameInput = document.getElementById('eventNameInput');
+    // UI Elements
+    const userEmailSpan = document.getElementById('userEmail');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const eventsContainer = document.getElementById('eventsContainer');
+    const eventModal = document.getElementById('eventModal');
+    const openModalBtn = document.getElementById('openModalBtn');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const createEventBtn = document.getElementById('createEventBtn');
+    const eventNameInput = document.getElementById('eventNameInput');
 
-  // Status Bar UI Elements
-  const statusPlan = document.getElementById('statusPlan');
-  const statusMins = document.getElementById('statusMins');
-  const minsProgress = document.getElementById('minsProgress');
-  const statusRooms = document.getElementById('statusRooms');
-  const roomsProgress = document.getElementById('roomsProgress');
+    // Status Bar UI Elements
+    const statusPlan = document.getElementById('statusPlan');
+    const statusMins = document.getElementById('statusMins');
+    const minsProgress = document.getElementById('minsProgress');
+    const statusRooms = document.getElementById('statusRooms');
+    const roomsProgress = document.getElementById('roomsProgress');
 
-  let currentUser = null;
-  let realtimeChannel = null;
-  let cachedProfile = null;
-  let currentRoomCount = 0;
+    let currentUser = null;
+    let realtimeChannel = null;
+    let cachedProfile = null;
+    let currentRoomCount = 0;
 
-  // 2. Auth Session Protection & App Init
-  async function checkUserSession() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (error || !session) {
-      window.location.href = '/auth.html';
-      return;
-    }
-
-    currentUser = session.user;
-    if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
-
-    // Load account details and rooms
-    await loadUserProfile();
-    await loadUserEvents();
-
-    // Subscribe to live usage updates
-    subscribeToLiveUserUpdates();
-  }
-
-  // 3. Load Subscription & Account Details from Supabase
-  async function loadUserProfile() {
-    if (!currentUser) return;
-
-    try {
-      const { data: profile, error } = await supabaseClient
-        .from('users')
-        .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms')
-        .eq('user_id', currentUser.id)
-        .single();
-
-      if (error) throw error;
-
-      if (profile) {
-        cachedProfile = profile;
-        renderSubscriptionUI();
+    // 2. Auth Session Protection & App Init
+    async function checkUserSession() {
+      const { data: { session }, error } = await supabaseClient.auth.getSession();
+      if (error || !session) {
+        window.location.href = '/auth.html';
+        return;
       }
-    } catch (err) {
-      console.warn("Could not load user profile from Supabase:", err.message);
-    }
-  }
+      currentUser = session.user;
+      if (userEmailSpan) userEmailSpan.innerText = currentUser.email;
 
-  // Render Status Bar metrics, progress bars, and toggle create button state
-  function renderSubscriptionUI(updatedProfile) {
-    if (updatedProfile) cachedProfile = updatedProfile;
-    if (!cachedProfile) return;
-
-    const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
-    const usedSecs = cachedProfile.streaming_seconds_used || 0;
-    const maxSecs = cachedProfile.max_streaming_seconds;
-    const allowedRooms = cachedProfile.allowed_rooms || 1;
-
-    // Update Plan Name UI
-    if (statusPlan) statusPlan.innerText = planTier;
-
-    // Update Remaining Minutes & Fill Bar UI
-    if (maxSecs == null) {
-      if (statusMins) statusMins.innerText = 'Unlimited';
-      if (minsProgress) minsProgress.style.width = '100%';
-    } else {
-      const remainingSecs = Math.max(0, maxSecs - usedSecs);
-      const remainingMins = Math.floor(remainingSecs / 60);
-      const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
-
-      if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
-      if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
+      await loadUserProfile();
+      await loadUserEvents();
+      subscribeToLiveUserUpdates();
     }
 
-    // Update Room Allocation & Fill Bar UI
-    if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
-    if (roomsProgress) {
-      const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
-      roomsProgress.style.width = `${roomPercent}%`;
+    // 3. Load Subscription & Account Details from Supabase
+    async function loadUserProfile() {
+      if (!currentUser) return;
+      try {
+        const { data: profile, error } = await supabaseClient
+          .from('users')
+          .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms')
+          .eq('user_id', currentUser.id)
+          .single();
+
+        if (error) throw error;
+        if (profile) {
+          cachedProfile = profile;
+          renderSubscriptionUI();
+        }
+      } catch (err) {
+        console.warn("Could not load user profile from Supabase:", err.message);
+      }
     }
 
-    // Dynamic enforcement: Disable button if room limit is reached
-    if (openModalBtn) {
-      if (currentRoomCount >= allowedRooms) {
-        openModalBtn.disabled = true;
-        openModalBtn.innerText = "Room Limit Reached";
+    function renderSubscriptionUI(updatedProfile) {
+      if (updatedProfile) cachedProfile = updatedProfile;
+      if (!cachedProfile) return;
+
+      const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
+      const usedSecs = cachedProfile.streaming_seconds_used || 0;
+      const maxSecs = cachedProfile.max_streaming_seconds;
+      const allowedRooms = cachedProfile.allowed_rooms || 1;
+
+      if (statusPlan) statusPlan.innerText = planTier;
+
+      if (maxSecs == null) {
+        if (statusMins) statusMins.innerText = 'Unlimited';
+        if (minsProgress) minsProgress.style.width = '100%';
       } else {
-        openModalBtn.disabled = false;
-        openModalBtn.innerText = "+ Create New Event";
+        const remainingSecs = Math.max(0, maxSecs - usedSecs);
+        const remainingMins = Math.floor(remainingSecs / 60);
+        const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
+        if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
+        if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
+      }
+
+      if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
+      if (roomsProgress) {
+        const roomPercent = Math.min(100, Math.round((currentRoomCount / allowedRooms) * 100));
+        roomsProgress.style.width = `${roomPercent}%`;
+      }
+
+      if (openModalBtn) {
+        if (currentRoomCount >= allowedRooms) {
+          openModalBtn.disabled = true;
+          openModalBtn.innerText = "Room Limit Reached";
+        } else {
+          openModalBtn.disabled = false;
+          openModalBtn.innerText = "+ Create New Event";
+        }
       }
     }
-  }
 
-  // 4. Realtime Subscription for Live Usage Syncing
-  function subscribeToLiveUserUpdates() {
-    if (!currentUser) return;
-
-    if (realtimeChannel) {
-      supabaseClient.removeChannel(realtimeChannel);
-    }
-
-    realtimeChannel = supabaseClient
-      .channel(`user_status_${currentUser.id}`)
-      .on(
-        'postgres_changes',
-        {
+    // 4. Realtime Subscription for Live Usage Syncing
+    function subscribeToLiveUserUpdates() {
+      if (!currentUser) return;
+      if (realtimeChannel) {
+        supabaseClient.removeChannel(realtimeChannel);
+      }
+      realtimeChannel = supabaseClient
+        .channel(`user_status_${currentUser.id}`)
+        .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
           table: 'users',
           filter: `user_id=eq.${currentUser.id}`
-        },
-        (payload) => {
+        }, (payload) => {
           if (payload.new) {
             renderSubscriptionUI(payload.new);
           }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Realtime subscription issue, attempting reconnect...', err);
-        }
-      });
-  }
-
-  // Sign Out Handler
-  logoutBtn.addEventListener('click', async () => {
-    if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-    await supabaseClient.auth.signOut();
-    window.location.href = '/auth.html';
-  });
-
-  // Modal Controls with Limit Guard Check
-  openModalBtn.addEventListener('click', () => {
-    const allowedRooms = cachedProfile?.allowed_rooms || 1;
-    if (currentRoomCount >= allowedRooms) {
-      alert(`Room limit reached (${currentRoomCount}/${allowedRooms}). Delete an existing room or upgrade your plan to create more.`);
-      return;
-    }
-    eventModal.style.display = 'flex';
-  });
-
-  closeModalBtn.addEventListener('click', () => { eventModal.style.display = 'none'; });
-
-  // 5. Create Room Handler
-  createEventBtn.addEventListener('click', async () => {
-    const allowedRooms = cachedProfile?.allowed_rooms || 1;
-    if (currentRoomCount >= allowedRooms) {
-      alert(`Cannot create room: You have reached your maximum room limit of ${allowedRooms}.`);
-      eventModal.style.display = 'none';
-      return;
+        })
+        .subscribe();
     }
 
-    const name = eventNameInput.value.trim();
-    if (!name) return;
+    logoutBtn.addEventListener('click', async () => {
+      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+      await supabaseClient.auth.signOut();
+      window.location.href = '/auth.html';
+    });
 
-    const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
-    const newRoom = { room_id: roomId, name: name, user_id: currentUser.id };
-
-    // Update local storage immediately
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms.unshift(newRoom);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
-
-    // Async Insert to Supabase
-    try {
-      const { error } = await supabaseClient.from('rooms').insert([
-        { 
-          room_id: roomId, 
-          name: name, 
-          user_id: currentUser.id,
-          streaming_seconds_used: 0
-        }
-      ]);
-
-      if (error) console.warn("Supabase room insert warning:", error.message);
-    } catch (e) {
-      console.warn("Supabase insert exception:", e.message);
-    }
-
-    eventNameInput.value = '';
-    eventModal.style.display = 'none';
-    await loadUserEvents();
-  });
-
-  // 6. Fetch & Render Rooms
-  async function loadUserEvents() {
-    const origin = window.location.origin;
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    let dbMapped = [];
-
-    try {
-      const { data: dbRooms, error } = await supabaseClient
-        .from('rooms')
-        .select('*')
-        .eq('user_id', currentUser.id);
-
-      if (!error && dbRooms && dbRooms.length > 0) {
-        dbMapped = dbRooms.map(r => ({
-          room_id: r.room_id || r.id,
-          name: r.name || 'Event Room'
-        }));
+    openModalBtn.addEventListener('click', () => {
+      const allowedRooms = cachedProfile?.allowed_rooms || 1;
+      if (currentRoomCount >= allowedRooms) {
+        alert(`Room limit reached (${currentRoomCount}/${allowedRooms}). Delete an existing room or upgrade your plan to create more.`);
+        return;
       }
-    } catch (err) {
-      console.warn("Could not query Supabase rooms:", err.message);
-    }
-
-    // Merge DB rooms and local storage rooms to prevent missing newly created rooms
-    const combinedMap = new Map();
-    
-    // Process local rooms first
-    localRooms.forEach(r => {
-      const id = r.room_id || r.id;
-      if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+      eventModal.style.display = 'flex';
     });
 
-    // Overwrite/add with DB rooms
-    dbMapped.forEach(r => {
-      const id = r.room_id || r.id;
-      if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+    closeModalBtn.addEventListener('click', () => {
+      eventModal.style.display = 'none';
     });
 
-    const validRooms = Array.from(combinedMap.values());
+    // 5. Create Room Handler
+    createEventBtn.addEventListener('click', async () => {
+      const allowedRooms = cachedProfile?.allowed_rooms || 1;
+      if (currentRoomCount >= allowedRooms) {
+        alert(`Cannot create room: You have reached your maximum room limit of ${allowedRooms}.`);
+        eventModal.style.display = 'none';
+        return;
+      }
 
-    // Update cache
-    localStorage.setItem('user_rooms', JSON.stringify(validRooms));
+      const name = eventNameInput.value.trim();
+      if (!name) return;
 
-    // Keep active room count updated in status bar (allows 0)
-    currentRoomCount = validRooms.length;
-    renderSubscriptionUI();
+      const roomId = 'evt_' + Math.random().toString(36).substring(2, 9);
+      const newRoom = { room_id: roomId, name: name, user_id: currentUser.id };
 
-    eventsContainer.innerHTML = '';
+      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      localRooms.unshift(newRoom);
+      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
 
-    if (validRooms.length === 0) {
-      eventsContainer.innerHTML = `
-        <div class="empty-state">
-          <p style="margin-bottom: 8px; font-weight: 600;">No active event rooms.</p>
-          <p style="font-size: 0.85rem;">Click <strong>+ Create New Event</strong> above to configure live captions for your stage.</p>
-        </div>
-      `;
-      return;
-    }
+      try {
+        const { error } = await supabaseClient.from('rooms').insert([
+          { room_id: roomId, name: name, user_id: currentUser.id, streaming_seconds_used: 0 }
+        ]);
+        if (error) console.warn("Supabase room insert warning:", error.message);
+      } catch (e) {
+        console.warn("Supabase insert exception:", e.message);
+      }
 
-    validRooms.forEach((room) => {
-      const rId = room.room_id;
-      const rName = room.name;
-      const presenterUrl = `${origin}/presenter.html?room=${rId}`;
-      const overlayUrl = `${origin}/overlay.html?room=${rId}`;
-      const audienceUrl = `${origin}/viewer.html?room=${rId}`;
-
-      const card = document.createElement('div');
-      card.className = 'event-card';
-      card.innerHTML = `
-        <div class="event-card-header">
-          <div>
-            <div class="event-title">${rName}</div>
-            <div class="event-id">Room ID: ${rId}</div>
-          </div>
-          <button class="btn-secondary" onclick="deleteRoom('${rId}')">Delete</button>
-        </div>
-
-        <div class="links-grid">
-          <div class="link-box">
-            <label>Presenter Microphones Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${presenterUrl}" id="p_${rId}">
-              <button class="btn-copy" onclick="copyLink('p_${rId}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>OBS Transparent Overlay Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${overlayUrl}" id="o_${rId}">
-              <button class="btn-copy" onclick="copyLink('o_${rId}')">Copy</button>
-            </div>
-          </div>
-
-          <div class="link-box">
-            <label>Mobile Audience View Link</label>
-            <div class="link-action">
-              <input type="text" readonly value="${audienceUrl}" id="a_${rId}">
-              <button class="btn-copy" onclick="copyLink('a_${rId}')">Copy</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      eventsContainer.appendChild(card);
+      eventNameInput.value = '';
+      eventModal.style.display = 'none';
+      await loadUserEvents();
     });
-  }
 
-  // Copy Link Helper
-  function copyLink(inputId) {
-    const input = document.getElementById(inputId);
-    input.select();
-    navigator.clipboard.writeText(input.value);
-    alert("Link copied to clipboard!");
-  }
+    // 6. Fetch & Render Rooms
+    async function loadUserEvents() {
+      const origin = window.location.origin;
+      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      let dbMapped = [];
 
-  // Delete Room Helper
-  async function deleteRoom(roomId) {
-    if (!roomId || roomId === 'undefined') return;
+      try {
+        const { data: dbRooms, error } = await supabaseClient
+          .from('rooms')
+          .select('*')
+          .eq('user_id', currentUser.id);
 
-    // Immediately remove from local storage
-    let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
-    localRooms = localRooms.filter(r => (r.room_id || r.id) !== roomId);
-    localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+        if (!error && dbRooms && dbRooms.length > 0) {
+          dbMapped = dbRooms.map(r => ({
+            room_id: r.room_id || r.id,
+            name: r.name || 'Event Room'
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not query Supabase rooms:", err.message);
+      }
 
-    try {
-      const { error } = await supabaseClient
-        .from('rooms')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
+      const combinedMap = new Map();
+      localRooms.forEach(r => {
+        const id = r.room_id || r.id;
+        if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+      });
+      dbMapped.forEach(r => {
+        const id = r.room_id || r.id;
+        if (id && id !== 'undefined') combinedMap.set(id, { room_id: id, name: r.name || 'Event Room' });
+      });
 
-      if (error) console.warn("Supabase delete warning:", error.message);
-    } catch (e) {
-      console.warn("Could not delete room from Supabase:", e.message);
+      const validRooms = Array.from(combinedMap.values());
+      localStorage.setItem('user_rooms', JSON.stringify(validRooms));
+
+      currentRoomCount = validRooms.length;
+      renderSubscriptionUI();
+
+      eventsContainer.innerHTML = '';
+      if (validRooms.length === 0) {
+        eventsContainer.innerHTML = `
+          <div class="empty-state">
+            <p style="margin-bottom: 8px; font-weight: 600;">No active event rooms.</p>
+            <p style="font-size: 0.85rem;">Click <strong>+ Create New Event</strong> above to configure live captions for your stage.</p>
+          </div>
+        `;
+        return;
+      }
+
+      validRooms.forEach((room) => {
+        const rId = room.room_id;
+        const rName = room.name;
+        const presenterUrl = `${origin}/presenter.html?room=${rId}`;
+        const overlayUrl = `${origin}/overlay.html?room=${rId}`;
+        const audienceUrl = `${origin}/viewer.html?room=${rId}`;
+
+        const card = document.createElement('div');
+        card.className = 'event-card';
+        card.innerHTML = `
+          <div class="event-card-header">
+            <div>
+              <div class="event-title">${rName}</div>
+              <div class="event-id">Room ID: ${rId}</div>
+            </div>
+            <button class="btn-secondary" onclick="deleteRoom('${rId}')">Delete</button>
+          </div>
+          <div class="links-grid">
+            <div class="link-box">
+              <label>Presenter Microphones Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${presenterUrl}" id="p_${rId}">
+                <button class="btn-copy" onclick="copyLink('p_${rId}')">Copy</button>
+              </div>
+            </div>
+            <div class="link-box">
+              <label>OBS Transparent Overlay Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${overlayUrl}" id="o_${rId}">
+                <button class="btn-copy" onclick="copyLink('o_${rId}')">Copy</button>
+              </div>
+            </div>
+            <div class="link-box">
+              <label>Mobile Audience View Link</label>
+              <div class="link-action">
+                <input type="text" readonly value="${audienceUrl}" id="a_${rId}">
+                <button class="btn-copy" onclick="copyLink('a_${rId}')">Copy</button>
+              </div>
+            </div>
+          </div>
+        `;
+        eventsContainer.appendChild(card);
+      });
     }
 
-    await loadUserEvents();
-  }
+    function copyLink(inputId) {
+      const input = document.getElementById(inputId);
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      alert("Link copied to clipboard!");
+    }
 
-  // Execute Init
-  checkUserSession();
-</script>
+    async function deleteRoom(roomId) {
+      if (!roomId || roomId === 'undefined') return;
+
+      let localRooms = JSON.parse(localStorage.getItem('user_rooms') || '[]');
+      localRooms = localRooms.filter(r => (r.room_id || r.id) !== roomId);
+      localStorage.setItem('user_rooms', JSON.stringify(localRooms));
+
+      try {
+        const { error } = await supabaseClient
+          .from('rooms')
+          .delete()
+          .eq('room_id', roomId)
+          .eq('user_id', currentUser.id);
+
+        if (error) console.warn("Supabase delete warning:", error.message);
+      } catch (e) {
+        console.warn("Could not delete room from Supabase:", e.message);
+      }
+
+      await loadUserEvents();
+    }
+
+    checkUserSession();
+  </script>
 </body>
 </html>
