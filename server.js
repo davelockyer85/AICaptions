@@ -51,17 +51,18 @@ app.post("/create-checkout-session", async (req, res) => {
 });
 
 // --- In-Memory Room & Client Management ---------------------------------
-const rooms = new Map(); // roomId -> Set of WebSocket clients (viewers, overlays)
+const rooms = new Map(); // roomId -> Set of WebSocket clients
 
 // --- WebSocket Connection Routing --------------------------------------
 wss.on("connection", (ws, req) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
-  const room = parsedUrl.searchParams.get("room") || "main-stage";
+  
+  // FIX 1: Support both 'room' and 'roomId' query parameters universally
+  const room = parsedUrl.searchParams.get("room") || parsedUrl.searchParams.get("roomId") || "main-stage";
 
   // 1. Presenter Ingest Stream (/ws/ingest)
   if (pathname.includes("/ws/ingest")) {
-    // Support multiple possible parameter names and extract clean 2-letter language code (e.g. 'fr-FR' -> 'fr')
     const rawLang = parsedUrl.searchParams.get("spokenLang") || parsedUrl.searchParams.get("language") || parsedUrl.searchParams.get("lang") || "en";
     const spokenLang = rawLang.split('-')[0].toLowerCase();
     
@@ -71,7 +72,6 @@ wss.on("connection", (ws, req) => {
       rooms.set(room, new Set());
     }
 
-    // Initialize Deepgram Live Transcription with the normalized language code
     const dgConnection = deepgram.listen.live({
       model: "nova-3",
       language: spokenLang,
@@ -88,9 +88,10 @@ wss.on("connection", (ws, req) => {
       const sentence = data.channel?.alternatives?.[0]?.transcript;
       if (sentence && sentence.trim() !== "") {
         const isFinal = data.is_final;
-        const payload = JSON.stringify({ text: sentence, isFinal });
+        
+        // FIX 2: Include spokenLang in the broadcast payload so viewers know the source language
+        const payload = JSON.stringify({ text: sentence, isFinal, spokenLang });
 
-        // Broadcast transcription to all room clients (overlays, viewers, attendees)
         if (rooms.has(room)) {
           for (const client of rooms.get(room)) {
             if (client.readyState === WebSocket.OPEN) {
@@ -99,15 +100,12 @@ wss.on("connection", (ws, req) => {
           }
         }
 
-        // Optional: Save final transcripts to Supabase
         if (isFinal) {
           try {
             await supabase.from("transcripts").insert([
               { room_id: room, text: sentence, created_at: new Date() }
             ]);
-          } catch (dbErr) {
-            // Ignore DB errors if table doesn't exist
-          }
+          } catch (dbErr) {}
         }
       }
     });
@@ -121,7 +119,6 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("message", (message) => {
-      // Forward raw audio chunks from presenter mic to Deepgram
       if (dgConnection.getReadyState() === 1) {
         dgConnection.send(message);
       }
