@@ -61,17 +61,20 @@ wss.on("connection", (ws, req) => {
 
   // 1. Presenter Ingest Stream (/ws/ingest)
   if (pathname.includes("/ws/ingest")) {
-    const spokenLang = parsedUrl.searchParams.get("spokenLang") || "en";
-    console.log(`[Presenter Connected] Room: ${room}, Spoken Language: ${spokenLang}`);
+    // Support multiple possible parameter names and extract clean 2-letter language code (e.g. 'fr-FR' -> 'fr')
+    const rawLang = parsedUrl.searchParams.get("spokenLang") || parsedUrl.searchParams.get("language") || parsedUrl.searchParams.get("lang") || "en";
+    const spokenLang = rawLang.split('-')[0].toLowerCase();
+    
+    console.log(`[Presenter Connected] Room: ${room}, Spoken Language: ${spokenLang} (Raw: ${rawLang})`);
 
     if (!rooms.has(room)) {
       rooms.set(room, new Set());
     }
 
-    // Initialize Deepgram Live Transcription with the presenter's selected spoken language
+    // Initialize Deepgram Live Transcription with the normalized language code
     const dgConnection = deepgram.listen.live({
       model: "nova-3",
-      language: spokenLang, // Dynamically sets language (e.g. 'fr', 'es', 'en')
+      language: spokenLang,
       smart_format: true,
       encoding: "linear16",
       sample_rate: 16000
