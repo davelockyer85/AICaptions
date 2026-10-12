@@ -29,15 +29,23 @@ const supabase = createSupabaseClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-// --- Translation Helper ------------------------------------------------
-async function translateText(text, targetLang) {
-  if (!targetLang || targetLang === "en") return text;
+// --- Google Translate Helper ------------------------------------------------
+async function translateText(text, sourceLang, targetLang) {
+  if (!text || !targetLang || targetLang === sourceLang) return text;
+  const sl = (sourceLang || "en").split("-")[0];
+  const tl = (targetLang || "en").split("-")[0];
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+
   try {
-    return text;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data && data[0]) {
+      return data[0].map(item => item[0]).join('');
+    }
   } catch (err) {
     console.error("[Translation Error]", err);
-    return text;
   }
+  return text;
 }
 
 // --- Multi-Tenant Rooms Store ------------------------------------------
@@ -47,6 +55,8 @@ function getOrCreateRoom(roomId) {
   if (!rooms.has(roomId)) {
     console.log(`[Room Created] Initializing room: ${roomId}`);
     rooms.set(roomId, {
+      spokenLang: "en-US",
+      translateEnabled: false,
       targetOverlayLang: "en",
       overlays: new Set(),
       attendees: new Set(),
@@ -76,7 +86,6 @@ function cleanupRoom(roomId) {
 
 // ==========================================
 // 1. STRIPE WEBHOOK ENDPOINT
-// (Must be defined BEFORE app.use(express.json()))
 // ==========================================
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -89,21 +98,19 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful checkout completion
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const userId = session.client_reference_id || session.metadata?.userId;
-    const mode = session.mode; // 'payment' (one-time) or 'subscription'
+    const mode = session.mode;
 
     if (userId) {
       const isOneTime = mode === 'payment';
       const planTier = isOneTime ? 'one_time' : 'subscriber';
-      
       const expiresAt = isOneTime ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
-      const maxStreamingSeconds = isOneTime ? 36000 : null; // e.g. 10 hours for pass
+      const maxStreamingSeconds = isOneTime ? 36000 : null;
       const allowedRooms = isOneTime ? 1 : 3;
 
-      const { error } = await supabase
+      await supabase
         .from('users')
         .update({
           plan_tier: planTier,
@@ -115,14 +122,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
           updated_at: new Date()
         })
         .eq('id', userId);
-
-      if (error) {
-        console.error('Error updating user plan in Supabase from webhook:', error.message);
-      } else {
-        console.log(`Successfully updated user ${userId} to tier: ${planTier} (mode: ${mode})`);
-      }
-    } else {
-      console.warn('Webhook received checkout.session.completed, but no userId found.');
     }
   }
 
@@ -154,21 +153,14 @@ app.post('/create-checkout-session', async (req, res) => {
       process.env.PRO_EVENT_PASS_PRICE_ID
     ].filter(Boolean);
 
-    let sessionMode = mode;
-    if (!sessionMode) {
-      sessionMode = oneTimePrices.includes(priceId.trim()) ? 'payment' : 'subscription';
-    }
-
-    console.log(`Creating Stripe checkout session for priceId: ${priceId} with mode: ${sessionMode}`);
+    let sessionMode = mode || (oneTimePrices.includes(priceId.trim()) ? 'payment' : 'subscription');
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{ price: priceId.trim(), quantity: 1 }],
       mode: sessionMode,
       client_reference_id: userId || null,
-      metadata: {
-        userId: userId || ''
-      },
+      metadata: { userId: userId || '' },
       success_url: `${process.env.CLIENT_URL || req.headers.origin}/dashboard.html?success=true`,
       cancel_url: `${process.env.CLIENT_URL || req.headers.origin}/pricing.html?canceled=true`,
     });
@@ -187,17 +179,24 @@ wss.on("connection", (ws, req) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const pathname = urlObj.pathname;
   const roomId = urlObj.searchParams.get("room") || "default";
+  
+  // Extract spoken language and translation flag sent from presenter screen
+  const spokenLangParam = urlObj.searchParams.get("spokenLang") || "en-US";
+  const translateParam = urlObj.searchParams.get("translate") === "true";
+
   const room = getOrCreateRoom(roomId);
+  room.spokenLang = spokenLangParam;
+  room.translateEnabled = translateParam;
 
   // ROUTE A: Stage Microphones / Audio Ingest & Style Controls
   if (pathname === "/ws/ingest") {
-    console.log(`[Ingest] Presenter audio connected to room: ${roomId}`);
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId} | Spoken Lang: ${room.spokenLang} | Translate: ${room.translateEnabled}`);
     room.audioQueue = [];
     room.isDgReady = false;
 
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
-      language: "en-US",
+      language: room.spokenLang, // Dynamically uses presenter's language choice
       smart_format: true,
       interim_results: true,
       endpointing: 300
@@ -224,8 +223,10 @@ wss.on("connection", (ws, req) => {
 
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
-        if (room.targetOverlayLang !== "en" && isFinal) {
-          overlayText = await translateText(transcript, room.targetOverlayLang);
+        
+        // Translate server-side if Google Translate toggle is enabled by presenter
+        if (room.translateEnabled && room.targetOverlayLang && room.targetOverlayLang !== room.spokenLang) {
+          overlayText = await translateText(transcript, room.spokenLang, room.targetOverlayLang);
         }
 
         const overlayPayload = JSON.stringify({
@@ -248,7 +249,10 @@ wss.on("connection", (ws, req) => {
           for (const attendee of room.attendees) {
             if (attendee.readyState === WebSocket.OPEN) {
               const lang = attendee.language || "en";
-              const translated = lang === "en" ? transcript : await translateText(transcript, lang);
+              let translated = transcript;
+              if (lang !== room.spokenLang) {
+                translated = await translateText(transcript, room.spokenLang, lang);
+              }
               attendee.send(JSON.stringify({
                 text: translated,
                 original: transcript,
@@ -270,9 +274,6 @@ wss.on("connection", (ws, req) => {
             console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
           } else if (controlData.type === "update_styles") {
             room.overlayStyles = controlData.styles;
-            console.log(`[Room ${roomId}] Updated overlay styles:`, room.overlayStyles);
-            
-            // Broadcast style update to all overlays in this room
             const stylePayload = JSON.stringify({ type: 'styles_update', styles: room.overlayStyles });
             room.overlays.forEach((client) => {
               if (client.readyState === WebSocket.OPEN) {
@@ -309,7 +310,6 @@ wss.on("connection", (ws, req) => {
     console.log(`[Overlay] OBS connected to room: ${roomId}`);
     room.overlays.add(ws);
 
-    // Send current styles immediately upon connection so overlay syncs right away
     if (room.overlayStyles) {
       ws.send(JSON.stringify({ type: 'styles_update', styles: room.overlayStyles }));
     }
