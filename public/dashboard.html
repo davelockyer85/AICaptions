@@ -213,7 +213,7 @@
       background-color: #475569;
       color: #ffffff;
     }
-    /* Modal for Event Creation */
+    /* Modal for Event Creation & Upgrade */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -296,12 +296,12 @@
       <button class="btn-primary" id="openModalBtn">+ Create New Event</button>
     </div>
 
-    <!-- Events List Container (Room Link Tables) -->
+    <!-- Events List Container -->
     <div id="eventsContainer">
       <!-- Event cards will be dynamically injected here -->
     </div>
 
-    <!-- Visual Technical Workflow Diagram Section (Placed Below Room Table) -->
+    <!-- Visual Technical Workflow Diagram Section -->
     <div class="event-card" style="margin-top: 32px; margin-bottom: 28px; text-align: center;">
       <h3 style="margin-bottom: 8px; color: #60a5fa;">Technical Setup Workflow</h3>
       <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 16px;">
@@ -324,6 +324,20 @@
     </div>
   </div>
 
+  <!-- Time Expired / Upgrade Modal Prompt -->
+  <div class="modal-overlay" id="upgradeModal">
+    <div class="modal-card" style="text-align: center;">
+      <h3 style="color: #60a5fa; margin-bottom: 12px;">Streaming Time Limit Reached</h3>
+      <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 24px;">
+        You have used all of your available free streaming time. Upgrade your plan today to unlock more minutes and room allocations without interruption.
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button class="btn-secondary" onclick="document.getElementById('upgradeModal').style.display='none'">Dismiss</button>
+        <a href="/pricing.html" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">View Pricing Plans</a>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 1. Supabase Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
@@ -339,6 +353,7 @@
     const closeModalBtn = document.getElementById('closeModalBtn');
     const createEventBtn = document.getElementById('createEventBtn');
     const eventNameInput = document.getElementById('eventNameInput');
+    const upgradeModal = document.getElementById('upgradeModal');
 
     // Status Bar UI Elements
     const statusPlan = document.getElementById('statusPlan');
@@ -407,6 +422,13 @@
         const remainingPercent = Math.max(0, Math.min(100, Math.round((remainingSecs / maxSecs) * 100)));
         if (statusMins) statusMins.innerText = `${remainingMins} mins remaining`;
         if (minsProgress) minsProgress.style.width = `${remainingPercent}%`;
+
+        // Trigger upgrade popup automatically if free time runs out
+        if (remainingSecs <= 0) {
+          if (upgradeModal && upgradeModal.style.display !== 'flex') {
+            upgradeModal.style.display = 'flex';
+          }
+        }
       }
 
       if (statusRooms) statusRooms.innerText = `${currentRoomCount} / ${allowedRooms} Rooms`;
