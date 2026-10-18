@@ -278,10 +278,10 @@
 
     // Free lightweight translation helper using MyMemory API
     async function translateText(text, targetLang) {
-      if (!targetLang || targetLang === 'en') return text;
+      if (!targetLang) return text;
       
       const encodedText = encodeURIComponent(text);
-      const url = `https://api.mymemory.translated.net/get?q=${encodedText}&langpair=en|${targetLang}`;
+      const url = `https://api.mymemory.translated.net/get?q=${encodedText}&langpair=auto|${targetLang}`;
 
       try {
         const response = await fetch(url);
@@ -329,7 +329,7 @@
             // Fallback for plain text messages
           }
 
-          // Translate text if a non-English language is selected in the dropdown
+          // Translate text to the viewer's selected language
           const displayText = await translateText(rawText, viewerLang);
           renderCaptionChunk(displayText, true);
         };
