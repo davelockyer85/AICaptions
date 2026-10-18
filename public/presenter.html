@@ -9,11 +9,12 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #111827;
+      background: var(--screen-bg, #111827);
       color: #f3f4f6;
       padding: 2rem;
       text-align: center;
       margin: 0;
+      transition: background-color 0.3s ease;
     }
     .card {
       max-width: 600px;
@@ -23,11 +24,13 @@
       border-radius: 12px;
       border: 1px solid #374151;
       box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+      text-align: left;
     }
     h1 {
       margin-top: 0;
       color: #60a5fa;
       font-size: 1.75rem;
+      text-align: center;
     }
     p {
       color: #9ca3af;
@@ -35,513 +38,168 @@
     .room-badge {
       display: inline-block;
       background: #374151;
-      color: #93c5fd;
-      padding: 0.25rem 0.75rem;
+      padding: 4px 12px;
       border-radius: 9999px;
-      font-family: monospace;
-      font-weight: bold;
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+    .control-group {
       margin-bottom: 1rem;
     }
-    .timer-badge {
+    .control-group label {
       display: block;
-      background: #111827;
-      border: 1px solid #374151;
-      color: #38bdf8;
-      font-size: 1.25rem;
-      font-weight: 700;
-      font-family: monospace;
-      padding: 0.6rem 1rem;
-      border-radius: 8px;
-      margin: 1rem 0;
-    }
-    .setting-group {
-      margin-top: 1rem;
-      text-align: left;
-    }
-    label {
-      display: block;
-      font-size: 0.85rem;
-      color: #9ca3af;
+      font-size: 0.875rem;
+      font-weight: 500;
       margin-bottom: 0.5rem;
-      font-weight: 600;
-    }
-    select, input[type="range"] {
-      width: 100%;
-      padding: 0.6rem 0.8rem;
-      background-color: #111827;
-      color: #f3f4f6;
-      border: 1px solid #374151;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      outline: none;
-      cursor: pointer;
-    }
-    .btn-group {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      margin-top: 1.5rem;
-    }
-    button.action-btn {
-      padding: 0.85rem 1.75rem;
-      font-size: 1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    #startBtn { background: #2563eb; color: white; }
-    #startBtn:hover { background: #1d4ed8; }
-    #startBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #stopBtn { background: #dc2626; color: white; }
-    #stopBtn:hover { background: #b91c1c; }
-    #stopBtn:disabled { background: #4b5563; cursor: not-allowed; }
-    #status {
-      margin-top: 1.5rem;
-      font-weight: 600;
-      font-size: 1.1rem;
       color: #9ca3af;
     }
-    /* Toggle Switch Styles */
-    .switch-container {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #111827;
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
+    .control-group select {
+      width: 100%;
+      padding: 10px 12px;
+      background-color: #111827;
       border: 1px solid #374151;
+      border-radius: 6px;
+      color: #f3f4f6;
+      font-size: 0.95rem;
+    }
+    .preview-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px dashed #374151;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      margin: 1.5rem 0;
+    }
+    #previewSubtitle {
+      display: inline-block;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+      transition: all 0.2s ease;
+    }
+    .btn {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
       margin-top: 1rem;
     }
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 48px;
-      height: 24px;
-    }
-    .switch input { 
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #374151;
-      transition: .3s;
-      border-radius: 24px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 18px;
-      width: 18px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .3s;
-      border-radius: 50%;
-    }
-    input:checked + .slider {
+    .btn:hover {
       background-color: #2563eb;
-    }
-    input:checked + .slider:before {
-      transform: translateX(24px);
     }
   </style>
 </head>
 <body>
+
   <div class="card">
-    <h1>Stage Audio Transmitter</h1>
-    <p>Room Identifier:</p>
-    <div class="room-badge" id="roomDisplay">main-stage</div>
-
-    <!-- Real-Time Countdown Timer -->
-    <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
-
-    <!-- Spoken / Ingest Language Selector -->
-    <div class="setting-group">
-      <label for="languageSelect">Spoken Input Language</label>
-      <select id="languageSelect">
-        <!-- Populated dynamically by JS -->
-      </select>
+    <h1>Presenter Control & Audio Ingest</h1>
+    <div style="text-align: center;">
+      <div class="room-badge">Room ID: <span id="roomIdDisplay">-</span></div>
     </div>
 
-    <!-- Google Translate Toggle Switch -->
-    <div class="switch-container">
-      <div style="text-align: left;">
-        <label style="margin-bottom: 0; color: #f3f4f6; font-size: 0.9rem;">Google Translate (Server-Side)</label>
-        <span style="font-size: 0.75rem; color: #9ca3af;">Translate spoken input before broadcasting</span>
+    <!-- Appearance & Style Customization -->
+    <div style="margin-top: 1.5rem; border-top: 1px solid #374151; padding-top: 1.5rem;">
+      <h2 style="font-size: 1.1rem; color: #f3f4f6; margin-bottom: 1rem;">Subtitle & Screen Customization</h2>
+
+      <!-- Screen Background Setting -->
+      <div class="control-group">
+        <label for="screenBgSelect">Screen Background Color</label>
+        <select id="screenBgSelect" onchange="updateScreenBackground()">
+          <option value="#111827">Dark Default (#111827)</option>
+          <option value="transparent">Transparent</option>
+          <option value="#00ff00">Green Screen (#00ff00)</option>
+          <option value="#00b140">Chroma Green (#00b140)</option>
+        </select>
       </div>
-      <label class="switch">
-        <input type="checkbox" id="translateToggle">
-        <span class="slider"></span>
-      </label>
+
+      <!-- Caption Background Setting (On / Off / Shadow) -->
+      <div class="control-group">
+        <label for="captionBgSelect">Caption Background Style</label>
+        <select id="captionBgSelect" onchange="updateCaptionStyle()">
+          <option value="on">On (Semi-Transparent Box)</option>
+          <option value="off">Off (Transparent Box)</option>
+          <option value="shadow">Shadow Effect (Text Shadow, No Box)</option>
+        </select>
+      </div>
+
+      <!-- Live Preview Box -->
+      <div class="preview-box" id="previewContainer">
+        <div id="previewSubtitle">Sample caption preview rendering here...</div>
+      </div>
+
+      <button class="btn" onclick="saveAndBroadcastStyles()">Apply & Sync Styles</button>
     </div>
-
-    <!-- Overlay Style Controls -->
-    <div class="setting-group" style="background: #111827; padding: 1rem; border-radius: 8px; border: 1px solid #374151; margin-top: 1rem;">
-      <label style="color: #60a5fa; margin-bottom: 0.75rem;">Overlay Style Controls</label>
-      
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
-        <div>
-          <label style="font-size: 0.75rem;">Font Size (<span id="fontSizeVal">32</span>px)</label>
-          <input type="range" id="fontSizeInput" min="16" max="96" value="32" oninput="document.getElementById('fontSizeVal').innerText = this.value" onchange="updateStyles()">
-        </div>
-        <div>
-          <label style="font-size: 0.75rem;">Font Family</label>
-          <select id="fontFamilyInput" onchange="updateStyles()">
-            <option value="sans-serif">Sans-Serif</option>
-            <option value="serif">Serif</option>
-            <option value="monospace">Monospace</option>
-            <option value="'Bungee', cursive">Bungee</option>
-          </select>
-        </div>
-      </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
-        <div>
-          <label style="font-size: 0.75rem;">Animation</label>
-          <select id="animationInput" onchange="updateStyles()">
-            <option value="none">None</option>
-            <option value="bounce">Bounce</option>
-            <option value="fade">Fade In</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size: 0.75rem;">Text Color</label>
-          <input type="color" id="textColorInput" value="#ffffff" onchange="updateStyles()" style="width: 100%; height: 38px; background: #111827; border: 1px solid #374151; border-radius: 6px; cursor: pointer; padding: 0;">
-        </div>
-      </div>
-
-      <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.5rem;">
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: #f3f4f6;">
-          <input type="checkbox" id="boldInput" onchange="updateStyles()"> Bold
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: #f3f4f6;">
-          <input type="checkbox" id="italicInput" onchange="updateStyles()"> Italic
-        </label>
-      </div>
-    </div>
-
-    <div class="btn-group">
-      <button id="startBtn" class="action-btn">Start Streaming</button>
-      <button id="stopBtn" class="action-btn" disabled>Stop</button>
-    </div>
-
-    <p id="status">Status: Disconnected</p>
   </div>
 
   <script>
-    // 1. Supabase Initialization
-    const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_UQHJUuyX1-nHwpJ6ilgD7g_BZ0vNUWB';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || 'main-stage';
+    document.getElementById('roomIdDisplay').textContent = roomId;
 
-    // State Variables for Live Usage Tracking
-    let currentUser = null;
-    let syncTimer = null;
-    let localCountdownTimer = null;
-    let realtimeChannel = null;
-    const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600;
-    let currentRemainingSeconds = 0;
+    const previewSubtitle = document.getElementById('previewSubtitle');
+    const previewContainer = document.getElementById('previewContainer');
 
-    // Authenticate Presenter Session
-    async function initPresenterAuth() {
-      try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session && session.user) {
-          currentUser = session.user;
-          await fetchUserTimeAndSubscribe(currentUser.id);
-        }
-      } catch (err) {
-        console.warn("Could not retrieve Supabase session:", err.message);
+    function updateScreenBackground() {
+      const bgVal = document.getElementById('screenBgSelect').value;
+      if (bgVal === 'transparent') {
+        document.body.style.backgroundColor = 'transparent';
+        previewContainer.style.backgroundColor = 'rgba(255,255,255,0.05)';
+      } else {
+        document.body.style.backgroundColor = bgVal;
+        previewContainer.style.backgroundColor = 'rgba(0,0,0,0.4)';
       }
     }
 
-    async function fetchUserTimeAndSubscribe(userId) {
-      if (!userId) return;
-      try {
-        const { data: user, error } = await supabaseClient
-          .from('users')
-          .select('streaming_seconds_used, max_streaming_seconds')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (!error && user) {
-          applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
-        }
-        subscribeToRealtimeUsage(userId);
-      } catch (e) {
-        console.warn("Initial user state fetch error:", e.message);
+    function updateCaptionStyle() {
+      const styleVal = document.getElementById('captionBgSelect').value;
+      
+      if (styleVal === 'on') {
+        previewSubtitle.style.background = 'rgba(0, 0, 0, 0.75)';
+        previewSubtitle.style.textShadow = 'none';
+      } else if (styleVal === 'off') {
+        previewSubtitle.style.background = 'transparent';
+        previewSubtitle.style.textShadow = 'none';
+      } else if (styleVal === 'shadow') {
+        previewSubtitle.style.background = 'transparent';
+        previewSubtitle.style.textShadow = '2px 2px 6px rgba(0, 0, 0, 0.95), -2px -2px 6px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.9)';
       }
     }
 
-    function subscribeToRealtimeUsage(userId) {
-      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
-      realtimeChannel = supabaseClient
-        .channel(`presenter_time_${userId}`)
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'users',
-          filter: `user_id=eq.${userId}`
-        }, (payload) => {
-          if (payload.new) {
-            const used = payload.new.streaming_seconds_used || 0;
-            const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
-            applyTimeLimits(used, maxSecs);
-          }
-        })
-        .subscribe();
-    }
-
-    function applyTimeLimits(usedSecs, allowedMaxSecs) {
-      currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
-      updateTimerDisplay(currentRemainingSeconds);
-
-      if (currentRemainingSeconds <= 0) {
-        if (isStreamingActive()) {
-          cleanup();
-          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-          status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit.`);
-        } else {
-          status.innerText = `Status: Time Limit Exceeded`;
-          status.style.color = "#ef4444";
-          startBtn.disabled = true;
-        }
-      }
-    }
-
-    function updateTimerDisplay(totalSeconds) {
-      const timerDisplay = document.getElementById('timerDisplay');
-      if (!timerDisplay) return;
-      const mins = Math.floor(totalSeconds / 60);
-      const secs = totalSeconds % 60;
-      timerDisplay.innerText = `Remaining Time: ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-
-    function startLocalCountdown() {
-      stopLocalCountdown();
-      localCountdownTimer = setInterval(() => {
-        if (currentRemainingSeconds > 0) {
-          currentRemainingSeconds--;
-          updateTimerDisplay(currentRemainingSeconds);
-          if (currentRemainingSeconds <= 0) {
-            cleanup();
-            status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-            status.style.color = "#ef4444";
-            alert(`Stream stopped: You have run out of streaming time.`);
-          }
-        }
-      }, 1000);
-    }
-
-    function stopLocalCountdown() {
-      if (localCountdownTimer) {
-        clearInterval(localCountdownTimer);
-        localCountdownTimer = null;
-      }
-    }
-
-    function startUsageSyncing(userId) {
-      stopUsageSyncing();
-      syncTimer = setInterval(async () => {
-        await pushUsageToSupabase(userId, UPDATE_INTERVAL_SECONDS);
-      }, UPDATE_INTERVAL_SECONDS * 1000);
-    }
-
-    async function pushUsageToSupabase(userId, secondsToAdd) {
-      if (!userId) return;
-      try {
-        const { data: user } = await supabaseClient
-          .from('users')
-          .select('streaming_seconds_used, max_streaming_seconds')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (!user) return;
-        const newTotal = (user.streaming_seconds_used || 0) + secondsToAdd;
-        const allowedMax = user.max_streaming_seconds ?? maxLimit;
-
-        if (newTotal >= allowedMax) {
-          cleanup();
-          status.innerText = "Status: Terminated — Maximum Time Limit Reached";
-          status.style.color = "#ef4444";
-          return;
-        }
-
-        await supabaseClient
-          .from('users')
-          .update({ streaming_seconds_used: newTotal })
-          .eq('user_id', userId);
-      } catch (err) {
-        console.warn("Usage sync error:", err.message);
-      }
-    }
-
-    function stopUsageSyncing() {
-      if (syncTimer) {
-        clearInterval(syncTimer);
-        syncTimer = null;
-      }
-    }
-
-    function isStreamingActive() {
-      return mediaRecorder && mediaRecorder.state !== 'inactive';
-    }
-
-    const SUPPORTED_LANGUAGES = [
-      { code: 'en-US', name: 'English (United States)' },
-      { code: 'en-AU', name: 'English (Australia)' },
-      { code: 'en-GB', name: 'English (United Kingdom)' },
-      { code: 'es-ES', name: 'Spanish (Spain)' },
-      { code: 'fr-FR', name: 'French (France)' },
-      { code: 'de-DE', name: 'German' },
-      { code: 'zh-CN', name: 'Chinese (Simplified)' }
-    ];
-
-    function initLanguageSelector(defaultCode = 'en-US') {
-      const selectElem = document.getElementById('languageSelect');
-      if (!selectElem) return;
-      selectElem.innerHTML = '';
-      SUPPORTED_LANGUAGES.forEach((lang) => {
-        const opt = document.createElement('option');
-        opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code})`;
-        if (lang.code === defaultCode) opt.selected = true;
-        selectElem.appendChild(opt);
-      });
-    }
-
-    function updateStyles() {
-      const styles = {
-        fontSize: document.getElementById('fontSizeInput').value + 'px',
-        fontFamily: document.getElementById('fontFamilyInput').value,
-        fontWeight: document.getElementById('boldInput').checked ? 'bold' : 'normal',
-        fontStyle: document.getElementById('italicInput').checked ? 'italic' : 'normal',
-        animation: document.getElementById('animationInput').value,
-        textColor: document.getElementById('textColorInput').value
+    function saveAndBroadcastStyles() {
+      const settings = {
+        screenBg: document.getElementById('screenBgSelect').value,
+        captionStyle: document.getElementById('captionBgSelect').value
       };
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'update_styles', styles }));
-      }
+      localStorage.setItem(`aicaptions_presenter_styles_${roomId}`, JSON.stringify(settings));
+      alert('Style settings saved successfully!');
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
-    }
-
-    const urlToken = urlParams.get('token');
-    const localToken = localStorage.getItem('supabase.auth.token') ? JSON.parse(localStorage.getItem('supabase.auth.token'))?.currentSession?.access_token : null;
-    const token = urlToken || localToken || '';
-
-    document.getElementById('roomDisplay').innerText = room;
-    initLanguageSelector('en-US');
-    initPresenterAuth();
-
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-
-    let ws = null;
-    let mediaRecorder = null;
-    let audioStream = null;
-
-    startBtn.onclick = async () => {
-      try {
-        status.innerText = "Status: Requesting Microphone Access...";
-        status.style.color = "#f59e0b";
-
-        audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-
-        const spokenLang = document.getElementById('languageSelect')?.value || 'en-US';
-        const translateEnabled = document.getElementById('translateToggle')?.checked ? 'true' : 'false';
-        
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        let wsUrl = `${protocol}//${location.host}/ws/ingest?room=${encodeURIComponent(room)}&spokenLang=${encodeURIComponent(spokenLang)}&translate=${translateEnabled}`;
-        if (token) wsUrl += `&token=${encodeURIComponent(token)}`;
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          status.innerText = "Status: Live & Streaming Stage Audio";
-          status.style.color = "#10b981";
-
-          updateStyles();
-
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    // Load saved preferences on startup
+    window.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem(`aicaptions_presenter_styles_${roomId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.screenBg) {
+            document.getElementById('screenBgSelect').value = parsed.screenBg;
+            updateScreenBackground();
           }
-
-          mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(e.data);
-            }
-          };
-          mediaRecorder.start(250);
-
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          startLocalCountdown();
-
-          if (currentUser) {
-            startUsageSyncing(currentUser.id);
+          if (parsed.captionStyle) {
+            document.getElementById('captionBgSelect').value = parsed.captionStyle;
+            updateCaptionStyle();
           }
-        };
-
-        ws.onerror = (err) => {
-          console.error("WebSocket Error:", err);
-          status.innerText = "Status: Connection Error";
-          status.style.color = "#ef4444";
-        };
-
-        ws.onclose = (e) => {
-          status.innerText = e.reason ? `Status: Closed (${e.reason})` : "Status: Disconnected";
-          status.style.color = "#ef4444";
-          cleanup();
-        };
-
-      } catch (err) {
-        console.error("Microphone Access Error:", err);
-        status.innerText = "Status: Microphone Access Denied";
-        status.style.color = "#ef4444";
+        } catch (e) {
+          console.error("Error loading saved style preferences", e);
+        }
       }
-    };
-
-    stopBtn.onclick = () => {
-      cleanup();
-      status.innerText = "Status: Stopped";
-      status.style.color = "#9ca3af";
-    };
-
-    function cleanup() {
-      stopUsageSyncing();
-      stopLocalCountdown();
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }
+    });
   </script>
 </body>
 </html>
