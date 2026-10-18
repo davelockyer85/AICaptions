@@ -41,10 +41,10 @@
       transition: all 0.15s ease-in-out;
     }
 
-    /* QR Code Overlay Box */
+    /* QR Code Overlay Box - Moved to Bottom Right */
     #qr-overlay {
       position: fixed;
-      top: 20px;
+      bottom: 20px;
       right: 20px;
       background: rgba(0, 0, 0, 0.75);
       padding: 10px;
@@ -52,6 +52,7 @@
       text-align: center;
       pointer-events: auto;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
     }
 
     #qr-overlay p {
@@ -73,20 +74,20 @@
 </head>
 <body>
 
-  <!-- QR Code Widget for Stream Viewers -->
+  <!-- QR Code Widget for Stream Viewers (Bottom Right) -->
   <div id="qr-overlay">
     <p>Scan for Captions</p>
     <div id="qrcode"></div>
   </div>
 
-  <!-- Existing Caption Container -->
+  <!-- Caption Container -->
   <div id="caption-container"></div>
 
   <script>
-    // Automatically generate the viewer QR code based on the current room query parameter
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
 
+    // 1. Generate QR Code for Mobile Viewers
     if (roomId) {
       const viewerUrl = `${window.location.origin}/viewer.html?room=${roomId}`;
       
@@ -99,6 +100,33 @@
         correctLevel: QRCode.CorrectLevel.H
       });
     }
+
+    // 2. Restore Real-time Caption WebSocket Connection
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
+
+    ws.onopen = () => {
+      if (roomId) {
+        ws.send(JSON.stringify({ type: 'join-room', room: roomId, role: 'overlay' }));
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'transcript' || data.text) {
+          const captionText = data.text || data.transcript;
+          const container = document.getElementById('caption-container');
+          container.innerHTML = `<div class="caption-text">${captionText}</div>`;
+        }
+      } catch (err) {
+        console.error('Error parsing incoming caption message:', err);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
   </script>
 
 </body>
