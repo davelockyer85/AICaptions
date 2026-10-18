@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Presenter Audio Ingest - AICaptions</title>
-  <!-- Supabase JS Client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
@@ -31,17 +30,6 @@
       color: #60a5fa;
       font-size: 1.75rem;
       text-align: center;
-    }
-    p {
-      color: #9ca3af;
-    }
-    .room-badge {
-      display: inline-block;
-      background: #374151;
-      padding: 4px 12px;
-      border-radius: 9999px;
-      font-size: 0.875rem;
-      margin-bottom: 1.5rem;
     }
     .control-group {
       margin-bottom: 1rem;
@@ -99,17 +87,13 @@
 
   <div class="card">
     <h1>Presenter Control & Audio Ingest</h1>
-    <div style="text-align: center;">
-      <div class="room-badge">Room ID: <span id="roomIdDisplay">-</span></div>
-    </div>
-
-    <!-- Appearance & Style Customization -->
+    
     <div style="margin-top: 1.5rem; border-top: 1px solid #374151; padding-top: 1.5rem;">
-      <h2 style="font-size: 1.1rem; color: #f3f4f6; margin-bottom: 1rem;">Subtitle & Screen Customization</h2>
+      <h2 style="font-size: 1.1rem; color: #f3f4f6; margin-bottom: 1rem;">Customization Settings</h2>
 
-      <!-- Screen Background Setting -->
+      <!-- Screen Background Setting (Transparent vs Green Screen) -->
       <div class="control-group">
-        <label for="screenBgSelect">Screen Background Color</label>
+        <label for="screenBgSelect">Screen Background</label>
         <select id="screenBgSelect" onchange="updateScreenBackground()">
           <option value="#111827">Dark Default (#111827)</option>
           <option value="transparent">Transparent</option>
@@ -135,15 +119,28 @@
 
       <button class="btn" onclick="saveAndBroadcastStyles()">Apply & Sync Styles</button>
     </div>
+
+    <!-- Existing Presenter Controls / Audio Ingest UI -->
+    <div style="margin-top: 2rem; text-align: center;">
+      <button id="startBtn" class="btn" style="background-color: #10b981;">Start Captions</button>
+      <button id="stopBtn" class="btn" style="background-color: #ef4444;" disabled>Stop Captions</button>
+      <div id="status" style="margin-top: 1rem; color: #9ca3af;">Status: Ready</div>
+    </div>
   </div>
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room') || 'main-stage';
-    document.getElementById('roomIdDisplay').textContent = roomId;
 
     const previewSubtitle = document.getElementById('previewSubtitle');
     const previewContainer = document.getElementById('previewContainer');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+
+    let ws = null;
+    let mediaRecorder = null;
+    let audioStream = null;
 
     function updateScreenBackground() {
       const bgVal = document.getElementById('screenBgSelect').value;
@@ -178,10 +175,14 @@
       };
 
       localStorage.setItem(`aicaptions_presenter_styles_${roomId}`, JSON.stringify(settings));
-      alert('Style settings saved successfully!');
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'styles_update', styles: settings }));
+      }
+
+      alert('Style settings saved and synced!');
     }
 
-    // Load saved preferences on startup
     window.addEventListener('DOMContentLoaded', () => {
       const saved = localStorage.getItem(`aicaptions_presenter_styles_${roomId}`);
       if (saved) {
@@ -200,6 +201,56 @@
         }
       }
     });
+
+    startBtn.onclick = async () => {
+      try {
+        status.innerText = "Status: Requesting Microphone...";
+        status.style.color = "#f59e0b";
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        ws = new WebSocket(`${wsProtocol}${window.location.host}/ws/presenter?room=${encodeURIComponent(roomId)}`);
+
+        ws.onopen = () => {
+          status.innerText = "Status: Connected & Streaming";
+          status.style.color = "#10b981";
+        };
+
+        mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(e.data);
+          }
+        };
+        mediaRecorder.start(250);
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } catch (err) {
+        console.error("Microphone Access Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+      }
+    };
+
+    stopBtn.onclick = () => {
+      cleanup();
+      status.innerText = "Status: Stopped";
+      status.style.color = "#9ca3af";
+    };
+
+    function cleanup() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
   </script>
 </body>
 </html>
