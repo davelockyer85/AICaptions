@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICaptions - Live OBS Overlay</title>
+  
+  <!-- Free Client-Side QR Code Library CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
   <style>
     body {
       margin: 0;
@@ -12,6 +16,7 @@
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
+    
     #caption-container {
       position: fixed;
       bottom: 40px;
@@ -20,6 +25,7 @@
       text-align: center;
       pointer-events: none;
     }
+
     .caption-text {
       font-size: 32px;
       font-weight: 700;
@@ -35,73 +41,65 @@
       transition: all 0.15s ease-in-out;
     }
 
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.95); }
-      to { opacity: 1; transform: scale(1); }
+    /* QR Code Overlay Box */
+    #qr-overlay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      pointer-events: auto;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
-    .anim-bounce { animation: bounce 0.6s ease infinite; }
-    .anim-fade { animation: fadeIn 0.3s ease; }
+    #qr-overlay p {
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 0 0 6px 0;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    #qrcode {
+      background: #ffffff;
+      padding: 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
-  <div id="caption-container">
-    <div id="captionBox" class="caption-text">Waiting for captions...</div>
+
+  <!-- QR Code Widget for Stream Viewers -->
+  <div id="qr-overlay">
+    <p>Scan for Captions</p>
+    <div id="qrcode"></div>
   </div>
 
+  <!-- Existing Caption Container -->
+  <div id="caption-container"></div>
+
   <script>
+    // Automatically generate the viewer QR code based on the current room query parameter
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room') || 'main-stage';
+    const roomId = urlParams.get('room');
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${wsProtocol}${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
-
-    const captionBox = document.getElementById('captionBox');
-
-    function connectOverlayWebSocket() {
-      const ws = new WebSocket(wsUrl);
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          // 1. Handle incoming text captions
-          if (data.text) {
-            captionBox.textContent = data.text;
-          }
-
-          // 2. Handle incoming style updates
-          const styles = data.styles || (data.type === 'styles_update' ? data.styles : null);
-          if (styles) {
-            captionBox.style.fontSize = styles.fontSize || '32px';
-            captionBox.style.fontFamily = styles.fontFamily || 'sans-serif';
-            captionBox.style.fontWeight = styles.fontWeight || 'normal';
-            captionBox.style.fontStyle = styles.fontStyle || 'normal';
-            captionBox.style.color = styles.textColor || '#ffffff';
-
-            // Handle animations
-            captionBox.className = 'caption-text';
-            if (styles.animation === 'bounce') {
-              captionBox.classList.add('anim-bounce');
-            } else if (styles.animation === 'fade') {
-              captionBox.classList.add('anim-fade');
-            }
-          }
-        } catch (e) {
-          console.error("Error parsing overlay message:", e);
-        }
-      };
-
-      ws.onclose = () => {
-        setTimeout(connectOverlayWebSocket, 3000);
-      };
+    if (roomId) {
+      const viewerUrl = `${window.location.origin}/viewer.html?room=${roomId}`;
+      
+      new QRCode(document.getElementById("qrcode"), {
+        text: viewerUrl,
+        width: 100,
+        height: 100,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
     }
-
-    connectOverlayWebSocket();
   </script>
+
 </body>
 </html>
