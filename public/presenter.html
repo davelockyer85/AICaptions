@@ -216,16 +216,6 @@
         </div>
       </div>
 
-      <!-- Caption Background & Shadow Control Added Here -->
-      <div style="margin-bottom: 0.75rem;">
-        <label style="font-size: 0.75rem;">Caption Background Style</label>
-        <select id="captionBgStyleInput" onchange="updateStyles()">
-          <option value="background">Background Box (On)</option>
-          <option value="none">No Background (Off)</option>
-          <option value="shadow">Shadow Effect on Words</option>
-        </select>
-      </div>
-
       <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.5rem;">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: #f3f4f6;">
           <input type="checkbox" id="boldInput" onchange="updateStyles()"> Bold
@@ -435,8 +425,7 @@
         fontWeight: document.getElementById('boldInput').checked ? 'bold' : 'normal',
         fontStyle: document.getElementById('italicInput').checked ? 'italic' : 'normal',
         animation: document.getElementById('animationInput').value,
-        textColor: document.getElementById('textColorInput').value,
-        captionBackgroundStyle: document.getElementById('captionBgStyleInput').value
+        textColor: document.getElementById('textColorInput').value
       };
 
       if (ws && ws.readyState === WebSocket.OPEN) {
