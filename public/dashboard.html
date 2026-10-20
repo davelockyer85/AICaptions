@@ -429,7 +429,7 @@
       const planTier = (cachedProfile.plan_type).toUpperCase();
       const usedSecs = cachedProfile.streaming_seconds_used || 0;
       const maxSecs = cachedProfile.total_seconds_allowed;
-      const allowedRooms = cachedProfile.allowed_rooms || 1;
+      const allowedRooms = cachedProfile.allowed_rooms;
 
       if (statusPlan) statusPlan.innerText = planTier;
 
