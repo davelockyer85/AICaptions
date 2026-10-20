@@ -407,8 +407,8 @@
       if (!currentUser) return;
       try {
         const { data: profile, error } = await supabaseClient
-          .from('users')
-          .select('plan_tier, streaming_seconds_used, max_streaming_seconds, allowed_rooms')
+          .from('subscriptions')
+          .select('plan_type, streaming_seconds_used, total_seconds_allowed, max_rooms')
           .eq('user_id', currentUser.id)
           .single();
 
@@ -479,7 +479,7 @@
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
-          table: 'users',
+          table: 'subscriptions',
           filter: `user_id=eq.${currentUser.id}`
         }, (payload) => {
           if (payload.new) {
