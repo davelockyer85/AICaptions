@@ -153,7 +153,6 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
         .upsert({
           user_id: userId,
           stripe_subscription_id: subscriptionId,
-          last_payment_at: new Date().toISOString(),
           status: 'active',
           plan_type: 'starter',
           updated_at: new Date()
