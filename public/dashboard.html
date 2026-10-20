@@ -426,9 +426,9 @@
       if (updatedProfile) cachedProfile = updatedProfile;
       if (!cachedProfile) return;
 
-      const planTier = (cachedProfile.plan_tier || 'free').toUpperCase();
+      const planTier = (cachedProfile.plan_type).toUpperCase();
       const usedSecs = cachedProfile.streaming_seconds_used || 0;
-      const maxSecs = cachedProfile.max_streaming_seconds;
+      const maxSecs = cachedProfile.total_seconds_allowed;
       const allowedRooms = cachedProfile.allowed_rooms || 1;
 
       if (statusPlan) statusPlan.innerText = planTier;
