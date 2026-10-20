@@ -84,46 +84,52 @@ function cleanupRoom(roomId) {
   }
 }
 
-// ==========================================
-// 1. STRIPE WEBHOOK ENDPOINT
-// ==========================================
+// Stripe Webhook Endpoint
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 
   try {
+    // Verify the event came securely from Stripe using your webhook secret
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
+    console.error(`⚠️ Webhook signature verification failed: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Handle successful checkout
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    
+    // Retrieve the Supabase user ID passed during checkout creation
     const userId = session.client_reference_id || session.metadata?.userId;
-    const mode = session.mode;
+    const subscriptionId = session.subscription;
+    const customerId = session.customer;
 
     if (userId) {
-      const isOneTime = mode === 'payment';
-      const planTier = isOneTime ? 'one_time' : 'subscriber';
-      const expiresAt = isOneTime ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null;
-      const maxStreamingSeconds = isOneTime ? 36000 : null;
-      const allowedRooms = isOneTime ? 1 : 3;
-
-      await supabase
-        .from('users')
-        .update({
-          plan_tier: planTier,
-          event_pass_expires_at: expiresAt,
-          max_streaming_seconds: maxStreamingSeconds,
-          allowed_rooms: allowedRooms,
-          stripe_customer_id: session.customer,
-          stripe_subscription_id: session.subscription || null,
+      // Update Supabase subscriptions table
+      const { error } = await supabase
+        .from('subscriptions')
+        .upsert({
+          user_id: userId,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          status: 'active',
+          plan_type: 'starter',
           updated_at: new Date()
-        })
-        .eq('id', userId);
+        }, { onConflict: 'user_id' });
+
+      if (error) {
+        console.error('Failed to update Supabase:', error);
+      } else {
+        console.log(`Successfully upgraded user ${userId} to Starter plan.`);
+      }
     }
   }
+
+  // Return a 200 response to acknowledge receipt of the event
+  res.json({ received: true });
+});
 
   res.json({ received: true });
 });
