@@ -115,7 +115,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         .update({
           plan_tier: planTier,
           event_pass_expires_at: expiresAt,
-          max_streaming_seconds: maxStreamingSeconds,
+          seconds_used: maxStreamingSeconds,
           allowed_rooms: allowedRooms,
           stripe_customer_id: session.customer,
           stripe_subscription_id: session.subscription || null,
