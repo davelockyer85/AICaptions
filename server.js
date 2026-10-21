@@ -127,8 +127,9 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
   res.json({ received: true });
 });
+
 // ==========================================
-// STRIPE WEBHOOK ENDPOINT
+// STRIPE WEBHOOK ENDPOINT (API Route)
 // ==========================================
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -145,7 +146,6 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
     const session = event.data.object;
     const userId = session.client_reference_id || session.metadata?.userId;
     const subscriptionId = session.subscription || null;
-    const customerId = session.customer || null;
 
     if (userId) {
       const { error } = await supabase
@@ -168,6 +168,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
   res.json({ received: true });
 });
+
 // --- Standard Express Middleware & Static Files ------------------------
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -220,7 +221,6 @@ wss.on("connection", (ws, req) => {
   const pathname = urlObj.pathname;
   const roomId = urlObj.searchParams.get("room") || "default";
   
-  // Extract spoken language and translation flag sent from presenter screen
   const spokenLangParam = urlObj.searchParams.get("spokenLang") || "en-US";
   const translateParam = urlObj.searchParams.get("translate") === "true";
 
@@ -236,7 +236,7 @@ wss.on("connection", (ws, req) => {
 
     room.dgLive = deepgram.listen.live({
       model: "nova-3",
-      language: room.spokenLang, // Dynamically uses presenter's language choice
+      language: room.spokenLang,
       smart_format: true,
       interim_results: true,
       endpointing: 300
@@ -264,7 +264,6 @@ wss.on("connection", (ws, req) => {
       if (transcript && transcript.trim().length > 0) {
         let overlayText = transcript;
         
-        // Translate server-side if Google Translate toggle is enabled by presenter
         if (room.translateEnabled && room.targetOverlayLang && room.targetOverlayLang !== room.spokenLang) {
           overlayText = await translateText(transcript, room.spokenLang, room.targetOverlayLang);
         }
@@ -277,14 +276,12 @@ wss.on("connection", (ws, req) => {
           styles: room.overlayStyles
         });
 
-        // Broadcast ONLY to overlays in THIS room
         room.overlays.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(overlayPayload);
           }
         });
 
-        // Broadcast to mobile attendees
         if (isFinal) {
           for (const attendee of room.attendees) {
             if (attendee.readyState === WebSocket.OPEN) {
@@ -371,6 +368,7 @@ wss.on("connection", (ws, req) => {
         const data = JSON.parse(msg);
         if (data.type === "set_language") {
           ws.language = data.lang;
+          console.log(`[Attendee] Viewer switched language to: ${ws.language}`);
         }
       } catch (e) {}
     });
