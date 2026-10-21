@@ -321,7 +321,7 @@
       if (!userId) return;
       try {
         const { data: user, error } = await supabaseClient
-          .from('users')
+          .from('subscriptions')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .maybeSingle();
@@ -342,7 +342,7 @@
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
-          table: 'users',
+          table: 'subscriptions',
           filter: `user_id=eq.${userId}`
         }, (payload) => {
           if (payload.new) {
@@ -414,7 +414,7 @@
       if (!userId) return;
       try {
         const { data: user } = await supabaseClient
-          .from('users')
+          .from('subscriptions')
           .select('streaming_seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .maybeSingle();
@@ -431,7 +431,7 @@
         }
 
         await supabaseClient
-          .from('users')
+          .from('subscriptions')
           .update({ streaming_seconds_used: newTotal })
           .eq('user_id', userId);
       } catch (err) {
