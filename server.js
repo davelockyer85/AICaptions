@@ -359,27 +359,29 @@ wss.on("connection", (ws, req) => {
     });
   }
 
-  // ROUTE C: Mobile Audience (QR Code Viewers)
-  else if (pathname.startsWith("/ws/attendee")) {
-    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
-    ws.language = urlObj.searchParams.get("lang") || "en";
-    room.attendees.add(ws);
+// ROUTE C: Mobile Audience (QR Code Viewers)
+else if (pathname.startsWith("/ws/attendee")) {
+  console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+  
+  // Keep existing ws.language if it was already set during a quick reconnect, otherwise fallback to URL
+  ws.language = ws.language || urlObj.searchParams.get("lang") || "en";
+  room.attendees.add(ws);
 
-    ws.on("message", (msg) => {
-      try {
-        const data = JSON.parse(msg);
-        if (data.type === "set_language") {
-          ws.language = data.lang;
-          console.log(`[Attendee] Viewer switched language to: ${ws.language}`);
-        }
-      } catch (e) {}
-    });
+  ws.on("message", (msg) => {
+    try {
+      const data = JSON.parse(msg);
+      if (data.type === "set_language") {
+        ws.language = data.lang;
+        console.log(`[Attendee] Viewer switched language to: ${ws.language}`);
+      }
+    } catch (e) {}
+  });
 
-    ws.on("close", () => {
-      room.attendees.delete(ws);
-      cleanupRoom(roomId);
-    });
-  }
+  ws.on("close", () => {
+    room.attendees.delete(ws);
+    cleanupRoom(roomId);
+  });
+}
 });
 
 const PORT = process.env.PORT || 3000;
