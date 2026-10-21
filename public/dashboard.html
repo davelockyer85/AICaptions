@@ -408,7 +408,7 @@
       try {
         const { data: profile, error } = await supabaseClient
           .from('subscriptions')
-          .select('plan_type, streaming_seconds_used, total_seconds_allowed, max_rooms')
+          .select('plan_type, seconds_used, total_seconds_allowed, allowed_rooms')
           .eq('user_id', currentUser.id)
           .single();
 
