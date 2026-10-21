@@ -322,12 +322,12 @@
       try {
         const { data: user, error } = await supabaseClient
           .from('subscriptions')
-          .select('streaming_seconds_used, total_seconds_allowed')
+          .select('seconds_used, total_seconds_allowed')
           .eq('user_id', userId)
           .maybeSingle();
 
         if (!error && user) {
-          applyTimeLimits(user.streaming_seconds_used || 0, user.total_seconds_allowed ?? maxLimit);
+          applyTimeLimits(user.seconds_used || 0, user.total_seconds_allowed ?? maxLimit);
         }
         subscribeToRealtimeUsage(userId);
       } catch (e) {
@@ -346,7 +346,7 @@
           filter: `user_id=eq.${userId}`
         }, (payload) => {
           if (payload.new) {
-            const used = payload.new.streaming_seconds_used || 0;
+            const used = payload.new.seconds_used || 0;
             const maxSecs = payload.new.total_seconds_allowed ?? maxLimit;
             applyTimeLimits(used, maxSecs);
           }
@@ -415,13 +415,13 @@
       try {
         const { data: user } = await supabaseClient
           .from('subscriptions')
-          .select('streaming_seconds_used, max_streaming_seconds')
+          .select('seconds_used, max_streaming_seconds')
           .eq('user_id', userId)
           .maybeSingle();
 
         if (!user) return;
         const newTotal = (user.streaming_seconds_used || 0) + secondsToAdd;
-        const allowedMax = user.max_streaming_seconds ?? maxLimit;
+        const allowedMax = user.total_seconds_allowed ?? maxLimit;
 
         if (newTotal >= allowedMax) {
           cleanup();
@@ -432,7 +432,7 @@
 
         await supabaseClient
           .from('subscriptions')
-          .update({ streaming_seconds_used: newTotal })
+          .update({ seconds_used: newTotal })
           .eq('user_id', userId);
       } catch (err) {
         console.warn("Usage sync error:", err.message);
