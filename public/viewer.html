@@ -276,9 +276,9 @@
 
     roomDisplay.innerText = roomId;
 
-    // Translation helper using MyMemory API with explicit German source (de)
+    // Translation helper using MyMemory API with explicit English source (en)
     async function translateText(text, targetLang) {
-      if (!targetLang || targetLang === 'de') return text;
+      if (!targetLang || targetLang === 'en') return text;
       
       const encodedText = encodeURIComponent(text);
       const url = `https://api.mymemory.translated.net/get?q=${encodedText}&langpair=de|${targetLang}`;
