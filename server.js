@@ -37,7 +37,9 @@ async function translateText(text, sourceLang, targetLang) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+    });
     const data = await response.json();
     if (data && data[0]) {
       return data[0].map(item => item[0]).join('');
