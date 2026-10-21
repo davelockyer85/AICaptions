@@ -111,7 +111,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       const allowedRooms = isOneTime ? 1 : 3;
 
       await supabase
-        .from('users')
+        .from('subscriptions')
         .update({
           plan_tier: planTier,
           event_pass_expires_at: expiresAt,
