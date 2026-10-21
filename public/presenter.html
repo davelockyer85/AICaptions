@@ -420,7 +420,7 @@
           .maybeSingle();
 
         if (!user) return;
-        const newTotal = (user.streaming_seconds_used || 0) + secondsToAdd;
+        const newTotal = (user.seconds_used || 0) + secondsToAdd;
         const allowedMax = user.total_seconds_allowed ?? maxLimit;
 
         if (newTotal >= allowedMax) {
