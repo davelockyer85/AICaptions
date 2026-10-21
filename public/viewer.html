@@ -363,7 +363,7 @@
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
-          table: 'transcripts',
+          table: 'subscriptions',
           filter: `room_id=eq.${roomId}`
         }, async (payload) => {
           if (payload.new) {
