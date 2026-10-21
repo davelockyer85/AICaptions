@@ -302,7 +302,7 @@
     let localCountdownTimer = null;
     let realtimeChannel = null;
     const UPDATE_INTERVAL_SECONDS = 5;
-    let maxLimit = 3600;
+    let maxLimit = 0;
     let currentRemainingSeconds = 0;
 
     async function initPresenterAuth() {
@@ -322,12 +322,12 @@
       try {
         const { data: user, error } = await supabaseClient
           .from('subscriptions')
-          .select('streaming_seconds_used, max_streaming_seconds')
+          .select('streaming_seconds_used, total_seconds_allowed')
           .eq('user_id', userId)
           .maybeSingle();
 
         if (!error && user) {
-          applyTimeLimits(user.streaming_seconds_used || 0, user.max_streaming_seconds ?? maxLimit);
+          applyTimeLimits(user.streaming_seconds_used || 0, user.total_seconds_allowed ?? maxLimit);
         }
         subscribeToRealtimeUsage(userId);
       } catch (e) {
@@ -347,7 +347,7 @@
         }, (payload) => {
           if (payload.new) {
             const used = payload.new.streaming_seconds_used || 0;
-            const maxSecs = payload.new.max_streaming_seconds ?? maxLimit;
+            const maxSecs = payload.new.total_seconds_allowed ?? maxLimit;
             applyTimeLimits(used, maxSecs);
           }
         })
