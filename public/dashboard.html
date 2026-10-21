@@ -427,7 +427,7 @@
       if (!cachedProfile) return;
 
       const planTier = (cachedProfile.plan_type).toUpperCase();
-      const usedSecs = cachedProfile.streaming_seconds_used || 0;
+      const usedSecs = cachedProfile.seconds_used || 0;
       const maxSecs = cachedProfile.total_seconds_allowed;
       const allowedRooms = cachedProfile.allowed_rooms;
 
@@ -529,7 +529,7 @@
 
       try {
         const { error } = await supabaseClient.from('rooms').insert([
-          { room_id: roomId, name: name, user_id: currentUser.id, streaming_seconds_used: 0 }
+          { room_id: roomId, name: name, user_id: currentUser.id, seconds_used: 0 }
         ]);
         if (error) console.warn("Supabase room insert warning:", error.message);
       } catch (e) {
