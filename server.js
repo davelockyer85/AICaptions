@@ -38,14 +38,21 @@ async function translateText(text, sourceLang, targetLang) {
 
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
     });
-    const data = await response.json();
+    
+    const rawText = await response.text();
+    if (!rawText.startsWith('[')) {
+      console.error("[Translation Blocked] Google returned HTML instead of JSON.");
+      return text;
+    }
+
+    const data = JSON.parse(rawText);
     if (data && data[0]) {
       return data[0].map(item => item[0]).join('');
     }
   } catch (err) {
-    console.error("[Translation Error]", err);
+    console.error("[Translation Error]", err.message);
   }
   return text;
 }
