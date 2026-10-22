@@ -194,9 +194,7 @@
 
   <!-- Top Header Navigation -->
   <header>
-    <div class="brand">
-      <img src="https://raw.githubusercontent.com/davelockyer85/AICaptions/main/public/AICaptions-logo-0004.png" alt="AICaptions" style="height: 60px;">
-    </div>
+    <div class="brand">🎙️ AICaptions</div>
     <div class="room-badge" id="roomDisplay">main-stage</div>
     
     <div style="display: flex; align-items: center; gap: 12px;">
@@ -257,11 +255,6 @@
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('lang', viewerLang);
         window.history.replaceState({}, '', newUrl);
-
-        if (ws) {
-            ws.close();
-        }
-        connectToCaptionStream();
       });
     }
 
@@ -300,7 +293,7 @@
       }
     }
 
-    // Extract caption text from incoming WebSocket payloads
+    // Extract caption text from incoming WebSocket or Supabase payloads
     function extractCaptionData(data) {
       if (!data) return null;
 
@@ -353,6 +346,35 @@
       } catch (err) {
         console.warn("[Viewer] Connection setup error:", err);
       }
+
+      // Supabase Realtime Fallback
+      const channel = supabaseClient.channel(`room_${roomId}`, {
+        config: { broadcast: { ack: false } }
+      });
+
+      channel
+        .on('broadcast', { event: 'caption' }, async (res) => {
+          const data = extractCaptionData(res.payload || res);
+          if (data) {
+            const displayText = await translateText(data.text, viewerLang);
+            renderCaptionChunk(displayText, data.isFinal);
+          }
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transcripts',
+          filter: `room_id=eq.${roomId}`
+        }, async (payload) => {
+          if (payload.new) {
+            const text = payload.new.text || payload.new.transcript;
+            if (text) {
+              const displayText = await translateText(text, viewerLang);
+              renderCaptionChunk(displayText, true);
+            }
+          }
+        })
+        .subscribe();
     }
 
     function renderCaptionChunk(text, isFinal = true) {
