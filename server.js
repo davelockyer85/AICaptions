@@ -67,6 +67,7 @@ function getOrCreateRoom(roomId) {
       spokenLang: "en-US",
       translateEnabled: false,
       targetOverlayLang: "en",
+      showQr: false,
       overlays: new Set(),
       attendees: new Set(),
       dgLive: null,
@@ -318,6 +319,15 @@ wss.on("connection", (ws, req) => {
           if (controlData.type === "set_language") {
             room.targetOverlayLang = controlData.lang;
             console.log(`[Room ${roomId}] Switched overlay language to: ${room.targetOverlayLang}`);
+          } else if (controlData.type === "toggle_qr") {
+            room.showQr = controlData.show;
+            const qrPayload = JSON.stringify({ type: 'qr_update', show: room.showQr });
+            room.overlays.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(qrPayload);
+              }
+            });
+            console.log(`[Room ${roomId}] QR Code visibility set to: ${room.showQr}`);
           } else if (controlData.type === "update_styles") {
             room.overlayStyles = controlData.styles;
             const stylePayload = JSON.stringify({ type: 'styles_update', styles: room.overlayStyles });
@@ -359,6 +369,7 @@ wss.on("connection", (ws, req) => {
     if (room.overlayStyles) {
       ws.send(JSON.stringify({ type: 'styles_update', styles: room.overlayStyles }));
     }
+    ws.send(JSON.stringify({ type: 'qr_update', show: room.showQr }));
 
     ws.on("close", () => {
       room.overlays.delete(ws);
@@ -366,29 +377,28 @@ wss.on("connection", (ws, req) => {
     });
   }
 
-// ROUTE C: Mobile Audience (QR Code Viewers)
-else if (pathname.startsWith("/ws/attendee")) {
-  console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
-  
-  // Keep existing ws.language if it was already set during a quick reconnect, otherwise fallback to URL
-  ws.language = ws.language || urlObj.searchParams.get("lang") || "en";
-  room.attendees.add(ws);
+  // ROUTE C: Mobile Audience (QR Code Viewers)
+  else if (pathname.startsWith("/ws/attendee")) {
+    console.log(`[Attendee] Mobile viewer connected to room: ${roomId}`);
+    
+    ws.language = ws.language || urlObj.searchParams.get("lang") || "en";
+    room.attendees.add(ws);
 
-  ws.on("message", (msg) => {
-    try {
-      const data = JSON.parse(msg);
-      if (data.type === "set_language") {
-        ws.language = data.lang;
-        console.log(`[Attendee] Viewer switched language to: ${ws.language}`);
-      }
-    } catch (e) {}
-  });
+    ws.on("message", (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.type === "set_language") {
+          ws.language = data.lang;
+          console.log(`[Attendee] Viewer switched language to: ${ws.language}`);
+        }
+      } catch (e) {}
+    });
 
-  ws.on("close", () => {
-    room.attendees.delete(ws);
-    cleanupRoom(roomId);
-  });
-}
+    ws.on("close", () => {
+      room.attendees.delete(ws);
+      cleanupRoom(roomId);
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
