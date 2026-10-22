@@ -191,6 +191,22 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
+app.post('/api/toggle-qr', express.json(), (req, res) => {
+  const { room: roomId, show } = req.body;
+  const room = getOrCreateRoom(roomId);
+  room.showQr = show;
+
+  const qrPayload = JSON.stringify({ type: 'qr_update', show: room.showQr });
+  room.overlays.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(qrPayload);
+    }
+  });
+
+  console.log(`[Room ${roomId}] QR Code visibility set to: ${room.showQr} (via HTTP)`);
+  res.json({ success: true, show: room.showQr });
+});
+
 // ==========================================
 // 2. STRIPE CHECKOUT SESSION ENDPOINT
 // ==========================================
