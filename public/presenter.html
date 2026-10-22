@@ -230,6 +230,18 @@
       </label>
     </div>
 
+    <!-- QR Code Toggle Switch -->
+    <div class="switch-container">
+      <div style="text-align: left;">
+        <label style="margin-bottom: 0; color: #f3f4f6; font-size: 0.9rem;">Show QR Code on Overlay</label>
+        <span style="font-size: 0.75rem; color: #9ca3af;">Display room audience QR code on video overlay</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="qrToggle" onchange="toggleQrCode()">
+        <span class="slider"></span>
+      </label>
+    </div>
+
     <!-- Overlay Style Controls -->
     <div class="setting-group" style="background: #111827; padding: 1rem; border-radius: 8px; border: 1px solid #374151; margin-top: 1rem;">
       <label style="color: #60a5fa; margin-bottom: 0.75rem;">Overlay Style Controls</label>
@@ -291,6 +303,8 @@
 
     <p id="status">Status: Disconnected</p>
   </div>
+
+  
 
   <script>
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
@@ -486,6 +500,13 @@
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'update_styles', styles }));
+      }
+    }
+
+    function toggleQrCode() {
+      const show = document.getElementById('qrToggle').checked;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'toggle_qr', show }));
       }
     }
 
