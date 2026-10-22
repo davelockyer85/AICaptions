@@ -51,8 +51,9 @@
     .anim-bounce { animation: bounce 0.6s ease infinite; }
     .anim-fade { animation: fadeIn 0.3s ease; }
 
-    /* QR Code Overlay Box - Bottom Right */
+    /* QR Code Overlay Box - Bottom Right (Hidden by default) */
     #qr-overlay {
+      display: none; 
       position: fixed;
       bottom: 20px;
       right: 20px;
@@ -114,6 +115,7 @@
     const wsUrl = `${wsProtocol}${window.location.host}/ws/overlay?room=${encodeURIComponent(roomId)}`;
 
     const captionBox = document.getElementById('captionBox');
+    const qrOverlay = document.getElementById('qr-overlay');
 
     function connectOverlayWebSocket() {
       const ws = new WebSocket(wsUrl);
@@ -121,6 +123,11 @@
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Handle QR Code visibility toggle from server
+          if (data.type === 'qr_update') {
+            qrOverlay.style.display = data.show ? 'block' : 'none';
+          }
 
           // 1. Handle incoming text captions
           if (data.text) {
