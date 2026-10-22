@@ -253,11 +253,16 @@
     if (langSelect) {
       langSelect.value = viewerLang;
       langSelect.addEventListener('change', (e) => {
-        viewerLang = e.target.value;
-        const newUrl = new URL(window.location);
-        newUrl.searchParams.set('lang', viewerLang);
-        window.history.replaceState({}, '', newUrl);
-      });
+    viewerLang = e.target.value;
+    const newUrl = new URL(window.location);
+    newUrl.searchParams.set('lang', viewerLang);
+    window.history.replaceState({}, '', newUrl);
+
+    if (ws) {
+        ws.close();
+    }
+    connectToCaptionStream();
+});
     }
 
     // UI Element References
