@@ -248,7 +248,7 @@
     const roomId = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
     let viewerLang = urlParams.get('lang') || urlParams.get('target_lang') || 'en';
 
-    // Set dropdown to match URL param if present
+    // Set dropdown to match URL param if present & handle dynamic language switching without refresh
     const langSelect = document.getElementById('langSelect');
     if (langSelect) {
       langSelect.value = viewerLang;
@@ -257,6 +257,11 @@
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('lang', viewerLang);
         window.history.replaceState({}, '', newUrl);
+
+        if (ws) {
+          ws.close();
+        }
+        connectToCaptionStream();
       });
     }
 
