@@ -503,6 +503,19 @@
       }
     }
 
+    async function toggleQrCode() {
+      const show = document.getElementById('qrToggle').checked;
+      try {
+        await fetch('/api/toggle-qr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room: room, show: show })
+        });
+      } catch (err) {
+        console.error("Failed to toggle QR code:", err);
+      }
+    }
+
     function toggleQrCode() {
       const show = document.getElementById('qrToggle').checked;
       if (ws && ws.readyState === WebSocket.OPEN) {
