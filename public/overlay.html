@@ -143,6 +143,18 @@
             captionBox.style.fontStyle = styles.fontStyle || 'normal';
             captionBox.style.color = styles.textColor || '#ffffff';
 
+            // Handle background style option
+            if (styles.captionBackgroundStyle === 'background') {
+              captionBox.style.background = 'rgba(0, 0, 0, 0.75)';
+              captionBox.style.padding = '12px 24px';
+            } else if (styles.captionBackgroundStyle === 'none') {
+              captionBox.style.background = 'transparent';
+              captionBox.style.padding = '0';
+            } else if (styles.captionBackgroundStyle === 'shadow') {
+              captionBox.style.background = 'transparent';
+              captionBox.style.padding = '0';
+            }
+
             // Handle animations
             captionBox.className = 'caption-text';
             if (styles.animation === 'bounce') {
