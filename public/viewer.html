@@ -188,6 +188,32 @@
 
     .captions-container::-webkit-scrollbar { width: 4px; }
     .captions-container::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
+
+    /* QR Code Overlay Box */
+    #qrCodeContainer {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: white;
+      padding: 12px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 1000;
+      text-align: center;
+    }
+    #qrCodeContainer img {
+      width: 140px;
+      height: 140px;
+      display: block;
+    }
+    #qrCodeContainer span {
+      display: block;
+      color: #0f172a;
+      font-size: 0.8rem;
+      font-weight: bold;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -235,6 +261,12 @@
     </div>
   </footer>
 
+  <!-- QR Code Overlay Container -->
+  <div id="qrCodeContainer">
+    <img id="qrImage" src="" alt="Scan to Join">
+    <span>Scan to Join Live</span>
+  </div>
+
   <script>
     // 1. Supabase Client Initialization
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
@@ -275,6 +307,12 @@
     let ws = null;
 
     roomDisplay.innerText = roomId;
+
+    // Generate dynamic QR code for the current viewer URL
+    const qrImage = document.getElementById('qrImage');
+    if (qrImage) {
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.href)}`;
+    }
 
     // Translation helper using MyMemory API with explicit English source (en)
     async function translateText(text, targetLang) {
@@ -321,6 +359,16 @@
 
           try {
             const parsed = JSON.parse(event.data);
+            
+            // Handle QR toggle message from presenter
+            if (parsed.type === 'qr_update') {
+              const qrContainer = document.getElementById('qrCodeContainer');
+              if (qrContainer) {
+                qrContainer.style.display = parsed.show ? 'block' : 'none';
+              }
+              return;
+            }
+
             const extracted = extractCaptionData(parsed);
             if (extracted && extracted.text) {
               rawText = extracted.text;
