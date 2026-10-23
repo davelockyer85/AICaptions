@@ -199,6 +199,33 @@
     input:checked + .slider:before {
       transform: translateX(24px);
     }
+    /* Custom Modal Styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(5px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background: #1f2937;
+      border: 1px solid #374151;
+      padding: 2rem;
+      border-radius: 12px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .modal-content h2 { color: #60a5fa; margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem; }
+    .modal-content p { color: #9ca3af; margin-bottom: 1.5rem; font-size: 0.95rem; }
+    .modal-btn { background: #2563eb; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 0.75rem; transition: background 0.2s; }
+    .modal-btn:hover { background: #1d4ed8; }
+    .modal-close { background: transparent; color: #9ca3af; border: none; cursor: pointer; font-size: 0.85rem; }
+    .modal-close:hover { color: #f3f4f6; }
   </style>
 </head>
 <body>
@@ -304,7 +331,15 @@
     <p id="status">Status: Disconnected</p>
   </div>
 
-  
+  <!-- Custom Limit Reached Modal -->
+  <div class="modal-overlay" id="limitModal">
+    <div class="modal-content">
+      <h2>Streaming Time Exhausted</h2>
+      <p>You have reached your maximum streaming limit. Top up your time instantly to continue broadcasting.</p>
+      <button class="modal-btn" id="topUpBtn">Top Up / Buy More Time</button>
+      <button class="modal-close" onclick="closeLimitModal()">Dismiss</button>
+    </div>
+  </div>
 
   <script>
     const SUPABASE_URL = 'https://euopdmwtowuxdzczwbul.supabase.co';
@@ -318,6 +353,25 @@
     const UPDATE_INTERVAL_SECONDS = 5;
     let maxLimit = 0;
     let currentRemainingSeconds = 0;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
+    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
+    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
+      maxLimit = parsedMaxLimit;
+    }
+
+    // Handle return / success after Stripe checkout
+    if (urlParams.get('success') === 'true') {
+      const statusElem = document.getElementById('status');
+      if (statusElem) {
+        statusElem.innerText = "Status: Payment Successful! Time Refreshed.";
+        statusElem.style.color = "#10b981";
+      }
+      const cleanUrl = new URL(window.location);
+      cleanUrl.searchParams.delete('success');
+      window.history.replaceState({}, '', cleanUrl);
+    }
 
     async function initPresenterAuth() {
       try {
@@ -368,6 +422,35 @@
         .subscribe();
     }
 
+    function showLimitModal() {
+      const modal = document.getElementById('limitModal');
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeLimitModal() {
+      const modal = document.getElementById('limitModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    document.getElementById('topUpBtn').onclick = async () => {
+      try {
+        const response = await fetch('/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser ? currentUser.id : null, room: room })
+        });
+        const data = await response.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          alert('Failed to initiate checkout session.');
+        }
+      } catch (err) {
+        console.error('Checkout error:', err);
+        alert('Error connecting to payment server.');
+      }
+    };
+
     function applyTimeLimits(usedSecs, allowedMaxSecs) {
       currentRemainingSeconds = Math.max(0, allowedMaxSecs - usedSecs);
       updateTimerDisplay(currentRemainingSeconds);
@@ -377,12 +460,15 @@
           cleanup();
           status.innerText = "Status: Terminated — Maximum Time Limit Reached";
           status.style.color = "#ef4444";
-          alert(`Stream stopped: You have reached your maximum streaming limit.`);
+          showLimitModal();
         } else {
           status.innerText = `Status: Time Limit Exceeded`;
           status.style.color = "#ef4444";
           startBtn.disabled = true;
+          showLimitModal();
         }
+      } else {
+        startBtn.disabled = false;
       }
     }
 
@@ -404,7 +490,7 @@
             cleanup();
             status.innerText = "Status: Terminated — Maximum Time Limit Reached";
             status.style.color = "#ef4444";
-            alert(`Stream stopped: You have run out of streaming time.`);
+            showLimitModal();
           }
         }
       }, 1000);
@@ -441,6 +527,7 @@
           cleanup();
           status.innerText = "Status: Terminated — Maximum Time Limit Reached";
           status.style.color = "#ef4444";
+          showLimitModal();
           return;
         }
 
@@ -514,13 +601,6 @@
       } catch (err) {
         console.error("Failed to toggle QR code:", err);
       }
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
-    const parsedMaxLimit = parseInt(urlParams.get('maxLimit'), 10);
-    if (!isNaN(parsedMaxLimit) && parsedMaxLimit > 0) {
-      maxLimit = parsedMaxLimit;
     }
 
     const urlToken = urlParams.get('token');
