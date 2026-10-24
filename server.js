@@ -73,8 +73,6 @@ function getOrCreateRoom(roomId) {
       dgLive: null,
       audioQueue: [],
       isDgReady: false,
-      userId: null,
-      startTime: null,
       overlayStyles: {
         fontSize: '32px',
         fontFamily: 'sans-serif',
@@ -133,7 +131,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
           stripe_subscription_id: session.subscription || null,
           updated_at: new Date()
         })
-        .eq('user_id', userId);
+        .eq('id', userId);
     }
   }
 
@@ -258,10 +256,7 @@ wss.on("connection", (ws, req) => {
 
   // ROUTE A: Stage Microphones / Audio Ingest & Style Controls
   if (pathname === "/ws/ingest") {
-    room.userId = urlObj.searchParams.get("userId");
-    room.startTime = Date.now();
-
-    console.log(`[Ingest] Presenter audio connected to room: ${roomId} | User: ${room.userId} | Spoken Lang: ${room.spokenLang} | Translate: ${room.translateEnabled}`);
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId} | Spoken Lang: ${room.spokenLang} | Translate: ${room.translateEnabled}`);
     room.audioQueue = [];
     room.isDgReady = false;
 
@@ -371,39 +366,13 @@ wss.on("connection", (ws, req) => {
       }
     });
 
-    ws.on("close", async () => {
+    ws.on("close", () => {
       console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
       if (room.dgLive) {
         room.dgLive.finish();
         room.dgLive = null;
       }
       room.isDgReady = false;
-
-      if (room.userId && room.startTime) {
-        const elapsedSeconds = Math.round((Date.now() - room.startTime) / 1000);
-        if (elapsedSeconds > 0) {
-          try {
-            const { data: sub } = await supabase
-              .from('subscriptions')
-              .select('seconds_used')
-              .eq('user_id', room.userId)
-              .single();
-
-            const currentUsed = sub?.seconds_used || 0;
-            const newSecondsUsed = currentUsed + elapsedSeconds;
-
-            await supabase
-              .from('subscriptions')
-              .update({ seconds_used: newSecondsUsed })
-              .eq('user_id', room.userId);
-
-            console.log(`[Usage] Updated user ${room.userId}: +${elapsedSeconds}s (Total: ${newSecondsUsed}s)`);
-          } catch (err) {
-            console.error('[Usage] Failed to update seconds_used:', err);
-          }
-        }
-      }
-
       cleanupRoom(roomId);
     });
   }
