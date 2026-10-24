@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { Resend } from 'resend';
 
 dotenv.config();
 
@@ -19,15 +20,15 @@ const wss = new WebSocketServer({ server });
 // --- Client & API Initialization ---------------------------------------
 const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY;
 if (!DEEPGRAM_KEY) {
-  console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
+    console.error("[WARNING] DEEPGRAM_API_KEY is missing in environment variables!");
 }
 const deepgram = createClient(DEEPGRAM_KEY);
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createSupabaseClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Google Translate Helper ------------------------------------------------
 async function translateText(text, sourceLang, targetLang) {
@@ -73,6 +74,8 @@ function getOrCreateRoom(roomId) {
       dgLive: null,
       audioQueue: [],
       isDgReady: false,
+      userId: null,
+      startTime: null,
       overlayStyles: {
         fontSize: '32px',
         fontFamily: 'sans-serif',
@@ -256,7 +259,10 @@ wss.on("connection", (ws, req) => {
 
   // ROUTE A: Stage Microphones / Audio Ingest & Style Controls
   if (pathname === "/ws/ingest") {
-    console.log(`[Ingest] Presenter audio connected to room: ${roomId} | Spoken Lang: ${room.spokenLang} | Translate: ${room.translateEnabled}`);
+    room.userId = urlObj.searchParams.get("userId");
+    room.startTime = Date.now();
+
+    console.log(`[Ingest] Presenter audio connected to room: ${roomId} | User: ${room.userId} | Spoken Lang: ${room.spokenLang} | Translate: ${room.translateEnabled}`);
     room.audioQueue = [];
     room.isDgReady = false;
 
@@ -366,13 +372,39 @@ wss.on("connection", (ws, req) => {
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", async () => {
       console.log(`[Ingest] Presenter disconnected from room: ${roomId}`);
       if (room.dgLive) {
         room.dgLive.finish();
         room.dgLive = null;
       }
       room.isDgReady = false;
+
+      if (room.userId && room.startTime) {
+        const elapsedSeconds = Math.round((Date.now() - room.startTime) / 1000);
+        if (elapsedSeconds > 0) {
+          try {
+            const { data: sub } = await supabase
+              .from('subscriptions')
+              .select('seconds_used')
+              .eq('user_id', room.userId)
+              .single();
+
+            const currentUsed = sub?.seconds_used || 0;
+            const newSecondsUsed = currentUsed + elapsedSeconds;
+
+            await supabase
+              .from('subscriptions')
+              .update({ seconds_used: newSecondsUsed })
+              .eq('user_id', room.userId);
+
+            console.log(`[Usage] Updated user ${room.userId}: +${elapsedSeconds}s (Total: ${newSecondsUsed}s)`);
+          } catch (err) {
+            console.error('[Usage] Failed to update seconds_used:', err);
+          }
+        }
+      }
+
       cleanupRoom(roomId);
     });
   }
