@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal & Compliance Documentation - AICaptions</title>
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+    }
+
+    /* Top Header Navigation */
+    header {
+      background-color: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    /* Clickable Logo linking back to landing page */
+    .brand {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #ffffff;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: -0.5px;
+      transition: opacity 0.2s;
+    }
+
+    .brand:hover {
+      opacity: 0.9;
+    }
+
+    .brand span { color: var(--primary); }
+
+    /* Main Container */
+    .legal-wrapper {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .legal-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 840px;
+      padding: 48px 40px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .legal-header {
+      text-align: center;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 24px;
+    }
+
+    .legal-header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .legal-header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    /* Document Typography & Layout */
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-top: 36px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+    }
+
+    ul {
+      margin-bottom: 16px;
+      padding-left: 20px;
+      color: var(--text-muted);
+    }
+
+    li {
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    strong {
+      color: var(--text-main);
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .section-divider {
+      margin: 48px 0;
+      border: 0;
+      border-top: 1px solid var(--border-color);
+    }
+
+    @media (max-width: 768px) {
+      header { padding: 16px 20px; }
+      .legal-card { padding: 32px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header with Brand Logo linking back to landing page -->
+  <header>
+    <a href="/" class="brand">
+      🎙️ AICaptions
+    </a>
+  </header>
+
+  <!-- Main Legal Content Container -->
+  <div class="legal-wrapper">
+    <div class="legal-card">
+      <div class="legal-header">
+        <h1>AICaptions - Legal & Compliance Documentation</h1>
+        <p>Last Updated: October 25, 2026</p>
+      </div>
+
+      <!-- PART 1: PRIVACY POLICY -->
+      <h2>PART 1: PRIVACY POLICY</h2>
+
+      <h3>1. Introduction</h3>
+      <p>AICaptions ("we," "our," or "us") is committed to protecting your privacy and ensuring the security of all live audio, video, and text data processed through our real-time transcription and captioning platform. This Privacy Policy outlines how we collect, use, process, and safeguard your information when you access or use the AICaptions web application, APIs, or event services.</p>
+      <p>This policy complies with the Australian Privacy Principles (APPs) under the Privacy Act 1988 (Cth), the General Data Protection Regulation (GDPR), and applicable global data protection laws.</p>
+
+      <h3>2. Information We Collect</h3>
+      <p><strong>A. Account & Operational Data</strong></p>
+      <ul>
+        <li><strong>User Information:</strong> Name, email address, billing details, company/organization name, and contact details provided upon account registration.</li>
+        <li><strong>Technical Data:</strong> IP address, browser type, operating system, device specs, and session log files collected automatically for system performance and security.</li>
+      </ul>
+      <p><strong>B. Audio & Media Data (Service Inputs)</strong></p>
+      <ul>
+        <li><strong>Live Audio Streams & Files:</strong> Real-time microphone audio feeds, network streams (e.g., NDI/SRT/RTMP), or uploaded media files submitted for automated captioning.</li>
+        <li><strong>Metadata:</strong> Technical parameters of input streams (sample rate, stream duration, latency stats).</li>
+      </ul>
+      <p><strong>C. Generated Captions & Outputs</strong></p>
+      <ul>
+        <li><strong>Transcripts & Caption Files:</strong> Text outputs, SRT/VTT files, and live event logs produced during processing.</li>
+      </ul>
+
+      <h3>3. How We Use Your Data</h3>
+      <p>We process data strictly for operational, security, and service delivery purposes:</p>
+      <ul>
+        <li><strong>Service Provision:</strong> To transcribe, convert, and render live audio into real-time captions.</li>
+        <li><strong>Account Management:</strong> To manage subscriptions, process payments, and provide customer support.</li>
+        <li><strong>System Health:</strong> To monitor API uptime, latency, error rates, and security threats.</li>
+      </ul>
+      <p><strong>CRITICAL COMMITMENT: Zero AI Training on Live Client Audio</strong></p>
+      <p>We DO NOT use customer live audio, video, or generated captions to train, fine-tune, or improve public or proprietary AI models.</p>
+      <p>Audio streams are processed in-memory (RAM) in real time and are purged immediately after processing, unless explicitly stored or logged by you via account settings.</p>
+
+      <h3>4. Data Retention & Deletion</h3>
+      <ul>
+        <li><strong>Live Streamed Audio:</strong> Transient; processed immediately in RAM and deleted in real-time. Never written to permanent disk storage.</li>
+        <li><strong>Generated Transcripts:</strong> Retained in your account dashboard according to your configured retention settings. You may manually delete transcripts or set automated purge schedules at any time.</li>
+        <li><strong>Account Information:</strong> Retained as long as your account remains active or as required by law for financial accounting (e.g., tax receipts).</li>
+      </ul>
+
+      <h3>5. Third-Party Services & Data Processors</h3>
+      <p>AICaptions utilizes enterprise-grade infrastructure providers to deliver high-availability, low-latency live transcription.</p>
+      <ul>
+        <li><strong>Cloud Infrastructure:</strong> Secure cloud data centers (e.g., AWS / Google Cloud) situated in region-locked compliance centers.</li>
+        <li><strong>Payment Processing:</strong> Transactions are handled via PCI-DSS compliant third-party payment gateways (e.g., Stripe). AICaptions does not store raw credit card credentials.</li>
+        <li><strong>Sub-processors:</strong> Any sub-processor used for AI speech inference operates under strict contractual obligations guaranteeing zero model training and strict data isolation.</li>
+      </ul>
+
+      <h3>6. Data Security</h3>
+      <p>We implement industry-standard administrative, physical, and technical security measures:</p>
+      <ul>
+        <li>End-to-end encryption in transit (TLS 1.3 / HTTPS / WSS).</li>
+        <li>Encryption at rest (AES-256) for stored user transcripts and system configurations.</li>
+        <li>Strict role-based access controls (RBAC) and network isolation.</li>
+      </ul>
+
+      <h3>7. User Rights & Data Control</h3>
+      <p>Depending on your jurisdiction, you have the right to:</p>
+      <ul>
+        <li>Access, update, or correct your personal information.</li>
+        <li>Request the permanent deletion of your account and associated data ("Right to be Forgotten").</li>
+        <li>Export your account data and transcript histories.</li>
+        <li>Opt out of non-essential communications.</li>
+      </ul>
+      <p>To exercise these rights, contact us at <a href="mailto:support@aicaptions.com">privacy@aicaptions.com</a>.</p>
+
+      <h3>8. Contact Us</h3>
+      <p>For questions or concerns regarding this Privacy Policy:</p>
+      <ul>
+        <li><strong>Email:</strong> <a href="mailto:support@aicaptions.com">privacy@aicaptions.com</a></li>
+        <li><strong>Location:</strong> Perth, Western Australia, Australia</li>
+      </ul>
+
+      <hr class="section-divider">
+
+      <!-- PART 2: TERMS OF USE -->
+      <h2>PART 2: TERMS OF USE</h2>
+      <p><strong>PLEASE READ THESE TERMS OF USE CAREFULLY. BY ACCESSING OR USING AICAPTIONS, YOU AGREE TO BE BOUND BY ALL TERMS AND CONDITIONS INCORPORATED HEREIN BY REFERENCE.</strong></p>
+
+      <h3>1. Acceptance of Terms</h3>
+      <p>These Terms of Use ("Terms") constitute a legally binding agreement between you ("User," "Customer," or "You") and AICaptions ("Company," "We," or "Us"). If you are using the Service on behalf of a company or entity, you represent that you have the legal authority to bind that entity to these Terms.</p>
+
+      <h3>2. Description of Service</h3>
+      <p>AICaptions provides automated, AI-powered real-time speech-to-text, captioning, translation, and media processing services ("Service") designed for live events, broadcasts, web applications, and digital media production.</p>
+
+      <h3>3. User Obligations & Conduct</h3>
+      <p><strong>A. Account Security</strong></p>
+      <p>You are responsible for maintaining the confidentiality of your account credentials and API keys. You accept full responsibility for all activities that occur under your account.</p>
+      <p><strong>B. Acceptable Use Policy</strong></p>
+      <p>You agree NOT to use AICaptions to:</p>
+      <ul>
+        <li>Process audio or content that violates applicable local or international laws (including illegal wiretapping or unlawful recording consent laws).</li>
+        <li>Transmit content that is defamatory, unlawful, threatening, abusive, or infringes upon intellectual property rights of third parties.</li>
+        <li>Attempt to reverse-engineer, decompile, extract source code, or bypass technical limitations of the AICaptions platform.</li>
+        <li>Launch automated attacks, overload API limits, or compromise system infrastructure.</li>
+      </ul>
+
+      <h3>4. Intellectual Property Rights</h3>
+      <ul>
+        <li><strong>Customer Content Ownership:</strong> You retain 100% full ownership of all audio, video, media, and resulting text captions submitted or generated through AICaptions.</li>
+        <li><strong>Platform Rights:</strong> AICaptions retains all rights, title, and interest in and to the platform, core software architecture, branding, trademarks, algorithms, UI/UX designs, and documentation.</li>
+      </ul>
+
+      <h3>5. Service Level & "As Is" Disclaimer</h3>
+      <p><strong>A. Speech-to-Text Accuracy</strong></p>
+      <p>AICaptions uses state-of-the-art automated speech recognition (ASR) technology. However, accuracy can be affected by external factors including audio quality, background noise, speaker accents, overlaps, and domain-specific jargon. AICaptions does not guarantee 100% transcript accuracy and should not be relied upon as the sole mechanism in high-risk environments (e.g., medical diagnoses, legal proceedings, or life-safety critical operations).</p>
+      <p><strong>B. Disclaimer of Warranties</strong></p>
+      <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, AICAPTIONS IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.</p>
+
+      <h3>6. Limitation of Liability</h3>
+      <p>TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW (INCLUDING THE AUSTRALIAN CONSUMER LAW):</p>
+      <p>IN NO EVENT SHALL AICAPTIONS, ITS DIRECTORS, EMPLOYEES, OR AGENTS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES (INCLUDING LOSS OF PROFITS, DATA, GOODWILL, OR BUSINESS INTERRUPTION) ARISING FROM YOUR USE OF THE SERVICE.</p>
+      <p>AICAPTIONS' TOTAL AGGREGATE LIABILITY FOR ANY CLAIM ARISING OUT OF OR RELATING TO THESE TERMS SHALL NOT EXCEED THE TOTAL AMOUNT PAID BY YOU TO AICAPTIONS IN THE THREE (3) MONTHS PRECEDING THE CLAIM.</p>
+
+      <h3>7. Indemnification</h3>
+      <p>You agree to defend, indemnify, and hold harmless AICaptions from and against any claims, liabilities, damages, losses, or expenses (including legal fees) arising out of or in any way connected with:</p>
+      <ul>
+        <li>Your breach of these Terms;</li>
+        <li>The content of audio feeds or media provided to the Service; or</li>
+        <li>Violation of third-party privacy or recording rights by you during your live events.</li>
+      </ul>
+
+      <h3>8. Fees, Subscriptions, and Cancellation</h3>
+      <ul>
+        <li><strong>Billing:</strong> Services are billed on a subscription or pay-as-you-go basis as detailed during checkout.</li>
+        <li><strong>Refunds:</strong> Payments are non-refundable except where required by Australian Consumer Law or explicitly stated in writing.</li>
+        <li><strong>Cancellation:</strong> You may cancel your subscription at any time via your account dashboard. Access will continue through the end of the current billing cycle.</li>
+      </ul>
+
+      <h3>9. Governing Law & Dispute Resolution</h3>
+      <p>These Terms are governed by and construed in accordance with the laws of Western Australia, Australia. Any disputes arising under or in connection with these Terms shall be subject to the exclusive jurisdiction of the courts of Western Australia.</p>
+
+      <h3>10. Modifications to Terms</h3>
+      <p>We reserve the right to modify these Terms at any time. We will provide notice of material updates by updating the "Last Updated" date or emailing registered account holders. Continued use of the Service following changes constitutes acceptance of the modified Terms.</p>
+    </div>
+  </div>
+
+</body>
+</html>
