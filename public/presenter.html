@@ -696,9 +696,8 @@
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         function updateMicMeter() {
-            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+            if (!audioStream || !audioContext || audioContext.state === 'closed') return;
             
-            // Get time-domain waveform data (silence baseline is 128)
             analyser.getByteTimeDomainData(dataArray);
             let maxVal = 0;
             for (let i = 0; i < dataArray.length; i++) {
@@ -706,7 +705,6 @@
                 if (val > maxVal) maxVal = val;
             }
             
-            // Scale deviation to percentage (boosting sensitivity for speech)
             let percent = Math.min(100, Math.round((maxVal / 64) * 100));
             
             const meterBar = document.getElementById('micMeterBar');
@@ -717,7 +715,7 @@
         }
         updateMicMeter();
         // -------------------------
-
+        
         const spokenLang = document.getElementById('languageSelect')?.value || 'en-US';
         const translateEnabled = document.getElementById('translateToggle')?.checked ? 'true' : 'false';
         
