@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -260,6 +259,14 @@
     <!-- Real-Time Countdown Timer -->
     <div class="timer-badge" id="timerDisplay">Remaining Time: --:--</div>
 
+    <!-- Microphone Input Level Meter -->
+    <div class="setting-group" style="margin-top: 1rem;">
+      <label style="font-size: 0.75rem;">Microphone Input Level</label>
+      <div style="background: #111827; border: 1px solid #374151; border-radius: 8px; height: 12px; overflow: hidden; padding: 2px;">
+        <div id="micMeterBar" style="width: 0%; height: 100%; background: #10b981; border-radius: 4px; transition: width 0.05s ease;"></div>
+      </div>
+    </div>
+
     <!-- Spoken / Ingest Language Selector -->
     <div class="setting-group">
       <label for="languageSelect">Spoken Input Language</label>
@@ -389,6 +396,11 @@
     const UPDATE_INTERVAL_SECONDS = 5;
     let maxLimit = 0;
     let currentRemainingSeconds = 0;
+
+    // Audio Meter Globals
+    let audioContext = null;
+    let analyser = null;
+    let animationFrameId = null;
 
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
@@ -672,6 +684,33 @@
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
+        // --- AUDIO METER SETUP ---
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(audioStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateMicMeter() {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            let average = sum / dataArray.length;
+            let percent = Math.min(100, Math.round((average / 128) * 100));
+            
+            const meterBar = document.getElementById('micMeterBar');
+            if (meterBar) {
+                meterBar.style.width = percent + '%';
+            }
+            animationFrameId = requestAnimationFrame(updateMicMeter);
+        }
+        updateMicMeter();
+        // -------------------------
+
         const spokenLang = document.getElementById('languageSelect')?.value || 'en-US';
         const translateEnabled = document.getElementById('translateToggle')?.checked ? 'true' : 'false';
         
@@ -737,6 +776,19 @@
     function cleanup() {
       stopUsageSyncing();
       stopLocalCountdown();
+
+      // --- METER CLEANUP ---
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      if (audioContext && audioContext.state !== 'closed') {
+        audioContext.close();
+      }
+      const meterBar = document.getElementById('micMeterBar');
+      if (meterBar) meterBar.style.width = '0%';
+      // ---------------------
+
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
