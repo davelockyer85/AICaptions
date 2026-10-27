@@ -684,23 +684,30 @@
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
-        // --- AUDIO METER SETUP ---
+       // --- AUDIO METER SETUP ---
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
         const source = audioContext.createMediaStreamSource(audioStream);
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 512;
         source.connect(analyser);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         function updateMicMeter() {
             if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-            analyser.getByteFrequencyData(dataArray);
-            let sum = 0;
+            
+            // Get time-domain waveform data (silence baseline is 128)
+            analyser.getByteTimeDomainData(dataArray);
+            let maxVal = 0;
             for (let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i];
+                let val = Math.abs(dataArray[i] - 128);
+                if (val > maxVal) maxVal = val;
             }
-            let average = sum / dataArray.length;
-            let percent = Math.min(100, Math.round((average / 128) * 100));
+            
+            // Scale deviation to percentage (boosting sensitivity for speech)
+            let percent = Math.min(100, Math.round((maxVal / 64) * 100));
             
             const meterBar = document.getElementById('micMeterBar');
             if (meterBar) {
