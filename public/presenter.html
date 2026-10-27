@@ -355,6 +355,7 @@
 
     <div class="btn-group">
       <button id="startBtn" class="action-btn">Start Streaming</button>
+      <button id="testMicBtn" class="action-btn" style="background: #4b5563; color: white;">Test Microphone</button>
       <button id="stopBtn" class="action-btn" disabled>Stop</button>
     </div>
 
@@ -397,10 +398,11 @@
     let maxLimit = 0;
     let currentRemainingSeconds = 0;
 
-    // Audio Meter Globals
+    // Audio Meter & Test Globals
     let audioContext = null;
     let analyser = null;
     let animationFrameId = null;
+    let isTestingMic = false;
 
     const urlParams = new URLSearchParams(window.location.search);
     const room = urlParams.get('room') || urlParams.get('roomId') || 'main-stage';
@@ -669,11 +671,74 @@
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const testMicBtn = document.getElementById('testMicBtn');
     const status = document.getElementById('status');
 
     let ws = null;
     let mediaRecorder = null;
     let audioStream = null;
+
+    testMicBtn.onclick = async () => {
+      if (isTestingMic) {
+        cleanup();
+        testMicBtn.innerText = "Test Microphone";
+        testMicBtn.style.background = "#4b5563";
+        status.innerText = "Status: Disconnected";
+        status.style.color = "#9ca3af";
+        return;
+      }
+
+      try {
+        status.innerText = "Status: Testing Microphone...";
+        status.style.color = "#f59e0b";
+
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+        const source = audioContext.createMediaStreamSource(audioStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateMicMeter() {
+            if (!audioStream || !audioContext || audioContext.state === 'closed') return;
+            
+            analyser.getByteTimeDomainData(dataArray);
+            let maxVal = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                let val = Math.abs(dataArray[i] - 128);
+                if (val > maxVal) maxVal = val;
+            }
+            
+            let percent = Math.min(100, Math.round((maxVal / 64) * 100));
+            
+            const meterBar = document.getElementById('micMeterBar');
+            if (meterBar) {
+                meterBar.style.width = percent + '%';
+            }
+            animationFrameId = requestAnimationFrame(updateMicMeter);
+        }
+        updateMicMeter();
+
+        isTestingMic = true;
+        testMicBtn.innerText = "Stop Test";
+        testMicBtn.style.background = "#d97706";
+        startBtn.disabled = true;
+        status.innerText = "Status: Microphone Test Active (Not Streaming)";
+        status.style.color = "#10b981";
+
+      } catch (err) {
+        console.error("Microphone Test Error:", err);
+        status.innerText = "Status: Microphone Access Denied";
+        status.style.color = "#ef4444";
+      }
+    };
 
     startBtn.onclick = async () => {
       try {
@@ -684,7 +749,7 @@
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
-       // --- AUDIO METER SETUP ---
+        // --- AUDIO METER SETUP ---
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         if (audioContext.state === 'suspended') {
             await audioContext.resume();
@@ -745,6 +810,7 @@
           mediaRecorder.start(250);
 
           startBtn.disabled = true;
+          testMicBtn.disabled = true;
           stopBtn.disabled = false;
           startLocalCountdown();
 
@@ -782,6 +848,16 @@
       stopUsageSyncing();
       stopLocalCountdown();
 
+      // Reset Test Mic State
+      if (isTestingMic) {
+        isTestingMic = false;
+        const testBtn = document.getElementById('testMicBtn');
+        if (testBtn) {
+          testBtn.innerText = "Test Microphone";
+          testBtn.style.background = "#4b5563";
+        }
+      }
+
       // --- METER CLEANUP ---
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -804,6 +880,7 @@
         ws.close();
       }
       startBtn.disabled = false;
+      testMicBtn.disabled = false;
       stopBtn.disabled = true;
     }
   </script>
