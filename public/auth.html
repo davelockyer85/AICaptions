@@ -277,11 +277,12 @@
         const captchaInput = document.querySelector('[name="cf-turnstile-response"]');
         const captchaToken = captchaInput ? captchaInput.value : null;
 
-        if (isSignUp) {
-          if (!captchaToken) {
-            throw new Error('Please complete the security check.');
-          }
+        // Require CAPTCHA for both Sign Up and Sign In
+        if (!captchaToken) {
+          throw new Error('Please complete the security check.');
+        }
 
+        if (isSignUp) {
           const { data, error } = await supabaseClient.auth.signUp(
             {
               email,
@@ -300,7 +301,14 @@
           alertBox.innerText = 'Account created! Please check your email and click the confirmation link.';
           alertBox.style.display = 'block';
         } else {
-          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          // Pass the captchaToken for sign-in as well
+          const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password,
+            options: {
+              captchaToken: captchaToken
+            }
+          });
           if (error) throw error;
 
           // Redirect on successful sign in
@@ -310,6 +318,11 @@
         alertBox.className = 'alert error';
         alertBox.innerText = err.message;
         alertBox.style.display = 'block';
+
+        // Reset Turnstile on error so the user can try again easily
+        if (window.turnstile) {
+          window.turnstile.reset();
+        }
       } finally {
         submitBtn.disabled = false;
       }
