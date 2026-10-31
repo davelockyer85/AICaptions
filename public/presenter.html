@@ -309,14 +309,21 @@
           <input type="range" id="fontSizeInput" min="16" max="96" value="32" oninput="document.getElementById('fontSizeVal').innerText = this.value" onchange="updateStyles()">
         </div>
         <div>
-          <label style="font-size: 0.75rem;">Font Family</label>
-          <select id="fontFamilyInput" onchange="updateStyles()">
-            <option value="sans-serif">Sans-Serif</option>
-            <option value="serif">Serif</option>
-            <option value="monospace">Monospace</option>
-            <option value="'Bungee', cursive">Bungee</option>
-          </select>
-        </div>
+  <label style="font-size: 0.75rem;">Font Family</label>
+  <select id="fontFamilyInput" onchange="updateStyles()">
+    <option value="'Montserrat', sans-serif">TikTok Classic / Clean (Montserrat)</option>
+    <option value="'Bebas Neue', sans-serif">TikTok Hype / Bold (Bebas Neue)</option>
+    <option value="'Poppins', sans-serif">Instagram Modern (Poppins)</option>
+    <option value="'Archivo Black', sans-serif">Heavy Hook / Accent (Archivo Black)</option>
+    <option value="'Comfortaa', cursive">Neon / Rounded (Comfortaa)</option>
+    <option value="'Courier Prime', monospace">Typewriter</option>
+    <option value="'Caveat', cursive">Handwriting / Script</option>
+    <option value="sans-serif">System Default (Sans-Serif)</option>
+    <option value="serif">System Serif</option>
+    <option value="monospace">System Monospace</option>
+    <option value="'Bungee', cursive">Bungee</option>
+  </select>
+</div>
       </div>
 
       <div class="controls-grid" style="margin-bottom: 0.75rem;">
